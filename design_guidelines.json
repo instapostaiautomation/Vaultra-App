@@ -1,0 +1,189 @@
+{
+  "app_name": "Vaultra DigiGold",
+  "personality": "1 iOS-Native Clean (Customized with Brand Gold and Admin Dark)",
+  "personality_one_liner": "A premium, high-trust financial surface that pairs clinical stone-neutral brightness for consumers with deep, tactical darkness for admin operations.",
+  "color": {
+    "surface": "#FFFFFF",
+    "onSurface": "#111827",
+    "surfaceSecondary": "#F8F9FA",
+    "onSurfaceSecondary": "#111827",
+    "surfaceTertiary": "#F5F5F4",
+    "onSurfaceTertiary": "#4B5563",
+    "surfaceInverse": "#111827",
+    "onSurfaceInverse": "#FFFFFF",
+    "brand": "#D4AF37",
+    "onBrand": "#FFFFFF",
+    "brandPrimary": "#D4AF37",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#C5A028",
+    "onBrandSecondary": "#FFFFFF",
+    "brandTertiary": "#FDF8E8",
+    "onBrandTertiary": "#A18222",
+    "success": "#16A34A",
+    "onSuccess": "#FFFFFF",
+    "warning": "#F59E0B",
+    "onWarning": "#FFFFFF",
+    "error": "#DC2626",
+    "onError": "#FFFFFF",
+    "info": "#3B82F6",
+    "onInfo": "#FFFFFF",
+    "border": "#E5E7EB",
+    "borderStrong": "#D1D5DB",
+    "divider": "#F3F4F6",
+    "muted": "#6B7280",
+    "adminSurface": "#0F172A",
+    "adminOnSurface": "#F8FAFC",
+    "adminSurfaceSecondary": "#1E293B",
+    "adminOnSurfaceSecondary": "#F1F5F9",
+    "adminSurfaceTertiary": "#111827",
+    "adminOnSurfaceTertiary": "#CBD5E1",
+    "adminBorder": "#334155"
+  },
+  "typography": {
+    "displayFontFamily": "Inter",
+    "textFontFamily": "Inter",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous vertical breathing room for customer portal; tighter utility-first spacing for the admin portal.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 14,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "1",
+  "custom_shadow": "0 4px 20px -2px rgba(0,0,0,0.06)",
+  "navigation": "bottom_tabs",
+  "icon_set": "lucide-react-native",
+  "glassmorphism": {
+    "enabled": "true",
+    "do's": [
+      "Use glass on bottom tabs over scrolling content.",
+      "Use glass for sticky instant buy/sell CTA bars at the bottom.",
+      "Use glass for floating modal overlays."
+    ],
+    "dont's": [
+      "Avoid glass in the dense admin dark portal to maintain high contrast and utility.",
+      "Do not use on regular list items or data cards."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Customer_Home",
+      "purpose": "Primary landing and quick purchase entry.",
+      "states": {
+        "loading": "Skeleton cards for ticker, hero banner, and category circles.",
+        "empty": "Not applicable; defaults to 0 balance if new.",
+        "error": "Failed to load live rates; Retry CTA."
+      },
+      "layout": "Sticky Header with tenant switch and logo. Top: Live Ticker Pill (with pulsing dot). Hero: Carousel of promo banners (dots indicator). Core Module: 'Instant Buy Gold' white card (price lock countdown, amount chips, large Proceed CTA). Horizontal scroll list: Jewellery categories (circular avatars). Bottom: Trending items."
+    },
+    {
+      "name": "Customer_Vault",
+      "purpose": "Ledger, portfolio tracking, and quick actions.",
+      "states": {
+        "loading": "Skeleton for portfolio card and transaction rows.",
+        "empty": "Illustration of empty vault + 'Start SIP' or 'Buy Gold' CTA.",
+        "error": "Failed to load ledger; Retry."
+      },
+      "layout": "Top: Large Portfolio Card (Grams, INR value, UnRealized Profit %). Middle: Quick action grid (Redeem / Sell / Invoice). Bottom: Ledger passbook section with sticky filter pills (All/Buy/Sell/SIP) and rows showing status badges."
+    },
+    {
+      "name": "Staff_Admin_Dashboard",
+      "purpose": "Operations command center.",
+      "states": {
+        "loading": "Spinner centered on deep dark theme.",
+        "empty": "No pending tasks today.",
+        "error": "Network error, tap to reload."
+      },
+      "layout": "Dark theme forced (#0F172A). Top: Overview stat cards (Vault under custody, Counter sales). Middle: Live event stream ticker. Bottom: Navigation to specific queues (KYC, Pickups, POS)."
+    },
+    {
+      "name": "Staff_KYC_Queue",
+      "purpose": "Review and approve KYC documents.",
+      "states": {
+        "loading": "List skeletons.",
+        "empty": "Zero pending reviews illustration.",
+        "error": "Failed to load queue."
+      },
+      "layout": "List of pending users. Tap opens a bottom sheet/modal containing Aadhaar/PAN image preview with Approve (Green) / Reject (Red) sticky bottom actions."
+    },
+    {
+      "name": "Staff_Counter_POS",
+      "purpose": "In-store immediate gold sale logging.",
+      "states": {
+        "loading": "Customer lookup spinner.",
+        "empty": "Ready for input.",
+        "error": "Transaction failed toast."
+      },
+      "layout": "Single-column form. Customer Phone lookup -> Weight input -> Payment method toggles (Cash/Card/UPI) -> Large 'Generate Bill' CTA. Requires fast, dense, utility-first spacing."
+    }
+  ],
+  "images": {
+    "promo_banner_1": {
+      "url": "https://images.unsplash.com/photo-1624365168056-daf44387e2ae?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Nzh8MHwxfHNlYXJjaHwyfHxnb2xkJTIwYnVsbGlvbiUyMGJhbm5lcnxlbnwwfHx8fDE3OTE5NjUxODB8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Gold bullion bars banner"
+    },
+    "category_ring": {
+      "url": "https://images.unsplash.com/photo-1611955167811-4711904bb9f8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2ODh8MHwxfHNlYXJjaHwyfHxnb2xkJTIwcmluZyUyMGpld2Vscnl8ZW58MHx8fHwxNzkxOTY1MTg4fDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Gold ring"
+    },
+    "category_necklace": {
+      "url": "https://images.unsplash.com/photo-1601121141461-9d6647bca1ed?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDJ8MHwxfHNlYXJjaHwxfHxnb2xkJTIwbmVja2xhY2UlMjBqZXdlbHJ5fGVufDB8fHx8MTc5MTk2NTE4OHww&ixlib=rb-4.1.0&q=85",
+      "alt": "Gold necklace"
+    },
+    "category_bangle": {
+      "url": "https://images.unsplash.com/photo-1611107683227-e9060eccd846?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NDh8MHwxfHNlYXJjaHwyfHxnb2xkJTIwYmFuZ2xlJTIwamV3ZWxyeXxlbnwwfHx8fDE3OTE5NjUxODh8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Gold bangles"
+    },
+    "category_watch": {
+      "url": "https://images.unsplash.com/photo-1587925358603-c2eea5305bbc?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwxfHxnb2xkJTIwd2F0Y2glMjBqZXdlbHJ5fGVufDB8fHx8MTc5MTk2NTE4OHww&ixlib=rb-4.1.0&q=85",
+      "alt": "Gold watch"
+    }
+  },
+  "haptics": {
+    "button_primary": "impactMedium",
+    "tab_change": "selection",
+    "toggle_switch": "impactLight",
+    "success_toast": "notificationSuccess",
+    "error_toast": "notificationError",
+    "price_lock_tick": "impactLight"
+  },
+  "instructions_to_main_agent": [
+    "Strictly adhere to the two parallel themes: the Customer portal must use the Light tokens (surface #FFFFFF, surfaceSecondary #F8F9FA) with iOS-Native Clean layout rules, while the Staff Admin portal MUST be exclusively built using the Admin tokens (#0F172A, #1E293B, #111827) with dense utility layout.",
+    "Implement the 'Instant Buy Gold' widget on the Home screen as a high-prominence sticky/elevated card with a 5-minute lock countdown and fast denomination chips (+₹500, +₹1000).",
+    "Apply the user's specific 14px border radius (`md`) globally on all cards and bottom sheets.",
+    "Use Lucide icons throughout the app, maintaining a consistent weight of 500 max.",
+    "Ensure 'Proceed to Buy' and 'Generate Bill' CTAs are sticky at the bottom of their respective screens inside a KeyboardAvoidingView where necessary.",
+    "Admin navigation: Staff entry is via a separate mock PIN login. Implement a distinct bottom tab or drawer that only uses the dark tokens.",
+    "Do NOT use any blue, indigo, or purple. Stick entirely to the #D4AF37 gold palette and stone/slate neutrals.",
+    "Use proper gradient scrims (transparent to surfaceInverse) on any text placed over the promo banner carousel images."
+  ]
+}
