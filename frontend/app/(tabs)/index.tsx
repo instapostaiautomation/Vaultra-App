@@ -1,6 +1,6 @@
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { ArrowRight, Gift, HelpCircle, ShieldCheck, Truck, TrendingUp } from "lucide-react-native";
+import { ArrowRight, Gift, HelpCircle, ShieldCheck, Store, Truck, TrendingUp } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
@@ -130,6 +130,15 @@ export default function Home() {
           <Text style={styles.faqText}>Frequently asked questions</Text>
           <ArrowRight size={16} color={colors.muted} />
         </Pressable>
+
+        <Pressable style={styles.staffRow} onPress={() => router.push("/admin/login")} testID="home-staff-portal-link">
+          <Store size={20} color={colors.brandPrimary} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.staffTitle}>Store Staff & Admin Panel</Text>
+            <Text style={styles.staffSub}>Multi-tenant console · KYC, Pickups, POS, Ledger</Text>
+          </View>
+          <ArrowRight size={16} color={colors.brandPrimary} />
+        </Pressable>
       </ScrollView>
       <RedeemSheet target={target} onClose={() => setTarget(null)} />
     </View>
@@ -179,4 +188,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   faqText: { flex: 1, fontFamily: fonts.semibold, fontSize: 14, color: colors.onSurface },
+  staffRow: { marginHorizontal: 16, marginTop: 12, flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: radius.md, backgroundColor: colors.adminSurface },
+  staffTitle: { fontFamily: fonts.bold, fontSize: 14, color: colors.adminOnSurface },
+  staffSub: { fontFamily: fonts.regular, fontSize: 12, color: colors.adminMuted, marginTop: 2 },
 });

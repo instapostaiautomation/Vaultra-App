@@ -135,6 +135,9 @@ export default function Login() {
           <ShieldCheck size={16} color={colors.success} />
           <Text style={styles.secureText}>256-bit encrypted · RBI-compliant KYC partners</Text>
         </View>
+        <Pressable onPress={() => router.push("/admin/login")} style={styles.resend} testID="login-staff-portal-link">
+          <Text style={styles.resendText}>Store staff? Open Admin Panel →</Text>
+        </Pressable>
       </KeyboardAwareScrollView>
     </View>
   );
