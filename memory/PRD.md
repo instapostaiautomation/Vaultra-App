@@ -23,6 +23,10 @@ Production-grade multi-tenant Digital Gold Platform (inspired by DigiGold), buil
 - Price Alerts: Home card opens a sheet to set a target price (max 5 active). A green banner appears on Home when the live 24K price drops below a target; the server checks the price before marking it hit. APIs: /api/alerts CRUD + /trigger
 - Sheets now scroll to the focused input when the keyboard opens
 
+## Iteration 3 (2026-06)
+- Gold Goals: Vault section with a progress ring + bar, an occasion, target grams, timeline, a "₹/month needed" plan, a Start SIP shortcut, an achieved state and delete. Home shows a goal card. APIs: /api/goals GET/POST/DELETE (max 5)
+- Jewellery tab layout fixed: cards are the same width, names take a fixed 2-line height, the 'Gold value' rows line up, the button text stays on one line, and the header shows the piece count
+
 ## Backlog
 - P0: Add Razorpay test keys (RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET in backend/.env) to turn on the real gateway
 - P1: Doorstep BRINK'S delivery booking, PDF invoices, Razorpay webhooks

@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration 3 covers the new Gold Goals feature end-to-end plus Jewellery tab alignment and light regression. Backend: 11/11 new pytest cases pass in /app/backend/tests/test_goals.py (list/create/delete each require auth 401/403; empty list -> [] then POST /api/goals persists {id, name, occasion, target_grams, months, deadline, start_grams, created_at}; validation 422 for target_grams<=0, months<=0, name<2 chars; 6th goal returns 400 'up to 5'; DELETE unknown id returns 404; DELETE other-user's goal returns 404 (user-scoped); DELETE returns ok=true and goal disappears from GET /goals). Full regression: 48/49 prior tests still pass; the only failure (test_kyc_submit_then_admin_approve_then_sell_and_redeem) is a pre-existing test-isolation issue because TEST_PHONE2=9000098765 is reused across runs and is already KYC-approved by now - not a code regression. Frontend 390x844 as Aarav 9876543210: Vault tab shows goals-section with goals-empty + goal-add-button. Opening goal-sheet works, selected goal-occasion-diwali, filled goal-name-input='Diwali Jewels', picked goal-target-5 and goal-months-12 - goal-plan-preview rendered 'Save about Rs1,828/month to reach 5.00g in 12 months'. goal-create-button created a card: 39% progress ring, goal-progress 'of 5.00g', goal-plan 'Save Rs1,828/month for 12 mo to reach it', Start SIP button (goal-sip-{id}) navigated to /sip. home-goal-card rendered on home with '39% - Diwali Jewels - 1.992g of 5.00g - Rs1,828/mo'. Second goal with target 1g (< balance 1.9923g) correctly showed goal-achieved-{id} with 'Goal achieved! Redeem it as jewellery or coins.' and no SIP button. Delete flow (goal-delete -> goal-delete-sheet -> goal-delete-confirm) removed the achieved goal and the card disappeared. Jewellery tab: header shows '8 pieces' (jewellery-count) + LiveTicker (jewellery-ticker). 2-column grid cards all equal width (173px) and equal height (303px), row Y aligned (Y=175 for both column cards). 'Redeem with Vault Gold' CTA is single line (147px wide, adjustsFontSizeToFit kicks in). jewellery-filter-rings reduces list to '1 piece'. redeem-product-{id} opens redeem-sheet correctly. Regression: vault passbook-list and passbook-filter-gift chip still render; home still shows price-alert-card, home-gift-promo, home-goal-card. Only console warnings: non-fatal RN-web shadow* and props.pointerEvents deprecations.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_goals.py",
+    "/app/test_reports/pytest/pytest_results_iter3.xml"
+  ],
+  "action_items": [
+    "Optional / pre-existing: TestKycAndApproved uses a hard-coded phone (9000098765) that persists KYC between runs - test now returns 400 'KYC already approved'. Suggest randomising the phone or resetting KYC status in a fixture teardown.",
+    "Optional: inside goal-sheet modal on 390x844, goal-create-button can sit near the viewport bottom. Playwright had to element.click() instead of page.click because the virtual keyboard pushed it slightly off-screen; same tiny ergonomic hit as reported in iter2 for other sheets. A single KeyboardAvoidingView / auto-scroll in <Sheet /> would fix all of them at once.",
+    "Minor code review: server.py is still ~1040 lines, past 700-line soft limit. Splitting into routers (goals, gifts, alerts, admin, vault) remains recommended."
+  ],
+  "critical_code_review_comments": [
+    "GoalCreate pydantic model validates target_grams (0, 1000] and months [1, 120] - validation works and returns 422 as expected.",
+    "/api/goals POST enforces max-5 before insert and returns 400 with human message - good.",
+    "/api/goals DELETE scopes by {id, user_id} and 404s on miss - correctly prevents cross-user delete (verified).",
+    "Goals.tsx correctly handles achieved state (hides SIP CTA, shows green banner) and uses testIDs on every interactive element - excellent.",
+    "Product.tsx uses adjustsFontSizeToFit for CTA on web - keeps 'Redeem with Vault Gold' on one line even on 390px wide 2-col grid; equal-height card rows achieved via numberOfLines=2 on name.",
+    "server.py now 1040 lines - still over 700 soft-limit."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_goals.py",
+    "/app/test_reports/iteration_3.json",
+    "/app/test_reports/pytest/pytest_results_iter3.xml"
+  ],
+  "success_rate": {"backend": "100% (11/11 new goals tests; 48/49 overall - 1 pre-existing isolation failure)", "frontend": "100% (all goal + jewellery testIDs behave as specified)"},
+  "seed_data_creation": "pytest creates transient users with phones 9000xxxxxx (random uuid-derived) and seeds up to 5 goals per user plus a cross-user test. UI test logged in as seeded 9876543210 and created/deleted goals under that user.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "New Goals testIDs: goals-section, goals-empty, goal-add-button, goal-sheet, goal-occasion-{wedding|diwali|child_future|retirement|jewellery|custom}, goal-name-input, goal-target-input, goal-target-{5|10|25|50}, goal-months-{3|6|12|24|60}, goal-plan-preview, goal-create-button, goal-card-{id}, goal-name-{id}, goal-progress-{id}, goal-plan-{id}, goal-sip-{id}, goal-achieved-{id}, goal-delete-{id}, goal-delete-sheet, goal-delete-cancel, goal-delete-confirm, home-goal-card. Backend endpoints: GET/POST /api/goals, DELETE /api/goals/{id}. Max 5 goals (400), validation (422), unknown delete (404), user-scoped delete. Login flow unchanged - use login-autofill-otp then login-verify-button (OTP field does not autofill until that button is clicked). Each browser automation call is a fresh session, so re-login every time.",
+  "rca_of_issue": "N/A - no bugs found in this iteration."
+}

@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api } from "@/src/api";
 import { ScreenHeader } from "@/src/components/Header";
+import { GoalsSection } from "@/src/components/Goals";
 import { RedeemSheet } from "@/src/components/Product";
 import { useToast } from "@/src/components/Toast";
 import { TxnRow } from "@/src/components/TxnRow";
@@ -141,6 +142,7 @@ export default function VaultScreen() {
         </View>
 
         <View>
+          <GoalsSection />
           {(vault?.pending_pickups || []).map((p) => (
             <View key={p.id} style={styles.pickup} testID={`pending-pickup-${p.id}`}>
               <Store size={20} color={colors.brandSecondary} />

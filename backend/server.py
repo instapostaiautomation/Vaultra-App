@@ -733,6 +733,41 @@ async def delete_alert(alert_id: str, user=Depends(current_user)):
     return {"ok": True}
 
 
+# ---------------- gold goals ----------------
+class GoalCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=40)
+    occasion: str = "custom"
+    target_grams: float = Field(gt=0, le=1000)
+    months: int = Field(ge=1, le=120)
+
+
+@api.get("/goals")
+async def list_goals(user=Depends(current_user)):
+    return await db.goals.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", 1).to_list(20)
+
+
+@api.post("/goals")
+async def create_goal(body: GoalCreate, user=Depends(current_user)):
+    if await db.goals.count_documents({"user_id": user["id"]}) >= 5:
+        raise HTTPException(400, "You can have up to 5 goals")
+    n = datetime.now(timezone.utc)
+    g = {"id": str(uuid.uuid4()), "user_id": user["id"], "name": body.name.strip(), "occasion": body.occasion,
+         "target_grams": r4(body.target_grams), "months": body.months,
+         "deadline": (n + timedelta(days=round(body.months * 30.44))).isoformat(),
+         "start_grams": r4(user.get("gold_grams", 0)), "created_at": n.isoformat()}
+    await db.goals.insert_one(dict(g))
+    g.pop("_id", None)
+    return g
+
+
+@api.delete("/goals/{goal_id}")
+async def delete_goal(goal_id: str, user=Depends(current_user)):
+    r = await db.goals.delete_one({"id": goal_id, "user_id": user["id"]})
+    if not r.deleted_count:
+        raise HTTPException(404, "Goal not found")
+    return {"ok": True}
+
+
 # ---------------- staff / admin ----------------
 def scope(staff: dict, tenant: Optional[str]):
     if staff["tenant"] != "all":

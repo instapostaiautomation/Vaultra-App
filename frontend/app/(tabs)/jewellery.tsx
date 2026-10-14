@@ -21,7 +21,7 @@ export default function Jewellery() {
   const [target, setTarget] = useState<any>(null);
   const bottomChrome = usesNativeTabs ? insets.bottom : 0;
   const cols = width > 700 ? 3 : 2;
-  const cardW = (Math.min(width, 960) - 32 - 12 * (cols - 1)) / cols;
+  const cardW = Math.floor((Math.min(width, 960) - 32 - 12 * (cols - 1)) / cols);
 
   useEffect(() => {
     if (params.category) setCat(params.category);
@@ -64,8 +64,13 @@ export default function Jewellery() {
           columnWrapperStyle={{ gap: 12 }}
           contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: bottomChrome + 24 }}
           ListHeaderComponent={
-            <View style={{ marginBottom: 4 }}>
-              <LiveTicker testID="jewellery-ticker" />
+            <View style={styles.listHead}>
+              <Text style={styles.count} testID="jewellery-count">
+                {list.length} {list.length === 1 ? "piece" : "pieces"}
+              </Text>
+              <View style={{ flex: 1, maxWidth: 240 }}>
+                <LiveTicker testID="jewellery-ticker" />
+              </View>
             </View>
           }
           ListEmptyComponent={<Text style={styles.empty}>No pieces in this category yet</Text>}
@@ -80,5 +85,7 @@ export default function Jewellery() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceSecondary },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
+  listHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 4 },
+  count: { fontFamily: fonts.semibold, fontSize: 13, color: colors.onSurfaceTertiary },
   empty: { fontFamily: fonts.medium, fontSize: 14, color: colors.muted, textAlign: "center", marginTop: 24 },
 });

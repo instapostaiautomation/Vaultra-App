@@ -11,6 +11,7 @@ import { CATEGORIES, IMAGES } from "@/src/assets";
 import { BannerCarousel } from "@/src/components/BannerCarousel";
 import { BuyWidget } from "@/src/components/BuyWidget";
 import { HomeHeader } from "@/src/components/Header";
+import { HomeGoalCard } from "@/src/components/Goals";
 import { PriceAlertBanner, PriceAlertCard } from "@/src/components/PriceAlert";
 import { Product, ProductCard, RedeemSheet } from "@/src/components/Product";
 import { usesNativeTabs } from "@/src/navigation";
@@ -66,6 +67,7 @@ export default function Home() {
           ))}
         </View>
         <PriceAlertCard />
+        <HomeGoalCard />
 
         <View style={styles.sectionHead}>
           <Text style={styles.sectionTitle}>Shop by Category</Text>
