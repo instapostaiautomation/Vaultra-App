@@ -14,7 +14,7 @@ import {
   View,
   ViewStyle,
 } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { KeyboardAvoidingView, KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { X } from "lucide-react-native";
 
@@ -198,9 +198,9 @@ export function Sheet({
                 </Pressable>
               </View>
             ) : null}
-            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20 }}>
+            <KeyboardAwareScrollView bottomOffset={72} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20 }}>
               {children}
-            </ScrollView>
+            </KeyboardAwareScrollView>
           </View>
         </View>
       </KeyboardAvoidingView>

@@ -1,4 +1,4 @@
-import { ArrowDownLeft, ArrowUpRight, Gift, RefreshCw, Repeat, Store } from "lucide-react-native";
+import { ArrowDownLeft, ArrowUpRight, Gift, Inbox, RefreshCw, Repeat, Send, Store } from "lucide-react-native";
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -6,11 +6,21 @@ import { StatusBadge } from "@/src/components/ui";
 import { dateTime, grams, inr, TXN_LABEL } from "@/src/format";
 import { colors, fonts } from "@/src/theme";
 
-const ICON: Record<string, any> = { buy: ArrowDownLeft, sell: ArrowUpRight, sip: Repeat, redemption: Gift, counter_sale: Store, reversal: RefreshCw };
+const ICON: Record<string, any> = {
+  buy: ArrowDownLeft,
+  sell: ArrowUpRight,
+  sip: Repeat,
+  redemption: Gift,
+  counter_sale: Store,
+  reversal: RefreshCw,
+  gift_sent: Send,
+  gift_received: Inbox,
+};
 
 export function TxnRow({ t, onPress, dark }: { t: any; onPress?: () => void; dark?: boolean }) {
   const Icon = ICON[t.type] || ArrowDownLeft;
-  const credit = ["buy", "sip", "counter_sale"].includes(t.type) || (t.type === "reversal" && ["sell", "redemption"].includes(t.original_type));
+  const credit =
+    ["buy", "sip", "counter_sale", "gift_received"].includes(t.type) || (t.type === "reversal" && ["sell", "redemption"].includes(t.original_type));
   const fg = dark ? colors.adminOnSurface : colors.onSurface;
   return (
     <Pressable testID={`txn-row-${t.id}`} onPress={onPress} style={[styles.row, { borderBottomColor: dark ? colors.adminBorder : colors.divider }]}>
@@ -21,6 +31,7 @@ export function TxnRow({ t, onPress, dark }: { t: any; onPress?: () => void; dar
         <Text style={[styles.title, { color: fg }]} numberOfLines={1}>
           {TXN_LABEL[t.type] || t.type}
           {t.item ? ` · ${t.item}` : ""}
+          {t.counterparty_name ? ` · ${t.counterparty_name}` : ""}
         </Text>
         <Text style={[styles.sub, { color: dark ? colors.adminMuted : colors.muted }]} numberOfLines={1}>
           {dateTime(t.created_at)} · {t.invoice_no}

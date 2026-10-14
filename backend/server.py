@@ -168,6 +168,9 @@ def entries_for(t: dict):
     if typ == "sell":
         return [{"account": "Customer Gold Liability", "debit": amt, "credit": 0},
                 {"account": "Customer Bank Payable", "debit": 0, "credit": amt}]
+    if typ == "gift_sent":
+        return [{"account": f"Customer Gold Liability · {t['phone']}", "debit": amt, "credit": 0},
+                {"account": f"Customer Gold Liability · {t.get('counterparty_phone', '')}", "debit": 0, "credit": amt}]
     if typ == "redemption":
         return [{"account": "Customer Gold Liability", "debit": amt, "credit": 0},
                 {"account": "Physical Bullion Inventory", "debit": 0, "credit": amt}]
@@ -397,7 +400,7 @@ async def vault(tenant: str = "vaultra", user=Depends(current_user)):
 async def my_transactions(type: Optional[str] = None, user=Depends(current_user)):
     q = {"user_id": user["id"]}
     if type and type != "all":
-        q["type"] = {"$in": ["buy", "counter_sale"]} if type == "buy" else type
+        q["type"] = {"$in": ["buy", "counter_sale"]} if type == "buy" else {"$in": ["gift_sent", "gift_received"]} if type == "gift" else type
     return await db.transactions.find(q, {"_id": 0}).sort("created_at", -1).to_list(200)
 
 
@@ -618,6 +621,118 @@ async def run_sip(sip_id: str, user=Depends(current_user)):
     return t
 
 
+# ---------------- gift gold ----------------
+GIFT_THEMES = ("diwali", "birthday", "wedding", "thank_you", "congrats")
+
+
+class GiftCreate(BaseModel):
+    phone: str
+    recipient_name: Optional[str] = None
+    mode: str = "grams"  # grams | rupees
+    value: float = Field(gt=0)
+    theme: str = "diwali"
+    message: str = Field(default="", max_length=240)
+    tenant: str = "vaultra"
+
+
+@api.post("/gifts")
+async def send_gift(body: GiftCreate, user=Depends(current_user)):
+    phone = norm_phone(body.phone)
+    if len(phone) != 10:
+        raise HTTPException(400, "Enter a valid 10-digit mobile number")
+    if phone == user["phone"]:
+        raise HTTPException(400, "You can't gift gold to yourself")
+    if body.theme not in GIFT_THEMES:
+        raise HTTPException(400, "Invalid greeting card")
+    rate, _ = tenant_rate(body.tenant)
+    g = r4(body.value) if body.mode == "grams" else r4(body.value / rate)
+    if g < 0.001:
+        raise HTTPException(400, "Minimum gift is 0.001g")
+    if g > 50:
+        raise HTTPException(400, "Maximum gift is 50g per transfer")
+    await debit_gold(user, g)
+    amount = r2(g * rate)
+    rec = await db.users.find_one({"phone": phone}, {"_id": 0})
+    if not rec:
+        rec = {"id": str(uuid.uuid4()), "phone": phone, "name": (body.recipient_name or "").strip() or "Gold Saver",
+               "tenant": body.tenant, "kyc_status": "not_submitted", "kyc": {}, "gold_grams": 0.0, "invested": 0.0,
+               "created_at": now_iso()}
+        await db.users.insert_one(dict(rec))
+    await credit_gold(rec["id"], g, amount)
+    gid = str(uuid.uuid4())
+    sname = user.get("name") or "A friend"
+    rname = (body.recipient_name or "").strip() or rec.get("name")
+    common = {"gift_id": gid, "theme": body.theme, "gift_message": body.message.strip()}
+    await record_txn(user, "gift_sent", g, rate, amount, 0, amount, body.tenant, "vault_gold",
+                     note=f"Gift to {rname}", extra=common | {"counterparty_phone": phone, "counterparty_name": rname})
+    await record_txn(rec, "gift_received", g, rate, amount, 0, amount, body.tenant, "vault_gold",
+                     note=f"Gift from {sname}", extra=common | {"counterparty_phone": user["phone"], "counterparty_name": sname})
+    gift = {"id": gid, "sender_id": user["id"], "sender_name": sname, "sender_phone": user["phone"],
+            "recipient_id": rec["id"], "recipient_name": rname, "recipient_phone": phone, "grams": g, "rate": rate,
+            "amount": amount, "theme": body.theme, "message": body.message.strip(), "tenant": body.tenant,
+            "seen": False, "created_at": now_iso()}
+    await db.gifts.insert_one(dict(gift))
+    await publish("gift:sent", f"{sname} gifted {g:.4f}g to {rname}", body.tenant)
+    return gift
+
+
+@api.get("/gifts")
+async def list_gifts(user=Depends(current_user)):
+    sent = await db.gifts.find({"sender_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    received = await db.gifts.find({"recipient_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return {"sent": sent, "received": received, "unseen": sum(1 for g in received if not g.get("seen"))}
+
+
+@api.post("/gifts/mark-seen")
+async def gifts_seen(user=Depends(current_user)):
+    await db.gifts.update_many({"recipient_id": user["id"], "seen": False}, {"$set": {"seen": True}})
+    return {"ok": True}
+
+
+# ---------------- price alerts ----------------
+class AlertCreate(BaseModel):
+    target: float = Field(gt=1000, lt=100000)
+    tenant: str = "vaultra"
+
+
+@api.get("/alerts")
+async def list_alerts(user=Depends(current_user)):
+    return await db.alerts.find({"user_id": user["id"], "status": {"$ne": "deleted"}}, {"_id": 0}).sort("created_at", -1).to_list(50)
+
+
+@api.post("/alerts")
+async def create_alert(body: AlertCreate, user=Depends(current_user)):
+    if body.tenant not in TENANTS:
+        raise HTTPException(400, "Invalid store")
+    if await db.alerts.count_documents({"user_id": user["id"], "status": "active"}) >= 5:
+        raise HTTPException(400, "You can have up to 5 active alerts")
+    a = {"id": str(uuid.uuid4()), "user_id": user["id"], "target": r2(body.target), "tenant": body.tenant,
+         "status": "active", "created_at": now_iso(), "triggered_at": None, "triggered_price": None}
+    await db.alerts.insert_one(dict(a))
+    a.pop("_id", None)
+    return a
+
+
+@api.post("/alerts/{alert_id}/trigger")
+async def trigger_alert(alert_id: str, user=Depends(current_user)):
+    """Validates against the server-side live price before marking the alert as triggered."""
+    a = await db.alerts.find_one({"id": alert_id, "user_id": user["id"]}, {"_id": 0})
+    if not a:
+        raise HTTPException(404, "Alert not found")
+    buy, _ = tenant_rate(a["tenant"])
+    if a["status"] == "active" and buy <= a["target"]:
+        await db.alerts.update_one({"id": alert_id}, {"$set": {"status": "triggered", "triggered_at": now_iso(), "triggered_price": buy}})
+    return await db.alerts.find_one({"id": alert_id}, {"_id": 0})
+
+
+@api.delete("/alerts/{alert_id}")
+async def delete_alert(alert_id: str, user=Depends(current_user)):
+    r = await db.alerts.update_one({"id": alert_id, "user_id": user["id"]}, {"$set": {"status": "deleted"}})
+    if not r.matched_count:
+        raise HTTPException(404, "Alert not found")
+    return {"ok": True}
+
+
 # ---------------- staff / admin ----------------
 def scope(staff: dict, tenant: Optional[str]):
     if staff["tenant"] != "all":
@@ -792,7 +907,7 @@ async def reverse(txn_id: str, body: ReverseRequest, staff=Depends(current_staff
     t = await db.transactions.find_one({"id": txn_id}, {"_id": 0})
     if not t:
         raise HTTPException(404, "Transaction not found")
-    if t["type"] == "reversal" or t["status"] in ("reversed", "failed"):
+    if t["type"] in ("reversal", "gift_sent", "gift_received") or t["status"] in ("reversed", "failed"):
         raise HTTPException(400, "Transaction cannot be reversed")
     if staff["tenant"] != "all" and t["tenant"] != staff["tenant"]:
         raise HTTPException(403, "Transaction belongs to another store")

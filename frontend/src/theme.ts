@@ -59,6 +59,18 @@ const light = {
   adminSuccessTint: "rgba(22,163,74,0.16)",
   adminErrorTint: "rgba(220,38,38,0.16)",
   adminWarningTint: "rgba(245,158,11,0.16)",
+
+  // Gift greeting card art (decorative, fixed across schemes)
+  giftDiwali: "#7C2D12",
+  giftDiwaliAccent: "#FDBA74",
+  giftBirthday: "#831843",
+  giftBirthdayAccent: "#F9A8D4",
+  giftWedding: "#4C0519",
+  giftWeddingAccent: "#FDA4AF",
+  giftThanks: "#14532D",
+  giftThanksAccent: "#86EFAC",
+  giftCongrats: "#111827",
+  giftCongratsAccent: "#D4AF37",
 };
 
 export type ThemeColors = typeof light;

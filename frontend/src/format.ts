@@ -44,6 +44,8 @@ export const TXN_LABEL: Record<string, string> = {
   redemption: "Redemption",
   counter_sale: "Counter Purchase",
   reversal: "Reversal",
+  gift_sent: "Gift Sent",
+  gift_received: "Gift Received",
 };
 
 export const TENANT_NAME: Record<string, string> = {

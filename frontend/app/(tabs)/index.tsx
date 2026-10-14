@@ -1,6 +1,6 @@
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { ArrowRight, HelpCircle, ShieldCheck, Truck, TrendingUp } from "lucide-react-native";
+import { ArrowRight, Gift, HelpCircle, ShieldCheck, Truck, TrendingUp } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
@@ -11,6 +11,7 @@ import { CATEGORIES, IMAGES } from "@/src/assets";
 import { BannerCarousel } from "@/src/components/BannerCarousel";
 import { BuyWidget } from "@/src/components/BuyWidget";
 import { HomeHeader } from "@/src/components/Header";
+import { PriceAlertBanner, PriceAlertCard } from "@/src/components/PriceAlert";
 import { Product, ProductCard, RedeemSheet } from "@/src/components/Product";
 import { usesNativeTabs } from "@/src/navigation";
 import { useApp } from "@/src/store/AppContext";
@@ -43,6 +44,7 @@ export default function Home() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brandPrimary} />}
         keyboardShouldPersistTaps="handled"
       >
+        <PriceAlertBanner />
         <Animated.View entering={FadeInDown.duration(400)}>
           <BannerCarousel />
         </Animated.View>
@@ -63,6 +65,7 @@ export default function Home() {
             </View>
           ))}
         </View>
+        <PriceAlertCard />
 
         <View style={styles.sectionHead}>
           <Text style={styles.sectionTitle}>Shop by Category</Text>
@@ -109,6 +112,17 @@ export default function Home() {
           </View>
         </Pressable>
 
+        <Pressable style={styles.giftPromo} onPress={() => router.push("/gift")} testID="home-gift-promo">
+          <View style={styles.giftIcon}>
+            <Gift size={22} color={colors.giftDiwaliAccent} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.giftTitle}>Gift Gold</Text>
+            <Text style={styles.giftSub}>Send grams to any phone with a greeting card</Text>
+          </View>
+          <ArrowRight size={18} color={colors.giftDiwaliAccent} />
+        </Pressable>
+
         <Pressable style={styles.faqRow} onPress={() => router.push("/faq")} testID="home-faq-link">
           <HelpCircle size={20} color={colors.onSurfaceTertiary} />
           <Text style={styles.faqText}>Frequently asked questions</Text>
@@ -146,6 +160,10 @@ const styles = StyleSheet.create({
   sipTitle: { fontFamily: fonts.black, fontSize: 18, color: colors.onSurfaceInverse, letterSpacing: -0.4, marginTop: 4 },
   sipSub: { fontFamily: fonts.regular, fontSize: 12, color: colors.mutedLight, marginTop: 4 },
   sipArrow: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" },
+  giftPromo: { marginHorizontal: 16, marginTop: 12, flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: radius.md, backgroundColor: colors.giftDiwali },
+  giftIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.overlayLight, alignItems: "center", justifyContent: "center" },
+  giftTitle: { fontFamily: fonts.black, fontSize: 17, color: colors.onSurfaceInverse, letterSpacing: -0.4 },
+  giftSub: { fontFamily: fonts.regular, fontSize: 12, color: colors.giftDiwaliAccent, marginTop: 2 },
   faqRow: {
     marginHorizontal: 16,
     marginTop: 12,

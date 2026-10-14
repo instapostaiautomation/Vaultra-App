@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 2 covers the two new features (Gift Gold + Price Alerts) end-to-end plus a light regression. Backend: 13/13 new pytest cases pass in /app/backend/tests/test_gifts_alerts.py — gift happy path (debits sender, credits recipient, creates new user when phone is unseen, gift_sent/gift_received txns, /api/gifts {sent,received,unseen}, /api/gifts/mark-seen clears unseen, /api/transactions?type=gift filter), gift errors (self 400, invalid phone 400, invalid theme 400, >50g 400, insufficient balance 400), gift txn reversal is blocked by admin ledger (400), alerts CRUD + max-5 cap (400) + invalid target (422) + server-verified trigger (target<price stays active, target>price becomes triggered with triggered_price set). Frontend (390x844): logged in as seeded customer Aarav (9876543210) → home shows price-alert-card and home-gift-promo. Price alert sheet opened (price-alert-sheet), target 9000 set via price-alert-target-input, price-alert-create-button worked, chips -10/-25/-50/-100 modify the input (chip -50 reduced 7294→7244), price-alert-banner appeared on home within ~1s, dismiss removed it, target below price (5000) stayed active with no banner. Gift flow: theme chips (gift-theme-birthday) switch the card preview, gift-phone-input/gift-name-input/gift-amount-input/gift-message-input all work, gift-send-button creates gift and opens gift-success-sheet; vault balance decreased 2.0423g→1.9923g (0.05g gift), passbook-filter-gift shows the Gift Sent row, vault quick actions now 2x2 grid (4 actions, incl. vault-action-gift). Recipient 9812345670 signed in → /gift Received tab shows 3 received gifts and vault portfolio-grams increased to 1.3992g. Regression: home buy widget & admin console still render fine. No console errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_gifts_alerts.py",
+    "/app/backend/tests/test_vaultra_api.py",
+    "/app/test_reports/pytest/pytest_results_iter2.xml"
+  ],
+  "action_items": [
+    "None blocking. Optional: inside Sheet modal the primary CTA (price-alert-create-button, payment-pay-button) sometimes sits below the virtual keyboard on 390x844; Playwright reported 'outside viewport' until we scrolled it into view. Consider a KeyboardAvoidingView wrapper or auto-scroll-to-focused-field inside Sheet so real users don't have to scroll to tap the button."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now ~1005 lines — past the 700-line soft limit. Recommend splitting into routers (auth, orders, vault, gifts, alerts, admin).",
+    "/api/alerts GET is not paginated (to_list(50)) which is fine for now; UI only renders a short list.",
+    "/api/alerts/{id}/trigger does validate server-side price (buy <= target) — good; the UI poller fires it on every price tick so no client-side spoofing possible.",
+    "/api/gifts correctly auto-creates recipient user with sane defaults (kyc_status=not_submitted, gold_grams=0) when phone unseen."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_gifts_alerts.py",
+    "/app/test_reports/iteration_2.json",
+    "/app/test_reports/pytest/pytest_results_iter2.xml"
+  ],
+  "success_rate": {"backend": "100% (13/13 new)", "frontend": "100% (all gift+alert testIDs behave as specified)"},
+  "seed_data_creation": "Reused server.py seed(). pytest created transient senders (phones 90000xxxxx) and gifted to seeded 9812345670 and a fresh 90001xxxxx recipient. UI test logged in as seeded 9876543210 and gifted 0.05g to 9812345670.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "New testIDs added since iteration 1 — alerts: price-alert-card, price-alert-sheet, price-alert-target-input, price-alert-chip-{10|25|50|100}, price-alert-create-button, price-alert-row-{id}, price-alert-delete-{id}, price-alert-banner, price-alert-banner-dismiss, price-alert-banner-buy; gift: home-gift-promo, vault-action-gift, gift-screen, gift-signin-button, gift-theme-{diwali|birthday|wedding|thank_you|congrats}, gift-phone-input, gift-name-input, gift-mode-{grams|rupees}, gift-amount-input, gift-chip-{N}, gift-converted, gift-balance, gift-message-input, gift-send-button, gift-success-sheet, gift-success-done, gift-history-{received|sent}, gift-history-item-{id}, passbook filter chip id 'gift'. Live price moves every 3s (random walk around ₹7270-7300); set alert target >= 8000 for near-instant trigger. Sheet modal clicks must be dispatched via element.click() when the virtual keyboard pushes CTA out of viewport (page.click force=True still said 'outside viewport').",
+  "rca_of_issue": "N/A — no bugs found in this iteration."
+}

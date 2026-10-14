@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { Coins, Download, Lock, Store, TrendingUp, Vault as VaultIcon, Wallet } from "lucide-react-native";
+import { Coins, Download, Gift, Lock, Store, TrendingUp, Vault as VaultIcon, Wallet } from "lucide-react-native";
 import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Share, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -21,6 +21,7 @@ const FILTERS = [
   { id: "sell", label: "Sell" },
   { id: "sip", label: "SIP" },
   { id: "redemption", label: "Redemption" },
+  { id: "gift", label: "Gifts" },
 ];
 
 export default function VaultScreen() {
@@ -128,6 +129,7 @@ export default function VaultScreen() {
             { id: "redeem", label: "Redeem Physical Coins", Icon: Coins, onPress: () => setCoinOpen(true) },
             { id: "sell", label: "Sell Gold to Bank", Icon: TrendingUp, onPress: () => setSellOpen(true) },
             { id: "invoice", label: "Download Invoice", Icon: Download, onPress: openInvoice },
+            { id: "gift", label: "Gift Gold", Icon: Gift, onPress: () => router.push("/gift") },
           ].map(({ id, label, Icon, onPress }) => (
             <Pressable key={id} testID={`vault-action-${id}`} onPress={onPress} style={({ pressed }) => [styles.action, pressed && { transform: [{ scale: 0.97 }] }]}>
               <View style={styles.actionIcon}>
@@ -305,10 +307,10 @@ const styles = StyleSheet.create({
   pStats: { flexDirection: "row", marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.1)" },
   pStatLabel: { fontFamily: fonts.medium, fontSize: 11, color: colors.mutedLight },
   pStatValue: { fontFamily: fonts.bold, fontSize: 14, color: colors.onSurfaceInverse, marginTop: 4 },
-  actions: { flexDirection: "row", gap: 8, paddingHorizontal: 16 },
-  action: { flex: 1, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, padding: 12, alignItems: "center", gap: 8, minHeight: 100, ...cardShadow },
+  actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: 16 },
+  action: { flexBasis: "47%", flexGrow: 1, flexDirection: "row", backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, padding: 12, alignItems: "center", gap: 10, minHeight: 64, ...cardShadow },
   actionIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center" },
-  actionText: { fontFamily: fonts.semibold, fontSize: 12, color: colors.onSurface, textAlign: "center" },
+  actionText: { flex: 1, fontFamily: fonts.semibold, fontSize: 13, color: colors.onSurface },
   pickup: { flexDirection: "row", alignItems: "center", gap: 12, marginHorizontal: 16, marginTop: 12, padding: 16, borderRadius: radius.md, backgroundColor: colors.brandTertiary, borderWidth: 1, borderColor: "#F0E2B0" },
   pickupTitle: { fontFamily: fonts.semibold, fontSize: 14, color: colors.onSurface },
   pickupSub: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted },

@@ -29,6 +29,16 @@ export type Vault = {
   pending_pickups: any[];
 };
 
+export type PriceAlert = {
+  id: string;
+  target: number;
+  tenant: string;
+  status: "active" | "triggered";
+  created_at: string;
+  triggered_at: string | null;
+  triggered_price: number | null;
+};
+
 type Ctx = {
   booting: boolean;
   token: string | null;
@@ -37,6 +47,8 @@ type Ctx = {
   price: Price | null;
   priceError: boolean;
   vault: Vault | null;
+  alerts: PriceAlert[];
+  reloadAlerts: () => Promise<void>;
   setTenant: (t: string) => void;
   signIn: (token: string, user: User) => Promise<void>;
   signOut: () => Promise<void>;
@@ -55,8 +67,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [price, setPrice] = useState<Price | null>(null);
   const [priceError, setPriceError] = useState(false);
   const [vault, setVault] = useState<Vault | null>(null);
+  const [alerts, setAlerts] = useState<PriceAlert[]>([]);
+  const inFlight = useRef<Set<string>>(new Set());
   const tenantRef = useRef(tenant);
   tenantRef.current = tenant;
+
+  const reloadAlerts = useCallback(async () => {
+    try {
+      setAlerts(await api<PriceAlert[]>("/alerts"));
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (token) reloadAlerts();
+    else setAlerts([]);
+  }, [token, reloadAlerts]);
+
+  // When the live price crosses below an active target, ask the server to verify & mark it triggered.
+  useEffect(() => {
+    if (!price || !token) return;
+    const hits = alerts.filter((a) => a.status === "active" && a.tenant === tenant && price.buy <= a.target && !inFlight.current.has(a.id));
+    if (!hits.length) return;
+    hits.forEach((a) => inFlight.current.add(a.id));
+    Promise.all(hits.map((a) => api(`/alerts/${a.id}/trigger`, { method: "POST" }).catch(() => null))).then(async () => {
+      await reloadAlerts();
+      hits.forEach((a) => inFlight.current.delete(a.id));
+    });
+  }, [price, alerts, token, tenant, reloadAlerts]);
 
   const refresh = useCallback(async () => {
     try {
@@ -142,7 +179,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AppCtx.Provider value={{ booting, token, user, tenant, price, priceError, vault, setTenant, signIn, signOut, refresh }}>
+    <AppCtx.Provider value={{ booting, token, user, tenant, price, priceError, vault, alerts, reloadAlerts, setTenant, signIn, signOut, refresh }}>
       {children}
     </AppCtx.Provider>
   );

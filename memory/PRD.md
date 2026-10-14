@@ -18,6 +18,11 @@ Production-grade multi-tenant Digital Gold Platform (inspired by DigiGold), buil
 ## Implemented (2026-06)
 - All customer and admin features above, tested end to end (25/25 backend tests passed, frontend flows passed)
 
+## Iteration 2 (2026-06)
+- Gift Gold: /gift screen. Send grams or rupees from your vault to any phone, with 5 greeting card themes (Diwali, Birthday, Wedding, Thank You, Congrats) and a personal message. New recipients get an account automatically. Shows sent and received history, and gifts appear in the passbook under the Gifts filter. APIs: /api/gifts (POST/GET), /api/gifts/mark-seen
+- Price Alerts: Home card opens a sheet to set a target price (max 5 active). A green banner appears on Home when the live 24K price drops below a target; the server checks the price before marking it hit. APIs: /api/alerts CRUD + /trigger
+- Sheets now scroll to the focused input when the keyboard opens
+
 ## Backlog
 - P0: Add Razorpay test keys (RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET in backend/.env) to turn on the real gateway
 - P1: Doorstep BRINK'S delivery booking, PDF invoices, Razorpay webhooks

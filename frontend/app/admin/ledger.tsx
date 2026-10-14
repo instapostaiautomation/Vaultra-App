@@ -11,7 +11,7 @@ import { dateTime, grams, inr, TENANT_NAME, TXN_LABEL } from "@/src/format";
 import { tenantQS, useStaff } from "@/src/store/StaffContext";
 import { colors, fonts, radius } from "@/src/theme";
 
-const TYPES = ["all", "buy", "sip", "counter_sale", "sell", "redemption", "reversal"];
+const TYPES = ["all", "buy", "sip", "counter_sale", "sell", "redemption", "gift_sent", "reversal"];
 
 export default function Ledger() {
   const insets = useSafeAreaInsets();
