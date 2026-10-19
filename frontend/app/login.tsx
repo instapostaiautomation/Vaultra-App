@@ -21,6 +21,7 @@ export default function Login() {
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
   const [otp, setOtp] = useState("");
+  const [referralCode, setReferralCode] = useState("");
   const [challenge, setChallenge] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -43,7 +44,7 @@ export default function Login() {
     setErr("");
     setBusy(true);
     try {
-      const r = await api("/auth/otp/verify", { method: "POST", body: { challenge_id: challenge.challenge_id, otp, tenant, name }, auth: "none" });
+      const r = await api("/auth/otp/verify", { method: "POST", body: { challenge_id: challenge.challenge_id, otp, tenant, name, referral_code: referralCode.trim() || null }, auth: "none" });
       await signIn(r.access_token, r.user);
       toast("success", `Welcome, ${r.user.name.split(" ")[0]}`, "Your gold vault is ready");
       if (router.canGoBack()) router.back();
@@ -122,6 +123,16 @@ export default function Login() {
                   placeholderTextColor={colors.mutedLight}
                   style={[styles.field, styles.input, { paddingHorizontal: 16 }]}
                 />
+                <Text style={styles.label}>Referral code (optional)</Text>
+                <TextInput
+                  testID="login-referral-input"
+                  value={referralCode}
+                  onChangeText={(t) => setReferralCode(t.toUpperCase())}
+                  placeholder="Enter referral code"
+                  placeholderTextColor={colors.mutedLight}
+                  autoCapitalize="characters"
+                  style={[styles.field, styles.input, { paddingHorizontal: 16 }]}
+                />
               </>
             ) : null}
             {err ? <Text style={styles.err} testID="login-error">{err}</Text> : null}
@@ -135,9 +146,6 @@ export default function Login() {
           <ShieldCheck size={16} color={colors.success} />
           <Text style={styles.secureText}>256-bit encrypted · RBI-compliant KYC partners</Text>
         </View>
-        <Pressable onPress={() => router.push("/admin/login")} style={styles.resend} testID="login-staff-portal-link">
-          <Text style={styles.resendText}>Store staff? Open Admin Panel →</Text>
-        </Pressable>
       </KeyboardAwareScrollView>
     </View>
   );

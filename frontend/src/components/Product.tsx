@@ -16,8 +16,13 @@ export type Product = { id: string; name: string; category: string; grams: numbe
 
 export function ProductCard({ p, width, onRedeem }: { p: Product; width: number; onRedeem: (p: Product) => void }) {
   const { price } = useApp();
+  const router = useRouter();
   return (
-    <View style={[styles.card, { width }]} testID={`product-card-${p.id}`}>
+    <Pressable
+      style={[styles.card, { width }]}
+      testID={`product-card-${p.id}`}
+      onPress={() => router.push({ pathname: "/product-detail", params: { id: p.id } })}
+    >
       <View style={styles.imgWrap}>
         <Image source={IMAGES[p.image]} style={{ width: "100%", height: "100%" }} contentFit="cover" transition={200} />
         <View style={styles.tag}>
@@ -37,14 +42,14 @@ export function ProductCard({ p, width, onRedeem }: { p: Product; width: number;
             {price ? inr(p.grams * price.buy, 0) : "—"}
           </Text>
         </View>
-        <Pressable testID={`redeem-product-${p.id}`} onPress={() => onRedeem(p)} style={({ pressed }) => [styles.cta, pressed && { backgroundColor: colors.brandSecondary }]}>
+        <View style={styles.cta}>
           {width >= 190 ? <Coins size={14} color={colors.onBrandPrimary} /> : null}
           <Text style={styles.ctaText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
-            Redeem with Vault Gold
+            View Details
           </Text>
-        </Pressable>
+        </View>
       </View>
-    </View>
+    </Pressable>
   );
 }
 

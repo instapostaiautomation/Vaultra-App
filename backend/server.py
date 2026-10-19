@@ -50,6 +50,7 @@ COINS = [1, 2, 5, 10]
 
 # ---------------- price engine (simulated live feed) ----------------
 PRICE = {"base": 7285.50, "open": 7285.50, "prev": 7285.50, "updated_at": None}
+SILVER_PRICE = {"base": 92.50, "open": 92.50, "prev": 92.50, "updated_at": None}
 
 
 def now_iso():
@@ -70,14 +71,26 @@ def tenant_rate(tenant: str):
     return buy, r2(buy * SELL_SPREAD)
 
 
+def silver_rate():
+    return r2(SILVER_PRICE["base"]), r2(SILVER_PRICE["base"] * SELL_SPREAD)
+
+
 def price_payload(tenant: str):
     buy, sell = tenant_rate(tenant)
     change = r2(PRICE["base"] - PRICE["open"])
+    silver_buy, silver_sell = silver_rate()
+    silver_change = r2(SILVER_PRICE["base"] - SILVER_PRICE["open"])
     return {
         "tenant": tenant, "purity": "24K (99.9%)", "buy": buy, "sell": sell,
         "change": change, "change_pct": r2(change / PRICE["open"] * 100),
         "direction": "up" if PRICE["base"] >= PRICE["prev"] else "down",
         "gst_rate": GST_RATE, "updated_at": PRICE["updated_at"] or now_iso(),
+        "silver": {
+            "buy": silver_buy, "sell": silver_sell,
+            "change": silver_change,
+            "change_pct": r2(silver_change / SILVER_PRICE["open"] * 100) if SILVER_PRICE["open"] else 0,
+            "direction": "up" if SILVER_PRICE["base"] >= SILVER_PRICE["prev"] else "down",
+        },
     }
 
 
@@ -95,6 +108,11 @@ async def price_loop():
         drift = (7285.50 - PRICE["base"]) * 0.05
         PRICE["base"] = r2(max(6900, min(7700, PRICE["base"] + drift + random.uniform(-4.5, 4.8))))
         PRICE["updated_at"] = now_iso()
+        # Silver price simulation
+        SILVER_PRICE["prev"] = SILVER_PRICE["base"]
+        silver_drift = (92.50 - SILVER_PRICE["base"]) * 0.05
+        SILVER_PRICE["base"] = r2(max(80, min(110, SILVER_PRICE["base"] + silver_drift + random.uniform(-0.15, 0.18))))
+        SILVER_PRICE["updated_at"] = now_iso()
         tick += 1
         if tick % 5 == 0:
             arrow = "▲" if PRICE["base"] >= PRICE["prev"] else "▼"
@@ -148,12 +166,20 @@ def norm_phone(p: str):
     return d[-10:]
 
 
+def _gen_referral_code():
+    """Generate a unique 6-char alphanumeric referral code."""
+    return "VDG" + secrets.token_hex(3).upper()[:5]
+
+
 def public_user(u: dict):
     grams = u.get("gold_grams", 0)
     return {k: u.get(k) for k in ["id", "phone", "name", "tenant", "kyc_status", "created_at"]} | {
         "gold_grams": r4(grams), "invested": r2(u.get("invested", 0)),
         "avg_buy_price": r2(u["invested"] / grams) if grams > 0 else 0,
         "kyc": {k: v for k, v in (u.get("kyc") or {}).items()},
+        "referral_code": u.get("referral_code", ""),
+        "referral_balance": r2(u.get("referral_balance", 0)),
+        "referred_by": u.get("referred_by"),
     }
 
 
@@ -218,6 +244,7 @@ class OtpVerify(BaseModel):
     otp: str = Field(pattern=r"^\d{6}$")
     tenant: str = "vaultra"
     name: Optional[str] = None
+    referral_code: Optional[str] = None
 
 
 class StaffLogin(BaseModel):
@@ -354,7 +381,27 @@ async def otp_verify(body: OtpVerify):
     if not u:
         u = {"id": str(uuid.uuid4()), "phone": c["phone"], "name": (body.name or "").strip() or "Gold Saver",
              "tenant": body.tenant if body.tenant in TENANTS else "vaultra", "kyc_status": "not_submitted",
-             "kyc": {}, "gold_grams": 0.0, "invested": 0.0, "created_at": now_iso()}
+             "kyc": {}, "gold_grams": 0.0, "invested": 0.0, "referral_code": _gen_referral_code(),
+             "referral_balance": 0.0, "referred_by": None, "created_at": now_iso()}
+        # Check and apply referral code
+        if body.referral_code:
+            referrer = await db.users.find_one({"referral_code": body.referral_code.strip().upper()}, {"_id": 0})
+            if referrer and referrer["id"] != u["id"]:
+                u["referred_by"] = referrer["id"]
+                u["referral_balance"] = 50.0
+                await db.users.update_one({"id": referrer["id"]}, {"$inc": {"referral_balance": 50.0}})
+                await db.notifications.insert_one({
+                    "id": str(uuid.uuid4()), "user_id": referrer["id"],
+                    "title": "Referral Bonus!",
+                    "message": f"Your friend {(body.name or '').strip() or 'someone'} joined! ₹50 added to your rewards.",
+                    "type": "referral", "read": False, "created_at": now_iso()
+                })
+                await db.notifications.insert_one({
+                    "id": str(uuid.uuid4()), "user_id": u["id"],
+                    "title": "Welcome Bonus!",
+                    "message": "₹50 referral bonus credited to your rewards!",
+                    "type": "referral", "read": False, "created_at": now_iso()
+                })
         await db.users.insert_one(dict(u))
         await publish("customer:registered", f"New customer +91 {c['phone'][:5]}xxxxx joined", u["tenant"])
     return {"access_token": make_token(u["id"], "user"), "user": public_user(u)}
@@ -963,6 +1010,61 @@ async def reverse(txn_id: str, body: ReverseRequest, staff=Depends(current_staff
     return rev | {"entries": mirrored}
 
 
+# ---------------- referral system ----------------
+@api.get("/referral")
+async def referral_info(user=Depends(current_user)):
+    code = user.get("referral_code", "")
+    if not code:
+        code = _gen_referral_code()
+        await db.users.update_one({"id": user["id"]}, {"$set": {"referral_code": code}})
+    referral_count = await db.users.count_documents({"referred_by": user["id"]})
+    referrals = await db.users.find({"referred_by": user["id"]}, {"_id": 0, "name": 1, "created_at": 1}).sort("created_at", -1).to_list(50)
+    return {
+        "referral_code": code,
+        "referral_balance": r2(user.get("referral_balance", 0)),
+        "referral_count": referral_count,
+        "referrals": [{"name": r.get("name", "User"), "joined": r.get("created_at", "")} for r in referrals],
+    }
+
+
+# ---------------- notifications ----------------
+@api.get("/notifications")
+async def list_notifications(user=Depends(current_user)):
+    notifs = await db.notifications.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    unread = sum(1 for n in notifs if not n.get("read"))
+    return {"notifications": notifs, "unread_count": unread}
+
+
+@api.post("/notifications/mark-read")
+async def mark_notifications_read(user=Depends(current_user)):
+    await db.notifications.update_many({"user_id": user["id"], "read": False}, {"$set": {"read": True}})
+    return {"ok": True}
+
+
+@api.get("/products/{product_id}")
+async def get_product(product_id: str):
+    p = next((x for x in PRODUCTS if x["id"] == product_id), None)
+    if not p:
+        raise HTTPException(404, "Product not found")
+    buy, _ = tenant_rate("vaultra")
+    gold_value = r2(p["grams"] * buy)
+    total_price = r2(gold_value + p["making_charges"])
+    return p | {
+        "gold_value": gold_value,
+        "total_price": total_price,
+        "live_rate": buy,
+        "description": f"Exquisite {p['name']} crafted in 24K 99.9% pure LBMA certified gold. "
+                        f"Weight: {p['grams']}g. BIS Hallmarked. Making charges: ₹{p['making_charges']:,}.",
+        "features": [
+            "24K 99.9% Pure Gold",
+            "LBMA Certified",
+            "BIS Hallmarked",
+            "BRINK'S Insured Delivery",
+            "Lifetime Buyback Guarantee",
+        ],
+    }
+
+
 # ---------------- seed ----------------
 async def seed():
     await db.users.create_index("phone", unique=True)
@@ -993,7 +1095,8 @@ async def seed():
             if kyc == "approved":
                 kycd |= {"reviewed_by": "STF001", "reviewer_name": "Arjun Mehta", "reviewed_at": (base - timedelta(hours=30 - i)).isoformat()}
         u = {"id": str(uuid.uuid4()), "phone": phone, "name": name, "tenant": tenant, "kyc_status": kyc, "kyc": kycd,
-             "gold_grams": 0.0, "invested": 0.0, "created_at": created}
+             "gold_grams": 0.0, "invested": 0.0, "referral_code": _gen_referral_code(),
+             "referral_balance": 0.0, "referred_by": None, "created_at": created}
         await db.users.insert_one(dict(u))
         for j in range(random.randint(2, 4)):
             rate = r2(7120 + random.uniform(-60, 120))

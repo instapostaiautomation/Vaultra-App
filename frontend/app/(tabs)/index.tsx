@@ -1,6 +1,6 @@
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { ArrowRight, Gift, HelpCircle, ShieldCheck, Store, Truck, TrendingUp } from "lucide-react-native";
+import { ArrowRight, Gift, HelpCircle, Users } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
@@ -13,10 +13,11 @@ import { BuyWidget } from "@/src/components/BuyWidget";
 import { HomeHeader } from "@/src/components/Header";
 import { HomeGoalCard } from "@/src/components/Goals";
 import { PriceAlertBanner, PriceAlertCard } from "@/src/components/PriceAlert";
+import { PriceCards } from "@/src/components/PriceCards";
 import { Product, ProductCard, RedeemSheet } from "@/src/components/Product";
 import { usesNativeTabs } from "@/src/navigation";
 import { useApp } from "@/src/store/AppContext";
-import { colors, fonts, radius } from "@/src/theme";
+import { colors, fonts } from "@/src/theme";
 
 export default function Home() {
   const insets = useSafeAreaInsets();
@@ -45,8 +46,13 @@ export default function Home() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brandPrimary} />}
         keyboardShouldPersistTaps="handled"
       >
+        {/* Gold + Silver Price Cards */}
+        <Animated.View entering={FadeInDown.duration(300)}>
+          <PriceCards />
+        </Animated.View>
+
         <PriceAlertBanner />
-        <Animated.View entering={FadeInDown.duration(400)}>
+        <Animated.View entering={FadeInDown.delay(50).duration(400)} style={{ marginTop: 8 }}>
           <BannerCarousel />
         </Animated.View>
 
@@ -54,18 +60,6 @@ export default function Home() {
           <BuyWidget />
         </Animated.View>
 
-        <View style={styles.trust}>
-          {[
-            { Icon: ShieldCheck, t: "LBMA 99.9%" },
-            { Icon: Truck, t: "BRINK'S insured" },
-            { Icon: TrendingUp, t: "Sell anytime" },
-          ].map(({ Icon, t }) => (
-            <View key={t} style={styles.trustItem}>
-              <Icon size={16} color={colors.brandSecondary} />
-              <Text style={styles.trustText}>{t}</Text>
-            </View>
-          ))}
-        </View>
         <PriceAlertCard />
         <HomeGoalCard />
 
@@ -125,19 +119,22 @@ export default function Home() {
           <ArrowRight size={18} color={colors.giftDiwaliAccent} />
         </Pressable>
 
+        {/* Refer & Earn promo */}
+        <Pressable style={styles.referPromo} onPress={() => router.push("/referral")} testID="home-refer-promo">
+          <View style={styles.referIcon}>
+            <Users size={22} color={colors.brandPrimary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.referTitle}>Refer & Earn ₹50</Text>
+            <Text style={styles.referSub}>Invite friends · You both earn ₹50 reward</Text>
+          </View>
+          <ArrowRight size={18} color={colors.brandPrimary} />
+        </Pressable>
+
         <Pressable style={styles.faqRow} onPress={() => router.push("/faq")} testID="home-faq-link">
           <HelpCircle size={20} color={colors.onSurfaceTertiary} />
           <Text style={styles.faqText}>Frequently asked questions</Text>
           <ArrowRight size={16} color={colors.muted} />
-        </Pressable>
-
-        <Pressable style={styles.staffRow} onPress={() => router.push("/admin/login")} testID="home-staff-portal-link">
-          <Store size={20} color={colors.brandPrimary} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.staffTitle}>Store Staff & Admin Panel</Text>
-            <Text style={styles.staffSub}>Multi-tenant console · KYC, Pickups, POS, Ledger</Text>
-          </View>
-          <ArrowRight size={16} color={colors.brandPrimary} />
         </Pressable>
       </ScrollView>
       <RedeemSheet target={target} onClose={() => setTarget(null)} />
@@ -147,9 +144,6 @@ export default function Home() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceSecondary },
-  trust: { flexDirection: "row", justifyContent: "space-between", marginHorizontal: 16, marginTop: 16 },
-  trustItem: { flexDirection: "row", alignItems: "center", gap: 6 },
-  trustText: { fontFamily: fonts.medium, fontSize: 12, color: colors.onSurfaceTertiary },
   sectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, marginTop: 32, marginBottom: 12 },
   sectionTitle: { fontFamily: fonts.black, fontSize: 20, letterSpacing: -0.6, color: colors.onSurface },
   seeAll: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 44 },
@@ -161,7 +155,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 32,
     backgroundColor: colors.surfaceInverse,
-    borderRadius: radius.md,
+    borderRadius: 14,
     padding: 20,
     flexDirection: "row",
     alignItems: "center",
@@ -171,10 +165,25 @@ const styles = StyleSheet.create({
   sipTitle: { fontFamily: fonts.black, fontSize: 18, color: colors.onSurfaceInverse, letterSpacing: -0.4, marginTop: 4 },
   sipSub: { fontFamily: fonts.regular, fontSize: 12, color: colors.mutedLight, marginTop: 4 },
   sipArrow: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" },
-  giftPromo: { marginHorizontal: 16, marginTop: 12, flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: radius.md, backgroundColor: colors.giftDiwali },
+  giftPromo: { marginHorizontal: 16, marginTop: 12, flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: 14, backgroundColor: colors.giftDiwali },
   giftIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.overlayLight, alignItems: "center", justifyContent: "center" },
   giftTitle: { fontFamily: fonts.black, fontSize: 17, color: colors.onSurfaceInverse, letterSpacing: -0.4 },
   giftSub: { fontFamily: fonts.regular, fontSize: 12, color: colors.giftDiwaliAccent, marginTop: 2 },
+  referPromo: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 16,
+    borderRadius: 14,
+    backgroundColor: colors.brandTertiary,
+    borderWidth: 1,
+    borderColor: "#F0E2B0",
+  },
+  referIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border },
+  referTitle: { fontFamily: fonts.black, fontSize: 17, color: colors.onSurface, letterSpacing: -0.4 },
+  referSub: { fontFamily: fonts.regular, fontSize: 12, color: colors.onBrandTertiary, marginTop: 2 },
   faqRow: {
     marginHorizontal: 16,
     marginTop: 12,
@@ -182,13 +191,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
     padding: 16,
-    borderRadius: radius.md,
+    borderRadius: 14,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
   },
   faqText: { flex: 1, fontFamily: fonts.semibold, fontSize: 14, color: colors.onSurface },
-  staffRow: { marginHorizontal: 16, marginTop: 12, flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: radius.md, backgroundColor: colors.adminSurface },
-  staffTitle: { fontFamily: fonts.bold, fontSize: 14, color: colors.adminOnSurface },
-  staffSub: { fontFamily: fonts.regular, fontSize: 12, color: colors.adminMuted, marginTop: 2 },
 });

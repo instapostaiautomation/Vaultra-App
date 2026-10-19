@@ -55,7 +55,7 @@ export default function VaultScreen() {
   if (!token) {
     return (
       <View style={styles.root}>
-        <ScreenHeader title="Vault & Ledger" />
+        <ScreenHeader title="Vault & Ledger" showBack />
         <View style={styles.center} testID="vault-signed-out">
           <View style={styles.emptyIcon}>
             <Lock size={32} color={colors.brandSecondary} />
@@ -89,7 +89,7 @@ export default function VaultScreen() {
 
   return (
     <View style={styles.root} testID="vault-screen">
-      <ScreenHeader title="Vault & Ledger" subtitle={TENANT_NAME[tenant]} />
+      <ScreenHeader title="Vault & Ledger" subtitle={TENANT_NAME[tenant]} showBack />
       <ScrollView
         stickyHeaderIndices={[3]}
         contentContainerStyle={{ paddingBottom: bottomChrome + 24 }}

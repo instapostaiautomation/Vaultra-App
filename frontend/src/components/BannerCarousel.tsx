@@ -64,11 +64,11 @@ export function BannerCarousel() {
 
 const styles = StyleSheet.create({
   banner: {
-    height: 184,
+    height: 200,
     borderRadius: radius.md,
     overflow: "hidden",
-    borderWidth: 1.5,
-    borderColor: colors.brandPrimary,
+    borderWidth: 1,
+    borderColor: colors.border,
     backgroundColor: colors.surfaceInverse,
   },
   bannerBody: { position: "absolute", left: 16, right: 16, bottom: 16 },

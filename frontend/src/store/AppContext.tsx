@@ -15,9 +15,14 @@ export type User = {
   avg_buy_price: number;
   created_at: string;
   kyc: any;
+  referral_code?: string;
+  referral_balance?: number;
+  referred_by?: string | null;
 };
 
-export type Price = { buy: number; sell: number; change: number; change_pct: number; direction: "up" | "down"; updated_at: string };
+export type SilverPrice = { buy: number; sell: number; change: number; change_pct: number; direction: "up" | "down" };
+
+export type Price = { buy: number; sell: number; change: number; change_pct: number; direction: "up" | "down"; updated_at: string; silver?: SilverPrice };
 
 export type Vault = {
   user: User;
@@ -48,7 +53,9 @@ type Ctx = {
   priceError: boolean;
   vault: Vault | null;
   alerts: PriceAlert[];
+  unreadNotifs: number;
   reloadAlerts: () => Promise<void>;
+  reloadNotifs: () => Promise<void>;
   setTenant: (t: string) => void;
   signIn: (token: string, user: User) => Promise<void>;
   signOut: () => Promise<void>;
@@ -68,6 +75,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [priceError, setPriceError] = useState(false);
   const [vault, setVault] = useState<Vault | null>(null);
   const [alerts, setAlerts] = useState<PriceAlert[]>([]);
+  const [unreadNotifs, setUnreadNotifs] = useState(0);
   const inFlight = useRef<Set<string>>(new Set());
   const tenantRef = useRef(tenant);
   tenantRef.current = tenant;
@@ -78,10 +86,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, []);
 
+  const reloadNotifs = useCallback(async () => {
+    try {
+      const r = await api<{ unread_count: number }>("/notifications");
+      setUnreadNotifs(r.unread_count);
+    } catch {}
+  }, []);
+
   useEffect(() => {
-    if (token) reloadAlerts();
-    else setAlerts([]);
-  }, [token, reloadAlerts]);
+    if (token) { reloadAlerts(); reloadNotifs(); }
+    else { setAlerts([]); setUnreadNotifs(0); }
+  }, [token, reloadAlerts, reloadNotifs]);
 
   // When the live price crosses below an active target, ask the server to verify & mark it triggered.
   useEffect(() => {
@@ -179,7 +194,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AppCtx.Provider value={{ booting, token, user, tenant, price, priceError, vault, alerts, reloadAlerts, setTenant, signIn, signOut, refresh }}>
+    <AppCtx.Provider value={{ booting, token, user, tenant, price, priceError, vault, alerts, unreadNotifs, reloadAlerts, reloadNotifs, setTenant, signIn, signOut, refresh }}>
       {children}
     </AppCtx.Provider>
   );

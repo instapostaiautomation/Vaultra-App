@@ -71,7 +71,7 @@ export default function SipScreen() {
 
   return (
     <View style={styles.root} testID="sip-screen">
-      <ScreenHeader title="Auto SIP" subtitle="Build your gold savings on autopilot" />
+      <ScreenHeader title="Auto SIP" subtitle="Build your gold savings on autopilot" showBack />
       <KeyboardAwareScrollView
         contentContainerStyle={{ padding: 16, paddingBottom: bottomChrome + 24, gap: 16 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} />}

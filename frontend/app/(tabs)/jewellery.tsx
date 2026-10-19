@@ -39,7 +39,7 @@ export default function Jewellery() {
 
   return (
     <View style={styles.root} testID="jewellery-screen">
-      <ScreenHeader title="Jewellery" subtitle="Redeem vault gold for hallmarked 24K pieces" />
+      <ScreenHeader title="Jewellery" subtitle="Redeem vault gold for hallmarked 24K pieces" showBack />
       <ChipRow style={{ borderBottomWidth: 1, borderBottomColor: colors.divider }}>
         <Chip label="All" selected={cat === "all"} onPress={() => setCat("all")} testID="jewellery-filter-all" />
         {CATEGORIES.map((c) => (

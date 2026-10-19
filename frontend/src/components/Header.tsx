@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { Check, ChevronDown, Coins, Store, User } from "lucide-react-native";
+import { ArrowLeft, Bell, Check, ChevronDown, Coins, Store, User } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming, Easing } from "react-native-reanimated";
@@ -80,16 +80,23 @@ export function TenantSheet({ visible, onClose }: { visible: boolean; onClose: (
 export function HomeHeader() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { tenant, token, vault, user } = useApp();
+  const { tenant, token, vault, user, unreadNotifs } = useApp();
   const [open, setOpen] = useState(false);
   const g = vault?.user.gold_grams ?? 0;
+
+  const displayName = user?.name?.split(" ")[0] ?? "Profile";
+
   return (
     <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
       <View style={styles.headRow}>
         <LogoMark />
         <View style={{ flex: 1 }}>
           <Text style={styles.brand} numberOfLines={1}>
-            Vaultra <Text style={{ color: colors.brandSecondary }}>DigiGold</Text>
+            {token && user ? (
+              <>Hi, <Text style={{ color: colors.brandSecondary }}>{displayName}</Text></>
+            ) : (
+              <>Vaultra <Text style={{ color: colors.brandSecondary }}>DigiGold</Text></>
+            )}
           </Text>
           <Pressable testID="tenant-switch" onPress={() => setOpen(true)} style={styles.tenantBtn} hitSlop={8}>
             <Text style={styles.tenantText} numberOfLines={1}>
@@ -98,6 +105,22 @@ export function HomeHeader() {
             <ChevronDown size={14} color={colors.muted} />
           </Pressable>
         </View>
+        {/* Notification Bell */}
+        {token ? (
+          <Pressable
+            testID="header-notification-bell"
+            onPress={() => router.push("/notifications")}
+            style={styles.bellBtn}
+            hitSlop={8}
+          >
+            <Bell size={20} color={colors.onSurface} />
+            {unreadNotifs > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{unreadNotifs > 9 ? "9+" : unreadNotifs}</Text>
+              </View>
+            )}
+          </Pressable>
+        ) : null}
         <Pressable
           testID="header-profile-button"
           onPress={() => router.push(token ? "/profile" : "/login")}
@@ -105,7 +128,7 @@ export function HomeHeader() {
         >
           <User size={16} color={token ? colors.onSurfaceInverse : colors.onSurface} />
           <Text style={[styles.profileText, token ? { color: colors.onSurfaceInverse } : null]} numberOfLines={1}>
-            {token ? (user?.name?.split(" ")[0] ?? "Profile") : "Sign In"}
+            {token ? displayName : "Sign In"}
           </Text>
         </Pressable>
       </View>
@@ -121,11 +144,17 @@ export function HomeHeader() {
   );
 }
 
-export function ScreenHeader({ title, subtitle, right }: { title: string; subtitle?: string; right?: React.ReactNode }) {
+export function ScreenHeader({ title, subtitle, right, showBack = false }: { title: string; subtitle?: string; right?: React.ReactNode; showBack?: boolean }) {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   return (
     <View style={[styles.header, { paddingTop: insets.top + 8, paddingBottom: 12 }]}>
       <View style={styles.headRow}>
+        {showBack ? (
+          <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))} style={styles.backBtn} testID="screen-back-button">
+            <ArrowLeft size={22} color={colors.onSurface} />
+          </Pressable>
+        ) : null}
         <View style={{ flex: 1 }}>
           <Text style={styles.screenTitle}>{title}</Text>
           {subtitle ? <Text style={styles.screenSub}>{subtitle}</Text> : null}
@@ -156,6 +185,25 @@ const styles = StyleSheet.create({
   },
   profileOn: { backgroundColor: colors.surfaceInverse, borderColor: colors.surfaceInverse },
   profileText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.onSurface },
+  bellBtn: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  badge: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: colors.error,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+  },
+  badgeText: { fontFamily: fonts.bold, fontSize: 10, color: "#FFFFFF" },
   pillsRow: { flexDirection: "row", gap: 8, marginTop: 10, alignItems: "center" },
   ticker: {
     flex: 1,
@@ -198,4 +246,5 @@ const styles = StyleSheet.create({
   tenantSub: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted, marginTop: 2 },
   screenTitle: { fontFamily: fonts.black, fontSize: 26, letterSpacing: -0.8, color: colors.onSurface },
   screenSub: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted, marginTop: 2 },
+  backBtn: { width: 44, height: 44, justifyContent: "center", alignItems: "center" },
 });

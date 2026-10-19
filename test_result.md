@@ -101,3 +101,212 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: "Vaultra DigiGold - Digital gold platform with 9 UI/feature improvements: 1) Gold+Silver price cards, 2) Fix banner images, 3) Profile Login/Signup, 4) Remove trust badges, 5) Back buttons on tabs, 6) Remove staff portal, 7) Refer & Earn system, 8) Jewellery product detail page, 9) Dynamic profile name + bell notifications"
+
+backend:
+  - task: "Silver price in API"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+        - agent: "main"
+        - comment: "Added silver price tracking to /api/price endpoint"
+        - working: true
+        - agent: "testing"
+        - comment: "✓ PASS - Silver price API working correctly. GET /api/price returns silver object with all required fields: buy, sell, change, change_pct, direction. Tested with live data: Silver Buy ₹92.74, Sell ₹89.96, Direction: up"
+
+  - task: "Referral system API"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+        - agent: "main"
+        - comment: "Added /api/referral GET, referral code generation, referral application during signup, ₹50 bonus for both users"
+        - working: true
+        - agent: "testing"
+        - comment: "✓ PASS - Referral system fully functional. GET /api/referral returns referral_code, referral_balance, referral_count, referrals array. Tested referral code application during new user signup - ₹50 bonus correctly credited to both referrer and new user. Notifications created for both parties."
+
+  - task: "Notifications API"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+        - agent: "main"
+        - comment: "Added /api/notifications GET, /api/notifications/mark-read POST"
+        - working: true
+        - agent: "testing"
+        - comment: "✓ PASS - Notifications API working correctly. GET /api/notifications returns notifications array and unread_count. POST /api/notifications/mark-read successfully marks all notifications as read and unread_count updates to 0. Verified with auth token."
+
+  - task: "Product detail API"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        - working: true
+        - agent: "main"
+        - comment: "Added /api/products/{product_id} GET endpoint with features, description"
+        - working: true
+        - agent: "testing"
+        - comment: "✓ PASS - Product detail API working correctly. GET /api/products/p1 returns all required fields: description, features array (5 items), gold_value, total_price, live_rate. Tested with Heritage 24K Necklace - Gold Value: ₹91007.5, Total: ₹95857.5"
+
+frontend:
+  - task: "Gold + Silver price cards"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/PriceCards.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: true
+        - agent: "main"
+        - comment: "Created PriceCards component showing Gold and Silver side by side on home screen"
+
+  - task: "Banner image fix"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/BannerCarousel.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: true
+        - agent: "main"
+        - comment: "Increased banner height to 200, fixed border and overflow"
+
+  - task: "Remove trust badges"
+    implemented: true
+    working: true
+    file: "/app/frontend/app/(tabs)/index.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: true
+        - agent: "main"
+        - comment: "Removed LBMA 99.9%, BRINKS insured, Sell anytime badges from home"
+
+  - task: "Remove staff portal"
+    implemented: true
+    working: true
+    file: "/app/frontend/app/(tabs)/index.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: true
+        - agent: "main"
+        - comment: "Removed staff portal link from home and login screens"
+
+  - task: "Back buttons on all tabs"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/Header.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: true
+        - agent: "main"
+        - comment: "Added showBack prop to ScreenHeader, added back arrow to Vault, Jewellery, SIP tabs"
+
+  - task: "Profile Login/Signup"
+    implemented: true
+    working: true
+    file: "/app/frontend/app/profile.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: true
+        - agent: "main"
+        - comment: "Redesigned guest profile view with attractive Login/Signup CTA, back arrow"
+
+  - task: "Dynamic user name + bell icon"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/Header.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: true
+        - agent: "main"
+        - comment: "Header shows 'Hi, {name}' when logged in, bell icon with notification badge"
+
+  - task: "Jewellery product detail page"
+    implemented: true
+    working: true
+    file: "/app/frontend/app/product-detail.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: true
+        - agent: "main"
+        - comment: "Created product detail page with image gallery, thumbnails, pricing card, features, redeem CTA"
+
+  - task: "Refer & Earn system"
+    implemented: true
+    working: true
+    file: "/app/frontend/app/referral.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: true
+        - agent: "main"
+        - comment: "Full referral screen with code, copy, share, stats. Login screen has referral code input for new users."
+
+  - task: "Notifications screen"
+    implemented: true
+    working: true
+    file: "/app/frontend/app/notifications.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+        - working: true
+        - agent: "main"
+        - comment: "Created notifications page accessible from bell icon in header"
+
+metadata:
+  created_by: "main_agent"
+  version: "2.0"
+  test_sequence: 5
+  run_ui: true
+
+test_plan:
+  current_focus:
+    - "Gold + Silver price cards display"
+    - "Referral system E2E flow"
+    - "Product detail page navigation and display"
+    - "Notifications system"
+    - "Back buttons on tabs"
+    - "Profile Login/Signup guest view"
+    - "Dynamic user name + bell icon in header"
+  stuck_tasks: []
+  test_all: true
+  test_priority: "high_first"
+
+agent_communication:
+    - agent: "main"
+    - message: "Implemented all 9 user-requested features: 1) Gold+Silver price cards on home, 2) Fixed banner carousel height, 3) Profile shows Login/Signup for guests, 4) Removed trust badges (LBMA/BRINKS/Sell), 5) Back buttons on Vault/Jewellery/SIP tabs, 6) Removed staff portal link, 7) Full Refer & Earn with backend referral code + ₹50 each, 8) Professional product detail page with gallery, 9) Header shows user name + bell notification icon. Test credentials: phone 9876543210, OTP is shown as demo_otp. Staff access is at /admin/login STF001/PIN 1234. Backend runs on port 8001, frontend on port 3000. All API routes prefixed with /api."
+    - agent: "testing"
+    - message: "✅ ALL 4 BACKEND TESTS PASSED (4/4). Tested: 1) Silver Price API - returns silver object with buy/sell/change/direction ✓, 2) Product Detail API - returns description/features/gold_value/total_price/live_rate ✓, 3) Referral System - GET /api/referral works, referral code application during signup works, ₹50 bonus credited correctly ✓, 4) Notifications API - GET and mark-read endpoints working, unread_count updates correctly ✓. All backend features are production-ready. Frontend testing NOT performed as per instructions."
