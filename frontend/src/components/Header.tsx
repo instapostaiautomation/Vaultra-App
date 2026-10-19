@@ -1,12 +1,11 @@
 import { useRouter } from "expo-router";
-import { ArrowLeft, Bell, Check, ChevronDown, Coins, Store, User } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import { ArrowLeft, Bell, Coins, User } from "lucide-react-native";
+import React, { useEffect } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming, Easing } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Sheet } from "@/src/components/ui";
-import { grams, inr, TENANT_NAME } from "@/src/format";
+import { grams, inr } from "@/src/format";
 import { useApp } from "@/src/store/AppContext";
 import { colors, fonts, radius } from "@/src/theme";
 
@@ -47,44 +46,12 @@ export function LogoMark({ size = 36 }: { size?: number }) {
   );
 }
 
-export function TenantSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const { tenant, setTenant } = useApp();
-  return (
-    <Sheet visible={visible} onClose={onClose} title="Choose your store" testID="tenant-sheet">
-      <Text style={styles.sheetHint}>Rates, invoices and pickups follow the partner store you pick.</Text>
-      {["vaultra", "tanishq", "malabar"].map((t) => (
-        <Pressable
-          key={t}
-          testID={`tenant-option-${t}`}
-          onPress={() => {
-            setTenant(t);
-            onClose();
-          }}
-          style={[styles.tenantRow, t === tenant && { borderColor: colors.brandPrimary, backgroundColor: colors.brandTertiary }]}
-        >
-          <View style={styles.tenantIcon}>
-            <Store size={18} color={colors.brandSecondary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.tenantName}>{TENANT_NAME[t]}</Text>
-            <Text style={styles.tenantSub}>{t === "vaultra" ? "Flagship bullion vault" : "Partner store · in-store pickup"}</Text>
-          </View>
-          {t === tenant ? <Check size={20} color={colors.brandSecondary} /> : null}
-        </Pressable>
-      ))}
-      <View style={{ height: 8 }} />
-    </Sheet>
-  );
-}
-
 export function HomeHeader() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { tenant, token, vault, user, unreadNotifs } = useApp();
-  const [open, setOpen] = useState(false);
+  const { token, vault, user, unreadNotifs } = useApp();
   const g = vault?.user.gold_grams ?? 0;
-
-  const displayName = user?.name?.split(" ")[0] ?? "Profile";
+  const displayName = user?.first_name || user?.name?.split(" ")[0] || "Profile";
 
   return (
     <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
@@ -95,15 +62,9 @@ export function HomeHeader() {
             {token && user ? (
               <>Hi, <Text style={{ color: colors.brandSecondary }}>{displayName}</Text></>
             ) : (
-              <>Vaultra <Text style={{ color: colors.brandSecondary }}>DigiGold</Text></>
+              <>Vaultra <Text style={{ color: colors.brandSecondary }}>Gold</Text></>
             )}
           </Text>
-          <Pressable testID="tenant-switch" onPress={() => setOpen(true)} style={styles.tenantBtn} hitSlop={8}>
-            <Text style={styles.tenantText} numberOfLines={1}>
-              {TENANT_NAME[tenant]}
-            </Text>
-            <ChevronDown size={14} color={colors.muted} />
-          </Pressable>
         </View>
         {/* Notification Bell */}
         {token ? (
@@ -139,7 +100,6 @@ export function HomeHeader() {
           <Text style={styles.balanceInr}>≈ {inr(vault?.current_value ?? 0)}</Text>
         </Pressable>
       </View>
-      <TenantSheet visible={open} onClose={() => setOpen(false)} />
     </View>
   );
 }
@@ -170,8 +130,6 @@ const styles = StyleSheet.create({
   headRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   logoMark: { backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" },
   brand: { fontFamily: fonts.black, fontSize: 18, letterSpacing: -0.6, color: colors.onSurface },
-  tenantBtn: { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", minHeight: 20 },
-  tenantText: { fontFamily: fonts.medium, fontSize: 12, color: colors.muted, maxWidth: 170 },
   profileBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -185,12 +143,7 @@ const styles = StyleSheet.create({
   },
   profileOn: { backgroundColor: colors.surfaceInverse, borderColor: colors.surfaceInverse },
   profileText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.onSurface },
-  bellBtn: {
-    width: 44,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  bellBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   badge: {
     position: "absolute",
     top: 6,
@@ -230,20 +183,6 @@ const styles = StyleSheet.create({
   },
   balanceGrams: { fontFamily: fonts.bold, fontSize: 12, color: colors.onBrandTertiary, letterSpacing: -0.2 },
   balanceInr: { fontFamily: fonts.medium, fontSize: 10, color: colors.onBrandTertiary },
-  sheetHint: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted, marginBottom: 12 },
-  tenantRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    padding: 14,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: 8,
-  },
-  tenantIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center" },
-  tenantName: { fontFamily: fonts.semibold, fontSize: 15, color: colors.onSurface },
-  tenantSub: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted, marginTop: 2 },
   screenTitle: { fontFamily: fonts.black, fontSize: 26, letterSpacing: -0.8, color: colors.onSurface },
   screenSub: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted, marginTop: 2 },
   backBtn: { width: 44, height: 44, justifyContent: "center", alignItems: "center" },

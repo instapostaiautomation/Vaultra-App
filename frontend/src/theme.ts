@@ -1,8 +1,7 @@
-// Design tokens for Vaultra DigiGold. Light customer theme + dedicated admin (dark) tokens.
-// Keys match the "color" block of /app/design_guidelines.json.
-
-import { useMemo } from "react";
-import { Appearance, Platform, StyleSheet, useColorScheme } from "react-native";
+// Design tokens for Vaultra DigiGold. Light + Dark customer themes + dedicated admin tokens.
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { Platform, StyleSheet } from "react-native";
 
 export type ColorScheme = "light" | "dark";
 
@@ -17,7 +16,6 @@ const light = {
   onSurfaceInverse: "#FFFFFF",
   muted: "#6B7280",
   mutedLight: "#9CA3AF",
-
   brand: "#D4AF37",
   onBrand: "#FFFFFF",
   brandPrimary: "#D4AF37",
@@ -27,7 +25,6 @@ const light = {
   brandTertiary: "#FDF8E8",
   onBrandTertiary: "#A18222",
   brandDeep: "#8A6E1C",
-
   success: "#16A34A",
   onSuccess: "#FFFFFF",
   successTint: "#DCFCE7",
@@ -39,14 +36,11 @@ const light = {
   errorTint: "#FEE2E2",
   info: "#3B82F6",
   onInfo: "#FFFFFF",
-
   border: "#E5E7EB",
   borderStrong: "#D1D5DB",
   divider: "#F3F4F6",
   scrim: "rgba(17,24,39,0.55)",
   overlayLight: "rgba(255,255,255,0.16)",
-
-  // Admin console (always dark)
   adminSurface: "#0F172A",
   adminOnSurface: "#F8FAFC",
   adminSurfaceSecondary: "#1E293B",
@@ -59,8 +53,6 @@ const light = {
   adminSuccessTint: "rgba(22,163,74,0.16)",
   adminErrorTint: "rgba(220,38,38,0.16)",
   adminWarningTint: "rgba(245,158,11,0.16)",
-
-  // Gift greeting card art (decorative, fixed across schemes)
   giftDiwali: "#7C2D12",
   giftDiwaliAccent: "#FDBA74",
   giftBirthday: "#831843",
@@ -73,8 +65,102 @@ const light = {
   giftCongratsAccent: "#D4AF37",
 };
 
+const dark: typeof light = {
+  surface: "#0F172A",
+  onSurface: "#F1F5F9",
+  surfaceSecondary: "#1E293B",
+  onSurfaceSecondary: "#F1F5F9",
+  surfaceTertiary: "#1A2332",
+  onSurfaceTertiary: "#94A3B8",
+  surfaceInverse: "#F8FAFC",
+  onSurfaceInverse: "#0F172A",
+  muted: "#94A3B8",
+  mutedLight: "#64748B",
+  brand: "#D4AF37",
+  onBrand: "#FFFFFF",
+  brandPrimary: "#D4AF37",
+  onBrandPrimary: "#111827",
+  brandSecondary: "#E8C840",
+  onBrandSecondary: "#111827",
+  brandTertiary: "#1C1A0E",
+  onBrandTertiary: "#D4AF37",
+  brandDeep: "#B8960F",
+  success: "#22C55E",
+  onSuccess: "#FFFFFF",
+  successTint: "rgba(22,163,74,0.16)",
+  warning: "#FBBF24",
+  onWarning: "#111827",
+  warningTint: "rgba(245,158,11,0.16)",
+  error: "#EF4444",
+  onError: "#FFFFFF",
+  errorTint: "rgba(220,38,38,0.16)",
+  info: "#60A5FA",
+  onInfo: "#111827",
+  border: "#334155",
+  borderStrong: "#475569",
+  divider: "#1E293B",
+  scrim: "rgba(0,0,0,0.7)",
+  overlayLight: "rgba(255,255,255,0.08)",
+  adminSurface: "#0F172A",
+  adminOnSurface: "#F8FAFC",
+  adminSurfaceSecondary: "#1E293B",
+  adminOnSurfaceSecondary: "#F1F5F9",
+  adminSurfaceTertiary: "#111827",
+  adminOnSurfaceTertiary: "#CBD5E1",
+  adminMuted: "#94A3B8",
+  adminBorder: "#334155",
+  adminGoldTint: "rgba(212,175,55,0.14)",
+  adminSuccessTint: "rgba(22,163,74,0.16)",
+  adminErrorTint: "rgba(220,38,38,0.16)",
+  adminWarningTint: "rgba(245,158,11,0.16)",
+  giftDiwali: "#7C2D12",
+  giftDiwaliAccent: "#FDBA74",
+  giftBirthday: "#831843",
+  giftBirthdayAccent: "#F9A8D4",
+  giftWedding: "#4C0519",
+  giftWeddingAccent: "#FDA4AF",
+  giftThanks: "#14532D",
+  giftThanksAccent: "#86EFAC",
+  giftCongrats: "#0F172A",
+  giftCongratsAccent: "#D4AF37",
+};
+
 export type ThemeColors = typeof light;
 
+// Reactive theme context
+const ThemeCtx = createContext<{ scheme: ColorScheme; colors: ThemeColors; toggle: () => void }>({
+  scheme: "light",
+  colors: light,
+  toggle: () => {},
+});
+
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const [scheme, setScheme] = useState<ColorScheme>("light");
+
+  useEffect(() => {
+    AsyncStorage.getItem("theme_preference").then((v) => {
+      if (v === "dark" || v === "light") setScheme(v);
+    });
+  }, []);
+
+  const toggle = useCallback(() => {
+    setScheme((prev) => {
+      const next = prev === "light" ? "dark" : "light";
+      AsyncStorage.setItem("theme_preference", next);
+      return next;
+    });
+  }, []);
+
+  const value = useMemo(() => ({ scheme, colors: scheme === "dark" ? dark : light, toggle }), [scheme, toggle]);
+
+  return React.createElement(ThemeCtx.Provider, { value }, children);
+}
+
+export function useTheme() {
+  return useContext(ThemeCtx);
+}
+
+// Static colors for files that import { colors } directly - uses light as default
 export const colors = light;
 
 export const fonts = {
@@ -94,20 +180,6 @@ export const cardShadow = Platform.select({
 });
 
 export const defaultScheme = "light" satisfies ColorScheme;
-
-export const themes: { light: ThemeColors; dark?: ThemeColors } = { light };
-
-export function setColorScheme(scheme: ColorScheme | null) {
-  Appearance.setColorScheme?.(scheme ?? "unspecified");
-}
-
-setColorScheme?.(themes.dark ? null : defaultScheme);
-
-export function useTheme(): { scheme: ColorScheme; colors: ThemeColors } {
-  const system = useColorScheme();
-  const scheme: ColorScheme = (system === "light" || system === "dark") && themes[system] ? system : defaultScheme;
-  return { scheme, colors: themes[scheme] ?? themes.light };
-}
 
 export function makeStyles<T extends StyleSheet.NamedStyles<T> | StyleSheet.NamedStyles<any>>(
   factory: (colors: ThemeColors) => T & StyleSheet.NamedStyles<any>,

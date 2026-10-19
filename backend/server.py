@@ -173,12 +173,14 @@ def _gen_referral_code():
 
 def public_user(u: dict):
     grams = u.get("gold_grams", 0)
-    return {k: u.get(k) for k in ["id", "phone", "name", "tenant", "kyc_status", "created_at"]} | {
-        "gold_grams": r4(grams), "invested": r2(u.get("invested", 0)),
+    return {k: u.get(k) for k in ["id", "phone", "name", "first_name", "last_name", "email", "dob", "gender", "tenant", "kyc_status", "created_at"]} | {
+        "gold_grams": r4(grams), "silver_grams": r4(u.get("silver_grams", 0)),
+        "invested": r2(u.get("invested", 0)),
         "avg_buy_price": r2(u["invested"] / grams) if grams > 0 else 0,
         "kyc": {k: v for k, v in (u.get("kyc") or {}).items()},
         "referral_code": u.get("referral_code", ""),
         "referral_balance": r2(u.get("referral_balance", 0)),
+        "wallet_balance": r2(u.get("wallet_balance", 0)),
         "referred_by": u.get("referred_by"),
     }
 
@@ -244,6 +246,11 @@ class OtpVerify(BaseModel):
     otp: str = Field(pattern=r"^\d{6}$")
     tenant: str = "vaultra"
     name: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: Optional[str] = None
+    dob: Optional[str] = None
+    gender: Optional[str] = None
     referral_code: Optional[str] = None
 
 
@@ -379,9 +386,16 @@ async def otp_verify(body: OtpVerify):
     await db.otp_challenges.update_one({"id": body.challenge_id}, {"$set": {"used": True}})
     u = await db.users.find_one({"phone": c["phone"]}, {"_id": 0})
     if not u:
-        u = {"id": str(uuid.uuid4()), "phone": c["phone"], "name": (body.name or "").strip() or "Gold Saver",
+        fname = (body.first_name or "").strip()
+        lname = (body.last_name or "").strip()
+        full_name = f"{fname} {lname}".strip() or (body.name or "").strip() or "Gold Saver"
+        u = {"id": str(uuid.uuid4()), "phone": c["phone"], "name": full_name,
+             "first_name": fname or full_name.split()[0], "last_name": lname,
+             "email": (body.email or "").strip(), "dob": (body.dob or "").strip(),
+             "gender": (body.gender or "").strip(),
              "tenant": body.tenant if body.tenant in TENANTS else "vaultra", "kyc_status": "not_submitted",
-             "kyc": {}, "gold_grams": 0.0, "invested": 0.0, "referral_code": _gen_referral_code(),
+             "kyc": {}, "gold_grams": 0.0, "silver_grams": 0.0, "invested": 0.0,
+             "wallet_balance": 0.0, "referral_code": _gen_referral_code(),
              "referral_balance": 0.0, "referred_by": None, "created_at": now_iso()}
         # Check and apply referral code
         if body.referral_code:
@@ -393,7 +407,7 @@ async def otp_verify(body: OtpVerify):
                 await db.notifications.insert_one({
                     "id": str(uuid.uuid4()), "user_id": referrer["id"],
                     "title": "Referral Bonus!",
-                    "message": f"Your friend {(body.name or '').strip() or 'someone'} joined! ₹50 added to your rewards.",
+                    "message": f"Your friend {full_name} joined! ₹50 added to your rewards.",
                     "type": "referral", "read": False, "created_at": now_iso()
                 })
                 await db.notifications.insert_one({
@@ -1010,6 +1024,102 @@ async def reverse(txn_id: str, body: ReverseRequest, staff=Depends(current_staff
     return rev | {"entries": mirrored}
 
 
+# ---------------- wallet system ----------------
+class WalletDeposit(BaseModel):
+    amount: float = Field(gt=0, le=500000)
+
+class WalletWithdraw(BaseModel):
+    amount: float = Field(gt=0)
+
+
+@api.get("/wallet")
+async def wallet_info(user=Depends(current_user)):
+    balance = r2(user.get("wallet_balance", 0))
+    referral = r2(user.get("referral_balance", 0))
+    txns = await db.wallet_txns.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return {"balance": balance, "referral_balance": referral, "transactions": txns}
+
+
+@api.post("/wallet/deposit")
+async def wallet_deposit(body: WalletDeposit, user=Depends(current_user)):
+    txn = {"id": str(uuid.uuid4()), "user_id": user["id"], "type": "deposit",
+           "amount": r2(body.amount), "description": "Wallet deposit via UPI",
+           "created_at": now_iso()}
+    await db.wallet_txns.insert_one(dict(txn))
+    await db.users.update_one({"id": user["id"]}, {"$inc": {"wallet_balance": body.amount}})
+    u = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+    return {"ok": True, "balance": r2(u.get("wallet_balance", 0)), "transaction": txn}
+
+
+@api.post("/wallet/withdraw")
+async def wallet_withdraw(body: WalletWithdraw, user=Depends(current_user)):
+    bal = user.get("wallet_balance", 0)
+    if body.amount > bal:
+        raise HTTPException(400, f"Insufficient wallet balance. Available: ₹{r2(bal)}")
+    txn = {"id": str(uuid.uuid4()), "user_id": user["id"], "type": "withdraw",
+           "amount": r2(body.amount), "description": "Wallet withdrawal to bank",
+           "created_at": now_iso()}
+    await db.wallet_txns.insert_one(dict(txn))
+    await db.users.update_one({"id": user["id"]}, {"$inc": {"wallet_balance": -body.amount}})
+    u = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+    return {"ok": True, "balance": r2(u.get("wallet_balance", 0)), "transaction": txn}
+
+
+# ---------------- silver quote & buy ----------------
+@api.post("/quote/silver")
+async def create_silver_quote(tenant: str = "vaultra"):
+    buy, sell = silver_rate()
+    exp = datetime.now(timezone.utc) + timedelta(seconds=QUOTE_SECONDS)
+    q = {"id": str(uuid.uuid4()), "tenant": tenant, "buy": buy, "sell": sell, "metal": "silver",
+         "expires_at": exp.isoformat(), "created_at": now_iso()}
+    await db.quotes.insert_one(dict(q))
+    return q | {"lock_seconds": QUOTE_SECONDS}
+
+
+@api.post("/orders/buy-silver")
+async def buy_silver(body: BuyRequest, user=Depends(current_user)):
+    q = await db.quotes.find_one({"id": body.quote_id}, {"_id": 0})
+    if not q or q["expires_at"] <= now_iso():
+        raise HTTPException(409, "Quote expired. Please refresh price")
+    rate = q["buy"]
+    if body.mode == "rupees":
+        g = r4(body.value / rate)
+        amt = r2(body.value)
+    else:
+        g = r4(body.value)
+        amt = r2(body.value * rate)
+    gst = r2(amt * GST_RATE)
+    total = r2(amt + gst)
+    # Credit silver
+    await db.users.update_one({"id": user["id"]}, {"$inc": {"silver_grams": g}})
+    txn = {"id": str(uuid.uuid4()), "invoice_no": invoice_no(), "user_id": user["id"],
+           "phone": user["phone"], "name": user.get("name", ""), "tenant": q.get("tenant", "vaultra"),
+           "type": "buy_silver", "grams": r4(g), "rate": rate, "amount": amt, "gst": gst,
+           "total": total, "method": body.method, "status": "completed", "metal": "silver",
+           "created_at": now_iso()}
+    await db.transactions.insert_one(dict(txn))
+    txn.pop("_id", None)
+    u = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+    return {"id": txn["id"], "status": "completed", "grams": g, "total": total, "provider": "mock", "user": public_user(u)}
+
+
+# ---------------- book alert (auto-buy) ----------------
+class BookAlertCreate(BaseModel):
+    target: float = Field(gt=0)
+    metal: str = "gold"  # gold | silver
+    buy_amount: float = Field(gt=0)  # rupees to auto-buy
+    tenant: str = "vaultra"
+
+
+@api.post("/alerts/book")
+async def create_book_alert(body: BookAlertCreate, user=Depends(current_user)):
+    a = {"id": str(uuid.uuid4()), "user_id": user["id"], "target": r2(body.target),
+         "metal": body.metal, "buy_amount": r2(body.buy_amount), "alert_type": "book",
+         "tenant": body.tenant, "status": "active", "created_at": now_iso()}
+    await db.alerts.insert_one(dict(a))
+    return a
+
+
 # ---------------- referral system ----------------
 @api.get("/referral")
 async def referral_info(user=Depends(current_user)):
@@ -1094,8 +1204,11 @@ async def seed():
                     "submitted_at": (base - timedelta(hours=60 - i * 7)).isoformat()}
             if kyc == "approved":
                 kycd |= {"reviewed_by": "STF001", "reviewer_name": "Arjun Mehta", "reviewed_at": (base - timedelta(hours=30 - i)).isoformat()}
-        u = {"id": str(uuid.uuid4()), "phone": phone, "name": name, "tenant": tenant, "kyc_status": kyc, "kyc": kycd,
-             "gold_grams": 0.0, "invested": 0.0, "referral_code": _gen_referral_code(),
+        u = {"id": str(uuid.uuid4()), "phone": phone, "name": name, "first_name": name.split()[0],
+             "last_name": " ".join(name.split()[1:]), "email": "", "dob": "", "gender": "",
+             "tenant": tenant, "kyc_status": kyc, "kyc": kycd,
+             "gold_grams": 0.0, "silver_grams": 0.0, "invested": 0.0,
+             "wallet_balance": 0.0, "referral_code": _gen_referral_code(),
              "referral_balance": 0.0, "referred_by": None, "created_at": created}
         await db.users.insert_one(dict(u))
         for j in range(random.randint(2, 4)):

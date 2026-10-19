@@ -119,6 +119,9 @@ backend:
         - working: true
         - agent: "testing"
         - comment: "✓ PASS - Silver price API working correctly. GET /api/price returns silver object with all required fields: buy, sell, change, change_pct, direction. Tested with live data: Silver Buy ₹92.74, Sell ₹89.96, Direction: up"
+        - working: true
+        - agent: "testing"
+        - comment: "✓ RE-TESTED - Silver price API still working correctly. GET /api/price returns silver object with all required fields. Silver Buy: ₹92.82, Sell: ₹90.04, Direction: up"
 
   - task: "Referral system API"
     implemented: true
@@ -149,6 +152,9 @@ backend:
         - working: true
         - agent: "testing"
         - comment: "✓ PASS - Notifications API working correctly. GET /api/notifications returns notifications array and unread_count. POST /api/notifications/mark-read successfully marks all notifications as read and unread_count updates to 0. Verified with auth token."
+        - working: true
+        - agent: "testing"
+        - comment: "✓ RE-TESTED - Notifications API still working correctly. GET /api/notifications returns notifications array and unread_count. Total notifications: 1, Unread: 0"
 
   - task: "Product detail API"
     implemented: true
@@ -164,6 +170,57 @@ backend:
         - working: true
         - agent: "testing"
         - comment: "✓ PASS - Product detail API working correctly. GET /api/products/p1 returns all required fields: description, features array (5 items), gold_value, total_price, live_rate. Tested with Heritage 24K Necklace - Gold Value: ₹91007.5, Total: ₹95857.5"
+        - working: true
+        - agent: "testing"
+        - comment: "✓ RE-TESTED - Product detail API still working correctly. GET /api/products/p1 returns all required fields. Product: Heritage 24K Necklace, Gold Value: ₹91213.13, Total: ₹96063.13, Features count: 5"
+
+  - task: "Multi-step registration with new user fields"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+        - agent: "testing"
+        - comment: "✓ PASS - Multi-step registration working correctly. POST /api/auth/otp/verify now accepts first_name, last_name, email, dob, gender, referral_code fields. Tested with new user registration - all fields correctly saved and returned in user response. User created: Priya Sharma, Email: priya.sharma@example.com, Gender: female"
+
+  - task: "Silver buy functionality"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+        - agent: "testing"
+        - comment: "✓ PASS - Silver buy working correctly. POST /api/quote/silver returns silver quote with id, buy, sell rates. POST /api/orders/buy-silver successfully purchases silver and updates user's silver_grams. Tested with ₹500 purchase - bought 5.3885 grams, silver_grams increased from 0.0 to 5.3884"
+
+  - task: "Wallet system"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+        - agent: "testing"
+        - comment: "✓ PASS - Wallet system fully functional. GET /api/wallet returns balance, referral_balance, transactions. POST /api/wallet/deposit successfully adds funds (tested ₹1000 deposit). POST /api/wallet/withdraw successfully removes funds (tested ₹500 withdrawal). Insufficient balance validation working - withdraw with amount > balance correctly rejected with 400 error"
+
+  - task: "Book alert system"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+        - agent: "testing"
+        - comment: "✓ PASS - Book alert working correctly. POST /api/alerts/book creates alert with target price, metal type, buy_amount. Returns alert with alert_type='book', status='active'. Tested with target ₹7000, metal 'gold', buy_amount ₹1000 - alert created successfully with ID 31ac2e24-2541-4f5d-be45-40e78aa38a3b"
 
 frontend:
   - task: "Gold + Silver price cards"
@@ -288,8 +345,8 @@ frontend:
 
 metadata:
   created_by: "main_agent"
-  version: "2.0"
-  test_sequence: 5
+  version: "2.1"
+  test_sequence: 6
   run_ui: true
 
 test_plan:
@@ -310,3 +367,6 @@ agent_communication:
     - message: "Implemented all 9 user-requested features: 1) Gold+Silver price cards on home, 2) Fixed banner carousel height, 3) Profile shows Login/Signup for guests, 4) Removed trust badges (LBMA/BRINKS/Sell), 5) Back buttons on Vault/Jewellery/SIP tabs, 6) Removed staff portal link, 7) Full Refer & Earn with backend referral code + ₹50 each, 8) Professional product detail page with gallery, 9) Header shows user name + bell notification icon. Test credentials: phone 9876543210, OTP is shown as demo_otp. Staff access is at /admin/login STF001/PIN 1234. Backend runs on port 8001, frontend on port 3000. All API routes prefixed with /api."
     - agent: "testing"
     - message: "✅ ALL 4 BACKEND TESTS PASSED (4/4). Tested: 1) Silver Price API - returns silver object with buy/sell/change/direction ✓, 2) Product Detail API - returns description/features/gold_value/total_price/live_rate ✓, 3) Referral System - GET /api/referral works, referral code application during signup works, ₹50 bonus credited correctly ✓, 4) Notifications API - GET and mark-read endpoints working, unread_count updates correctly ✓. All backend features are production-ready. Frontend testing NOT performed as per instructions."
+    - agent: "testing"
+    - message: "✅ ALL 7 NEW BACKEND FEATURES TESTED AND PASSED (7/7). Comprehensive testing completed for: 1) Multi-step Registration - first_name, last_name, email, dob, gender fields working ✓, 2) Silver Price API - re-tested, still working ✓, 3) Silver Buy - quote generation and purchase flow working, silver_grams updated correctly ✓, 4) Wallet System - GET /api/wallet, deposit, withdraw, and insufficient balance validation all working ✓, 5) Book Alert - POST /api/alerts/book creates alert with alert_type='book' ✓, 6) Notifications API - re-tested, still working ✓, 7) Product Detail API - re-tested, still working ✓. All backend APIs are production-ready and functioning correctly. No critical issues found."
+

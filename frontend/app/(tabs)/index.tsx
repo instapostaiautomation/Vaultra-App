@@ -51,6 +51,19 @@ export default function Home() {
           <PriceCards />
         </Animated.View>
 
+        {/* Auto SIP - attractive card */}
+        <Pressable style={styles.sipPromo} onPress={() => router.push("/sip")} testID="home-sip-promo">
+          <View style={styles.sipGlow} />
+          <View style={{ flex: 1, zIndex: 1 }}>
+            <Text style={styles.sipEyebrow}>AUTO SIP</Text>
+            <Text style={styles.sipTitle}>Save in gold daily from ₹100</Text>
+            <Text style={styles.sipSub}>UPI AutoPay · Pause or cancel anytime</Text>
+          </View>
+          <View style={styles.sipArrow}>
+            <ArrowRight size={20} color={colors.onBrandPrimary} />
+          </View>
+        </Pressable>
+
         <PriceAlertBanner />
         <Animated.View entering={FadeInDown.delay(50).duration(400)} style={{ marginTop: 8 }}>
           <BannerCarousel />
@@ -97,17 +110,6 @@ export default function Home() {
           ))}
         </ScrollView>
 
-        <Pressable style={styles.sipPromo} onPress={() => router.push("/sip")} testID="home-sip-promo">
-          <View style={{ flex: 1 }}>
-            <Text style={styles.sipEyebrow}>AUTO SIP</Text>
-            <Text style={styles.sipTitle}>Save in gold daily from ₹100</Text>
-            <Text style={styles.sipSub}>UPI AutoPay · Pause or cancel anytime</Text>
-          </View>
-          <View style={styles.sipArrow}>
-            <ArrowRight size={20} color={colors.onBrandPrimary} />
-          </View>
-        </Pressable>
-
         <Pressable style={styles.giftPromo} onPress={() => router.push("/gift")} testID="home-gift-promo">
           <View style={styles.giftIcon}>
             <Gift size={22} color={colors.giftDiwaliAccent} />
@@ -153,13 +155,23 @@ const styles = StyleSheet.create({
   catLabel: { fontFamily: fonts.medium, fontSize: 12, color: colors.onSurface, marginTop: 6 },
   sipPromo: {
     marginHorizontal: 16,
-    marginTop: 32,
+    marginTop: 12,
     backgroundColor: colors.surfaceInverse,
     borderRadius: 14,
     padding: 20,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+    overflow: "hidden",
+  },
+  sipGlow: {
+    position: "absolute",
+    right: -30,
+    top: -30,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: "rgba(212,175,55,0.15)",
   },
   sipEyebrow: { fontFamily: fonts.bold, fontSize: 11, color: colors.brandPrimary, letterSpacing: 1 },
   sipTitle: { fontFamily: fonts.black, fontSize: 18, color: colors.onSurfaceInverse, letterSpacing: -0.4, marginTop: 4 },

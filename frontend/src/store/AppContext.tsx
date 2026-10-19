@@ -8,11 +8,18 @@ export type User = {
   id: string;
   phone: string;
   name: string;
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  dob?: string;
+  gender?: string;
   tenant: string;
   kyc_status: "not_submitted" | "pending" | "approved" | "rejected";
   gold_grams: number;
+  silver_grams?: number;
   invested: number;
   avg_buy_price: number;
+  wallet_balance?: number;
   created_at: string;
   kyc: any;
   referral_code?: string;
