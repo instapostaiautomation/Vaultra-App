@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: vaultra-digigold-app
+    env: static
+    buildCommand: cd frontend && npm install --legacy-peer-deps && npm run build
+    staticPublishPath: ./frontend/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
