@@ -76,3 +76,11 @@ Multi-tenant white-label digital gold platform. Vaultra onboards jewellery shop 
 - Setu KYC integration (keys already saved)
 - Custom domains per jeweller
 - App Store / Play Store publishing
+
+## Update — Oct 2026
+- Expo SDK upgraded 57 → 58 (RN 0.88, React 19.3); expo-doctor 20/20; strict-TS fixes in theme.ts, tabs layout, BannerCarousel.
+- MT5 live rate feed (MT5_RATES_URL, MT5_API_KEY optional, symbols GOLDDEC/SILVERDEC, units 10g / 1kg) with simulated fallback; `source`/`live` in /api/price.
+- Per-jeweller margins (buy markup %, sell-back discount % for gold & silver) — jeweller admin Settings.
+- Custom domains per jeweller (app + admin domain), master admin Domains modal with DNS check; /api/tenant/resolve.
+- Pending (iteration_4): home screen lacks "Indicative/Live" label, change arrow/sign mismatch, margin error alert shows [object Object], onboarding domain uniqueness, quote-tenant check, suspended-domain fallback.
+- Paused: Claude AI integration request.

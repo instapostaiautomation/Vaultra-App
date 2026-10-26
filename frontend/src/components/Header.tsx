@@ -33,7 +33,7 @@ export function LiveTicker({ testID = "live-gold-ticker" }: { testID?: string })
       <Text style={styles.tickerPrice} testID="live-gold-price">
         {price ? `${inr(price.buy)}/g` : "—"}
       </Text>
-      <Text style={[styles.tickerLive, { color: up ? colors.success : colors.error }]}>{priceError ? "OFFLINE" : `${up ? "▲" : "▼"} LIVE`}</Text>
+      <Text style={[styles.tickerLive, { color: up ? colors.success : colors.error }]}>{priceError ? "OFFLINE" : `${up ? "▲" : "▼"} ${price?.live ? "LIVE" : "INDICATIVE"}`}</Text>
     </View>
   );
 }

@@ -1,10 +1,10 @@
 import React from "react";
 import { Tabs } from "expo-router";
-import { View, Text, StyleSheet, Platform } from "react-native";
+import { View, Text, StyleSheet, Platform, type ColorValue } from "react-native";
 import { useTheme } from "@/src/theme";
 import { Home, Vault, ShoppingBag, TrendingUp, Wallet } from "lucide-react-native";
 
-function TabIcon({ Icon, label, focused, color }: { Icon: any; label: string; focused: boolean; color: string }) {
+function TabIcon({ Icon, label, focused, color }: { Icon: any; label: string; focused: boolean; color: ColorValue }) {
   return (
     <View style={styles.tabItem}>
       <Icon size={22} color={color} strokeWidth={focused ? 2.5 : 1.8} />

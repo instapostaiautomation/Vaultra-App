@@ -5,7 +5,9 @@ import { useApp } from "@/src/store/AppContext";
 import { colors, fonts, radius, cardShadow } from "@/src/theme";
 
 export function PriceCards() {
-  const { price, priceError } = useApp();
+  const { price } = useApp();
+  const live = !!price?.live;
+  const liveLabel = live ? "Live Rate" : "Indicative Rate";
   const goldUp = price?.direction !== "down";
   const silverUp = price?.silver?.direction !== "down";
 
@@ -14,8 +16,8 @@ export function PriceCards() {
       {/* Gold Card */}
       <View style={[styles.card, styles.goldCard]}>
         <View style={styles.liveRow}>
-          <PulseDot color={priceError ? colors.error : "#EF4444"} size={7} />
-          <Text style={styles.liveText}>Live Rate</Text>
+          <PulseDot color={live ? "#EF4444" : colors.muted} size={7} />
+          <Text style={styles.liveText} testID="gold-rate-source">{liveLabel}</Text>
         </View>
         <Text style={styles.metalName}>
           Gold <Text style={styles.metalPurity}>24K | 999</Text>
@@ -32,8 +34,8 @@ export function PriceCards() {
       {/* Silver Card */}
       <View style={[styles.card, styles.silverCard]}>
         <View style={styles.liveRow}>
-          <PulseDot color={priceError ? colors.error : "#EF4444"} size={7} />
-          <Text style={[styles.liveText, { color: "#6B7280" }]}>Live Rate</Text>
+          <PulseDot color={live ? "#EF4444" : colors.muted} size={7} />
+          <Text style={[styles.liveText, { color: "#6B7280" }]}>{liveLabel}</Text>
         </View>
         <Text style={[styles.metalName, { color: "#6B7280" }]}>
           Silver <Text style={[styles.metalPurity, { color: "#9CA3AF" }]}>24K | 999</Text>

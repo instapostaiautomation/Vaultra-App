@@ -36,6 +36,11 @@ class Jeweller(Base):
     primary_color = Column(String(7), default="#D4AF37")
     secondary_color = Column(String(7), default="#1A1A2E")
     domain = Column(String(200), default="")
+    admin_domain = Column(String(200), default="")
+    gold_buy_markup_pct = Column(Float, default=0.0)
+    gold_sell_discount_pct = Column(Float, default=3.0)
+    silver_buy_markup_pct = Column(Float, default=0.0)
+    silver_sell_discount_pct = Column(Float, default=3.0)
     min_redemption_grams = Column(Float, default=1.0)
     status = Column(String(20), default="active")  # active, suspended, pending
     created_at = Column(DateTime(timezone=True), default=utcnow)

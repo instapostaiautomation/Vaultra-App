@@ -1,7 +1,7 @@
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect, useRef, useState } from "react";
-import { NativeScrollEvent, NativeSyntheticEvent, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { NativeScrollEvent, NativeSyntheticEvent, ScrollView, type ScrollViewInstance, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 
 import { BANNERS, IMAGES } from "@/src/assets";
 import { colors, fonts, radius } from "@/src/theme";
@@ -9,7 +9,7 @@ import { colors, fonts, radius } from "@/src/theme";
 export function BannerCarousel() {
   const { width: winW } = useWindowDimensions();
   const width = Math.min(winW, 720) - 32;
-  const ref = useRef<ScrollView>(null);
+  const ref = useRef<ScrollViewInstance>(null);
   const [idx, setIdx] = useState(0);
 
   useEffect(() => {

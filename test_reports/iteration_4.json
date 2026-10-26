@@ -1,0 +1,49 @@
+{
+  "summary": "Iteration 4 tested the MT5 rate feed (simulated fallback), per-jeweller margins, custom domains and tenant resolve on the backend, the master and jeweller admin panels, and the Expo app. BACKEND: 14/14 new pytest cases pass in /app/backend/tests/test_margins_domains_feed.py. /api/price returns source=simulated, live=false, base_rate and silver.base_rate, with buy=base*(1+markup) and sell=base*(1-discount). PUT /jeweller/settings/margins rejects values outside 0-50 with 422, requires a jeweller token and returns a price that uses the new margins. /api/price and /api/quote for that jeweller's customer (gold and silver) use the new margins, and /orders/buy locks in the margin-applied rate. The other jeweller's prices do not change. /master/rate.feed = {source:simulated, configured:false, error:'MT5_RATES_URL not configured'}. Domains: scheme, path and port are stripped and the domain is lowercased. Invalid domains return 400, the same app and admin domain returns 400, and a domain used by another jeweller returns 409. tenant/resolve returns kind app or admin (port and case are ignored) and 404 for unknown or empty hosts. domain-check returns cname_target and domains. All domains were cleared and margins reset to 0/3/0/3 (verified). MASTER PANEL: #feed-status shows '● Indicative rate — MT5 feed not connected' plus 'MT5_RATES_URL not configured'. The Jewellers table has a DOMAINS column. The Domains modal (#d_app, #d_admin, #save-domains) saves the normalized domain, shows the CNAME instructions and a DNS status table ('DNS pending'), and pops alerts for invalid or duplicate domains. JEWELLER PANEL: Price Margins card (#m_gb/#m_gs/#m_sb/#m_ss, #save-margins) saves and shows a confirmation alert with the new buy/sell rates. The dashboard 'Your Gold Rate' card shows 'Indicative · base ₹x/g'. EXPO APP (390x844): prices load, and a 2% margin set via the API showed up on the home gold card within one 5s refresh (ratio 1.02). OTP login (Meera 9834567892) and buying ₹50 of gold work: balance went from 1.3338g to 1.3406g with the message '✅ Bought 0.0068g gold for ₹51.50'. All tabs navigate. FAILED: the home screen does NOT show the 'Indicative Rate' label, and testID gold-rate-source is not present. app/(tabs)/index.tsx renders its own inline price cards, and the PriceCards component is not imported anywhere.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/master/jewellers", "issue": "Onboarding normalizes body.domain but never checks it against other jewellers' domain/admin_domain, so two jewellers can end up with the same domain. PUT /domains does return 409 for this. Reference: server.py:1541"},
+      {"endpoint": "POST /api/orders/buy", "issue": "The quote is not tied to the caller: there is no check that q.jeweller_id == customer.jeweller_id, and the quote is not marked as used. A customer of jeweller B could pay with a quote from jeweller A at A's lower margin, and one quote can be reused for its whole lock window. Reference: server.py:774-781"},
+      {"endpoint": "GET /api/tenant/resolve + AppContext", "issue": "A suspended jeweller's domain returns 404, so the app silently falls back to DEFAULT_JEWELLER_ID (Sharma). That jeweller's custom domain would then show another tenant's branding and prices. It should show a 'store unavailable' screen instead. Reference: server.py:1682, AppContext.tsx:111"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Home price cards", "issue": "No 'Indicative Rate' or 'Live Rate' label, and testID gold-rate-source is missing. app/(tabs)/index.tsx:95-128 renders its own inline cards, and src/components/PriceCards.tsx (which has the label) is never imported. LiveTicker in src/components/Header.tsx ('INDICATIVE') and src/components/BuyWidget.tsx are also unused. Customers are not told that the rate is indicative.", "testID": "gold-rate-source", "priority": "HIGH"},
+      {"component": "Home price card change text", "issue": "The arrow and color come from price.direction (the last 3s tick), but the number comes from price.change (vs open). The result is wrong text: '+-8.13 (-0.11%)' with a green up icon, '19.32 (0.27%)' in red with a down icon, and '0.05 (0.05%)' with no sign. Base the direction on the sign of change. Reference: app/(tabs)/index.tsx:56-57,109,124", "testID": "n/a", "priority": "MEDIUM"},
+      {"component": "Jeweller admin margin save", "issue": "A value above 50 (e.g. 60) shows the alert '[object Object]'. FastAPI returns the 422 detail as an array, and apiFetch does new Error(d.detail). Reference: jeweller_admin.html:77", "testID": "#save-margins", "priority": "MEDIUM"},
+      {"component": "Jeweller admin margin inputs", "issue": "An empty input is silently saved as 0 (parseFloat(v||'0')). Clearing the gold markup field and saving wiped the markup without any warning. Reference: jeweller_admin.html:146", "testID": "#m_gb", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Jeweller admin Settings", "issues": ["The Price Margins copy says 'Applied on top of the live MT5 base rate' even while the feed is simulated or indicative."]},
+      {"screen": "Home BuyWidget", "issues": ["The preview shows ≈0.0069g but 0.0068g is credited. The UI rounds with toFixed(4) while the backend floors with r4. Minor, but customers may notice."]},
+      {"screen": "PriceCards (unused)", "issues": ["Silver is labelled '24K | 999'. Karat applies only to gold, so this should be '999 Fine'."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_margins_domains_feed.py", "/app/test_reports/pytest/pytest_iter4_new.xml"],
+  "action_items": [
+    "HIGH: Show the rate source on home: render the 'Indicative Rate' / 'Live Rate' label with testID gold-rate-source (using price.live) in app/(tabs)/index.tsx, or replace the inline cards with <PriceCards/>. Remove the dead components (PriceCards, LiveTicker, src/components/BuyWidget.tsx) or wire them in.",
+    "Fix the home change sign and direction: use change >= 0 for the arrow and color, and format as `${change>=0?'+':''}${change.toFixed(2)}`.",
+    "Admin panels apiFetch: when detail is an array, join detail.map(e=>e.msg) so 422 errors are readable. Validate empty margin inputs on the client instead of defaulting to 0.",
+    "POST /master/jewellers: run the same domain/admin_domain conflict check (409) as PUT /domains.",
+    "/orders/buy: reject quotes where q.jeweller_id != customer.jeweller_id, and consider marking quotes as used.",
+    "Custom domain of a suspended or unknown tenant: show a 'store unavailable' screen instead of falling back to the default jeweller.",
+    "Change the margin card copy to 'base rate (live MT5 or indicative)'.",
+    "The old test files /app/backend/tests/test_vaultra_api.py, test_gifts_alerts.py, test_goals.py and /app/backend_test_comprehensive.py target the v1 API (/tenants, staff PIN admin, etc.). They now fail with 20 errors and 7 failures against v2.0. Rewrite or delete them; they are not a regression from this change.",
+    "server.py is 1930 lines. Split it into routers (routes/ dir exists)."
+  ],
+  "critical_code_review_comments": [
+    "price_payload and margin math are correct. MARGINS is an in-process cache refreshed on update and startup, so it works only with a single worker. With multiple uvicorn workers, other workers would serve stale margins.",
+    "The backend auto-reloads when files under /app/backend/tests change (uvicorn --reload watches the whole dir), so creating test files restarted the backend mid-run.",
+    "The OTP rate limit (5/min/phone) makes back-to-back regression runs return 429. Tests should use unique phones."
+  ],
+  "updated_files": ["/app/backend/tests/test_margins_domains_feed.py (new)"],
+  "success_rate": {"backend": "100% (14/14 new tests)", "frontend": "85% (admin panels 100%; Expo app: prices, margin propagation, login and buy pass; Indicative label missing)"},
+  "seed_data_creation": "No new seed data. One ₹50 gold buy was made for Meera (9834567892): 1.3338g -> 1.3406g. A 'Test Jewellers 37514' jeweller already existed from an earlier run. All domains are empty and all margins are reset to 0/3/0/3.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with '-n 0' (pytest.ini enables xdist), otherwise the margin tests race with the default-price test. The Expo web stack keeps hidden copies of earlier screens, so use ' >> visible=true' locators. The home screen has almost no testIDs (login, buy widget, price cards); selectors used: input[placeholder='Phone number'], text 'Get OTP', 'Verify & Login' (OTP auto-filled), input[placeholder='Enter amount'], text 'Buy'. Admin panels: master #lu/#lp prefilled, Login button; jeweller #le/#lp prefilled."
+}

@@ -12,7 +12,7 @@ from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import select, update, delete, func, and_, or_, desc, asc, text
 from sqlalchemy.ext.asyncio import AsyncSession
-import os, logging, uuid, random, asyncio, hmac, hashlib, secrets, math
+import os, re, logging, uuid, random, asyncio, hmac, hashlib, secrets, math
 import bcrypt, jwt
 
 ROOT_DIR = Path(__file__).parent
@@ -40,9 +40,29 @@ SELL_SPREAD = 0.97
 QUOTE_SECONDS = 300
 POOL_THRESHOLD = 10.0  # grams
 
-# ─── Price Engine (Simulated) ────────────────────────────────────────────────
-PRICE = {"base": 7285.50, "open": 7285.50, "prev": 7285.50, "updated_at": None}
-SILVER_PRICE = {"base": 92.50, "open": 92.50, "prev": 92.50, "updated_at": None}
+# ─── Price Engine (MT5 live feed, simulated fallback) ────────────────────────
+MT5_RATES_URL = os.environ.get('MT5_RATES_URL', '').strip()
+MT5_API_KEY = os.environ.get('MT5_API_KEY', '').strip()
+MT5_GOLD_SYMBOL = os.environ.get('MT5_GOLD_SYMBOL', 'GOLDDEC').strip()
+MT5_SILVER_SYMBOL = os.environ.get('MT5_SILVER_SYMBOL', 'SILVERDEC').strip()
+MT5_GOLD_UNIT_GRAMS = float(os.environ.get('MT5_GOLD_UNIT_GRAMS') or 10)      # MCX gold quoted per 10g
+MT5_SILVER_UNIT_GRAMS = float(os.environ.get('MT5_SILVER_UNIT_GRAMS') or 1000)  # MCX silver quoted per kg
+MT5_POLL_SECONDS = 2
+MT5_STALE_SECONDS = 60
+
+PRICE = {"base": 7285.50, "open": 7285.50, "prev": 7285.50, "anchor": 7285.50, "updated_at": None}
+SILVER_PRICE = {"base": 92.50, "open": 92.50, "prev": 92.50, "anchor": 92.50, "updated_at": None}
+RATE_FEED = {"source": "simulated", "last_live_at": None, "error": "" if MT5_RATES_URL else "MT5_RATES_URL not configured"}
+
+DEFAULT_MARGIN = {"gold_buy": 0.0, "gold_sell": 3.0, "silver_buy": 0.0, "silver_sell": 3.0}
+MARGINS: dict = {}  # jeweller_id -> margin dict (percent)
+
+
+def cache_margins(j):
+    MARGINS[j.id] = {
+        "gold_buy": j.gold_buy_markup_pct or 0.0, "gold_sell": j.gold_sell_discount_pct or 0.0,
+        "silver_buy": j.silver_buy_markup_pct or 0.0, "silver_sell": j.silver_sell_discount_pct or 0.0,
+    }
 
 
 def now_utc():
@@ -61,44 +81,109 @@ def r2(x):
     return round(x + 1e-9, 2)
 
 
-def gold_rate():
-    return r2(PRICE["base"]), r2(PRICE["base"] * SELL_SPREAD)
+def _apply_margin(base, metal, jid):
+    m = MARGINS.get(jid) or DEFAULT_MARGIN
+    return r2(base * (1 + m[f"{metal}_buy"] / 100)), r2(base * (1 - m[f"{metal}_sell"] / 100))
 
 
-def silver_rate():
-    return r2(SILVER_PRICE["base"]), r2(SILVER_PRICE["base"] * SELL_SPREAD)
+def gold_rate(jid: Optional[str] = None):
+    return _apply_margin(PRICE["base"], "gold", jid)
 
 
-def price_payload():
-    buy, sell = gold_rate()
+def silver_rate(jid: Optional[str] = None):
+    return _apply_margin(SILVER_PRICE["base"], "silver", jid)
+
+
+def price_payload(jid: Optional[str] = None):
+    buy, sell = gold_rate(jid)
     change = r2(PRICE["base"] - PRICE["open"])
-    silver_buy, silver_sell = silver_rate()
+    silver_buy, silver_sell = silver_rate(jid)
     silver_change = r2(SILVER_PRICE["base"] - SILVER_PRICE["open"])
+    live = RATE_FEED["source"] == "mt5"
     return {
         "purity": "24K (99.9%)", "buy": buy, "sell": sell,
         "change": change, "change_pct": r2(change / PRICE["open"] * 100) if PRICE["open"] else 0,
         "direction": "up" if PRICE["base"] >= PRICE["prev"] else "down",
         "gst_rate": GST_RATE, "updated_at": PRICE["updated_at"] or now_iso(),
+        "source": RATE_FEED["source"], "live": live,
+        "base_rate": r2(PRICE["base"]),
         "silver": {
             "buy": silver_buy, "sell": silver_sell,
             "change": silver_change,
             "change_pct": r2(silver_change / SILVER_PRICE["open"] * 100) if SILVER_PRICE["open"] else 0,
             "direction": "up" if SILVER_PRICE["base"] >= SILVER_PRICE["prev"] else "down",
+            "base_rate": r2(SILVER_PRICE["base"]),
         },
     }
 
 
+def _mt5_url():
+    u = MT5_RATES_URL.rstrip("/")
+    return u if u.endswith("/rates") else u + "/rates"
+
+
+def _per_gram(data: dict, symbol: str, unit: float):
+    v = data.get(symbol) or {}
+    if not isinstance(v, dict) or v.get("error"):
+        raise ValueError(f"{symbol}: {v.get('error') if isinstance(v, dict) else 'missing'}")
+    bid, ask = v.get("bid") or 0, v.get("ask") or 0
+    px = (bid + ask) / 2 if bid and ask else (v.get("last") or bid or ask)
+    if not px:
+        raise ValueError(f"{symbol}: no price yet")
+    prev = v.get("prev_close") or v.get("open") or px
+    return px / unit, prev / unit
+
+
+async def fetch_mt5(client):
+    headers = {"ngrok-skip-browser-warning": "1"}
+    if MT5_API_KEY:
+        headers["X-API-Key"] = MT5_API_KEY
+    r = await client.get(_mt5_url(), params={"symbols": f"{MT5_GOLD_SYMBOL},{MT5_SILVER_SYMBOL}"}, headers=headers)
+    r.raise_for_status()
+    data = r.json()
+    return _per_gram(data, MT5_GOLD_SYMBOL, MT5_GOLD_UNIT_GRAMS), _per_gram(data, MT5_SILVER_SYMBOL, MT5_SILVER_UNIT_GRAMS)
+
+
+def _set_live(state, px, prev):
+    state["prev"] = state["base"]
+    state["base"] = r2(px)
+    state["open"] = r2(prev)
+    state["anchor"] = state["base"]
+    state["updated_at"] = now_iso()
+
+
+def _simulate(state, jitter):
+    state["prev"] = state["base"]
+    drift = (state["anchor"] - state["base"]) * 0.05
+    lo, hi = state["anchor"] * 0.95, state["anchor"] * 1.05
+    state["base"] = r2(max(lo, min(hi, state["base"] + drift + random.uniform(-jitter, jitter * 1.06))))
+    state["updated_at"] = now_iso()
+
+
 async def price_loop():
-    while True:
-        await asyncio.sleep(3)
-        PRICE["prev"] = PRICE["base"]
-        drift = (7285.50 - PRICE["base"]) * 0.05
-        PRICE["base"] = r2(max(6900, min(7700, PRICE["base"] + drift + random.uniform(-4.5, 4.8))))
-        PRICE["updated_at"] = now_iso()
-        SILVER_PRICE["prev"] = SILVER_PRICE["base"]
-        sd = (92.50 - SILVER_PRICE["base"]) * 0.05
-        SILVER_PRICE["base"] = r2(max(80, min(110, SILVER_PRICE["base"] + sd + random.uniform(-0.15, 0.18))))
-        SILVER_PRICE["updated_at"] = now_iso()
+    import httpx
+    last_err_log = 0.0
+    async with httpx.AsyncClient(timeout=5) as client:
+        while True:
+            await asyncio.sleep(MT5_POLL_SECONDS if MT5_RATES_URL else 3)
+            if MT5_RATES_URL:
+                try:
+                    (g, gp), (s, sp) = await fetch_mt5(client)
+                    _set_live(PRICE, g, gp)
+                    _set_live(SILVER_PRICE, s, sp)
+                    RATE_FEED.update(source="mt5", last_live_at=now_utc(), error="")
+                    continue
+                except Exception as e:  # feed down / tunnel closed / market closed
+                    RATE_FEED["error"] = str(e)[:200]
+                    if asyncio.get_event_loop().time() - last_err_log > 60:
+                        logger.warning(f"MT5 rate feed error: {e}")
+                        last_err_log = asyncio.get_event_loop().time()
+                    last = RATE_FEED["last_live_at"]
+                    if last and (now_utc() - last).total_seconds() < MT5_STALE_SECONDS:
+                        continue  # keep last live price briefly
+            RATE_FEED["source"] = "simulated"
+            _simulate(PRICE, PRICE["anchor"] * 0.0006)
+            _simulate(SILVER_PRICE, SILVER_PRICE["anchor"] * 0.0016)
 
 
 # ─── Auth Helpers ─────────────────────────────────────────────────────────────
@@ -198,6 +283,9 @@ def jeweller_dict(j: Jeweller):
         "city": j.city, "state": j.state, "pincode": j.pincode,
         "logo_url": j.logo_url, "primary_color": j.primary_color,
         "secondary_color": j.secondary_color, "domain": j.domain,
+        "admin_domain": j.admin_domain or "",
+        "gold_buy_markup_pct": j.gold_buy_markup_pct, "gold_sell_discount_pct": j.gold_sell_discount_pct,
+        "silver_buy_markup_pct": j.silver_buy_markup_pct, "silver_sell_discount_pct": j.silver_sell_discount_pct,
         "min_redemption_grams": j.min_redemption_grams,
         "status": j.status,
         "created_at": j.created_at.isoformat() if j.created_at else "",
@@ -414,8 +502,8 @@ async def root():
 
 
 @api.get("/price")
-async def get_price():
-    return price_payload()
+async def get_price(jeweller_id: str = ""):
+    return price_payload(jeweller_id or None)
 
 
 @api.get("/config")
@@ -460,13 +548,14 @@ async def list_products(jeweller_id: str = "", category: str = "", db: AsyncSess
         q = q.where(Product.category == category)
     result = await db.execute(q.order_by(Product.created_at.desc()))
     prods = result.scalars().all()
-    buy, _ = gold_rate()
+    rates = {}
     return [{
         "id": p.id, "name": p.name, "category": p.category, "grams": p.grams,
         "making_charges": p.making_charges, "image_url": p.image_url, "tag": p.tag,
         "description": p.description, "jeweller_id": p.jeweller_id,
-        "gold_value": r2(p.grams * buy), "total_price": r2(p.grams * buy + p.making_charges),
-        "live_rate": buy,
+        "gold_value": r2(p.grams * rates.setdefault(p.jeweller_id, gold_rate(p.jeweller_id)[0])),
+        "total_price": r2(p.grams * rates[p.jeweller_id] + p.making_charges),
+        "live_rate": rates[p.jeweller_id],
     } for p in prods]
 
 
@@ -476,7 +565,7 @@ async def get_product(product_id: str, db: AsyncSession = Depends(get_db)):
     p = result.scalar_one_or_none()
     if not p:
         raise HTTPException(404, "Product not found")
-    buy, _ = gold_rate()
+    buy, _ = gold_rate(p.jeweller_id)
     return {
         "id": p.id, "name": p.name, "category": p.category, "grams": p.grams,
         "making_charges": p.making_charges, "image_url": p.image_url, "tag": p.tag,
@@ -634,7 +723,7 @@ async def kyc_submit(body: KycSubmit, customer: Customer = Depends(get_current_c
 # ─── Vault ────────────────────────────────────────────────────────────────────
 @api.get("/vault")
 async def vault(customer: Customer = Depends(get_current_customer)):
-    buy, sell = gold_rate()
+    buy, sell = gold_rate(customer.jeweller_id)
     cu = customer_dict(customer)
     value = r2(cu["gold_grams"] * sell)
     pnl = r2(value - cu["invested"])
@@ -666,9 +755,9 @@ async def create_quote(
     customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)
 ):
     if metal == "silver":
-        buy, sell = silver_rate()
+        buy, sell = silver_rate(customer.jeweller_id)
     else:
-        buy, sell = gold_rate()
+        buy, sell = gold_rate(customer.jeweller_id)
     exp = now_utc() + timedelta(seconds=QUOTE_SECONDS)
     q = Quote(
         id=str(uuid.uuid4()), jeweller_id=customer.jeweller_id,
@@ -774,7 +863,7 @@ async def sell(body: SellRequest, customer: Customer = Depends(get_current_custo
     grams = r4(body.grams)
     if grams > (customer.gold_grams or 0):
         raise HTTPException(400, "Insufficient vault balance")
-    _, rate = gold_rate()
+    _, rate = gold_rate(customer.jeweller_id)
     amount = r2(grams * rate)
     avg = (customer.invested / customer.gold_grams) if customer.gold_grams > 0 else 0
     customer.gold_grams = r4(customer.gold_grams - grams)
@@ -818,7 +907,7 @@ async def redeem(body: RedeemRequest, customer: Customer = Depends(get_current_c
     if grams > (customer.gold_grams or 0):
         raise HTTPException(400, "Insufficient vault balance")
 
-    buy_rate, _ = gold_rate()
+    buy_rate, _ = gold_rate(customer.jeweller_id)
     avg = (customer.invested / customer.gold_grams) if customer.gold_grams > 0 else 0
     customer.gold_grams = r4(customer.gold_grams - grams)
     customer.invested = r2(customer.invested - avg * grams)
@@ -901,7 +990,7 @@ async def run_sip(sip_id: str, customer: Customer = Depends(get_current_customer
     sip = result.scalar_one_or_none()
     if not sip:
         raise HTTPException(404, "Active SIP not found")
-    rate, _ = gold_rate()
+    rate, _ = gold_rate(customer.jeweller_id)
     grams = r4(sip.amount / rate)
     gst = r2(sip.amount * GST_RATE)
     customer.gold_grams = r4((customer.gold_grams or 0) + grams)
@@ -938,7 +1027,7 @@ async def send_gift(body: GiftCreate, customer: Customer = Depends(get_current_c
     if body.theme not in GIFT_THEMES:
         raise HTTPException(400, "Invalid greeting card")
 
-    rate, _ = gold_rate()
+    rate, _ = gold_rate(customer.jeweller_id)
     g = r4(body.value) if body.mode == "grams" else r4(body.value / rate)
     if g < 0.001:
         raise HTTPException(400, "Minimum gift is 0.001g")
@@ -1197,7 +1286,7 @@ async def jeweller_dashboard(jeweller: Jeweller = Depends(get_current_jeweller),
         "pending_pickups": pending_pickups.scalar() or 0,
         "pending_kyc": pending_kyc.scalar() or 0,
         "min_redemption_grams": jeweller.min_redemption_grams,
-        "price": price_payload(),
+        "price": price_payload(jeweller.id),
     }
 
 
@@ -1243,7 +1332,7 @@ async def jeweller_approve_redemption(body: RedemptionApprove, jeweller: Jewelle
     avg = (customer.invested / customer.gold_grams) if customer.gold_grams > 0 else 0
     customer.gold_grams = r4(customer.gold_grams - body.grams)
     customer.invested = r2(customer.invested - avg * body.grams)
-    buy_rate, _ = gold_rate()
+    buy_rate, _ = gold_rate(jeweller.id)
     amount = r2(body.grams * buy_rate)
 
     txn = Transaction(
@@ -1352,7 +1441,7 @@ async def jeweller_products(jeweller: Jeweller = Depends(get_current_jeweller), 
     result = await db.execute(
         select(Product).where(Product.jeweller_id == jeweller.id).order_by(desc(Product.created_at))
     )
-    buy, _ = gold_rate()
+    buy, _ = gold_rate(jeweller.id)
     return [{
         "id": p.id, "name": p.name, "category": p.category, "grams": p.grams,
         "making_charges": p.making_charges, "image_url": p.image_url, "tag": p.tag,
@@ -1449,7 +1538,7 @@ async def master_onboard_jeweller(body: JewellerOnboard, admin: MasterAdmin = De
         pan=body.pan, aadhaar=body.aadhaar, address=body.address,
         city=body.city, state=body.state, pincode=body.pincode,
         logo_url=body.logo_url, primary_color=body.primary_color,
-        secondary_color=body.secondary_color, domain=body.domain,
+        secondary_color=body.secondary_color, domain=normalize_domain(body.domain),
         min_redemption_grams=body.min_redemption_grams,
     )
     db.add(j)
@@ -1473,6 +1562,7 @@ async def master_onboard_jeweller(body: JewellerOnboard, admin: MasterAdmin = De
         ))
 
     await db.commit()
+    cache_margins(j)
     return jeweller_dict(j)
 
 
@@ -1541,7 +1631,121 @@ async def master_update_threshold(body: PoolThresholdUpdate, admin: MasterAdmin 
 
 @api.get("/master/rate")
 async def master_rate(admin: MasterAdmin = Depends(get_master_admin)):
-    return price_payload()
+    return price_payload() | {"feed": rate_feed_status()}
+
+
+def rate_feed_status():
+    last = RATE_FEED["last_live_at"]
+    return {
+        "source": RATE_FEED["source"], "configured": bool(MT5_RATES_URL),
+        "last_live_at": last.isoformat() if last else None, "error": RATE_FEED["error"],
+        "gold_symbol": MT5_GOLD_SYMBOL, "silver_symbol": MT5_SILVER_SYMBOL,
+        "gold_unit_grams": MT5_GOLD_UNIT_GRAMS, "silver_unit_grams": MT5_SILVER_UNIT_GRAMS,
+    }
+
+
+# ═══════════════════ CUSTOM DOMAINS ═══════════════════════════════════════════
+DOMAIN_RE = re.compile(r"^(?=.{4,200}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
+
+
+def normalize_domain(raw: str) -> str:
+    d = (raw or "").strip().lower()
+    d = re.sub(r"^[a-z]+://", "", d).split("/")[0].split("?")[0].split(":")[0].rstrip(".")
+    if d and not DOMAIN_RE.match(d):
+        raise HTTPException(400, f"'{raw}' is not a valid domain (example: gold.sharmajewellers.in)")
+    return d
+
+
+def request_host(request: Request) -> str:
+    h = request.headers.get("x-forwarded-host") or request.headers.get("host") or ""
+    return h.split(",")[0].strip().split(":")[0].lower()
+
+
+class DomainUpdate(BaseModel):
+    domain: str = ""
+    admin_domain: str = ""
+
+
+class MarginUpdate(BaseModel):
+    gold_buy_markup_pct: float = Field(ge=0, le=50)
+    gold_sell_discount_pct: float = Field(ge=0, le=50)
+    silver_buy_markup_pct: float = Field(ge=0, le=50)
+    silver_sell_discount_pct: float = Field(ge=0, le=50)
+
+
+@api.get("/tenant/resolve")
+async def tenant_resolve(request: Request, host: str = "", db: AsyncSession = Depends(get_db)):
+    h = (host or request_host(request)).strip().lower().split(":")[0]
+    if not h:
+        raise HTTPException(404, "No tenant for this domain")
+    result = await db.execute(select(Jeweller).where(
+        Jeweller.status == "active", or_(Jeweller.domain == h, Jeweller.admin_domain == h)))
+    j = result.scalars().first()
+    if not j:
+        raise HTTPException(404, "No tenant for this domain")
+    return {
+        "kind": "admin" if j.admin_domain == h else "app",
+        "jeweller": {
+            "id": j.id, "business_name": j.business_name, "logo_url": j.logo_url,
+            "primary_color": j.primary_color, "secondary_color": j.secondary_color,
+            "min_redemption_grams": j.min_redemption_grams,
+        },
+    }
+
+
+@api.put("/master/jewellers/{jeweller_id}/domains")
+async def master_set_domains(jeweller_id: str, body: DomainUpdate, admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    j = (await db.execute(select(Jeweller).where(Jeweller.id == jeweller_id))).scalar_one_or_none()
+    if not j:
+        raise HTTPException(404, "Jeweller not found")
+    app_d, admin_d = normalize_domain(body.domain), normalize_domain(body.admin_domain)
+    if app_d and app_d == admin_d:
+        raise HTTPException(400, "App domain and admin domain must be different")
+    for d in filter(None, (app_d, admin_d)):
+        clash = await db.execute(select(Jeweller.business_name).where(
+            Jeweller.id != j.id, or_(Jeweller.domain == d, Jeweller.admin_domain == d)))
+        name = clash.scalars().first()
+        if name:
+            raise HTTPException(409, f"{d} is already used by {name}")
+    j.domain, j.admin_domain = app_d, admin_d
+    await db.commit()
+    return jeweller_dict(j)
+
+
+async def _resolve_ips(host: str):
+    try:
+        infos = await asyncio.get_event_loop().getaddrinfo(host, 443, proto=6)
+        return sorted({i[4][0] for i in infos})
+    except Exception:
+        return []
+
+
+@api.get("/master/jewellers/{jeweller_id}/domain-check")
+async def master_domain_check(jeweller_id: str, request: Request, admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    j = (await db.execute(select(Jeweller).where(Jeweller.id == jeweller_id))).scalar_one_or_none()
+    if not j:
+        raise HTTPException(404, "Jeweller not found")
+    target = request_host(request)
+    target_ips = await _resolve_ips(target)
+    out = []
+    for kind, d in (("app", j.domain), ("admin", j.admin_domain)):
+        if not d:
+            continue
+        ips = await _resolve_ips(d)
+        out.append({"kind": kind, "domain": d, "resolves_to": ips,
+                    "points_here": bool(ips) and bool(set(ips) & set(target_ips))})
+    return {"cname_target": target, "target_ips": target_ips, "domains": out}
+
+
+@api.put("/jeweller/settings/margins")
+async def update_margins(body: MarginUpdate, jeweller: Jeweller = Depends(get_current_jeweller), db: AsyncSession = Depends(get_db)):
+    jeweller.gold_buy_markup_pct = body.gold_buy_markup_pct
+    jeweller.gold_sell_discount_pct = body.gold_sell_discount_pct
+    jeweller.silver_buy_markup_pct = body.silver_buy_markup_pct
+    jeweller.silver_sell_discount_pct = body.silver_sell_discount_pct
+    await db.commit()
+    cache_margins(jeweller)
+    return jeweller_dict(jeweller) | {"price": price_payload(jeweller.id)}
 
 
 # ═══════════════════ SEED DATA ════════════════════════════════════════════════
@@ -1715,6 +1919,9 @@ async def jeweller_panel():
 async def startup():
     await init_db()
     await seed_data()
+    async with AsyncSessionLocal() as db:
+        for j in (await db.execute(select(Jeweller))).scalars().all():
+            cache_margins(j)
     asyncio.create_task(price_loop())
     logger.info("Vaultra DigiGold v2.0 started with PostgreSQL")
 

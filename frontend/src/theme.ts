@@ -1,7 +1,7 @@
 // Design tokens for Vaultra DigiGold. Light + Dark customer themes + dedicated admin tokens.
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { Platform, StyleSheet } from "react-native";
+import { Platform, StyleSheet, type ImageStyle, type TextStyle, type ViewStyle } from "react-native";
 
 export type ColorScheme = "light" | "dark";
 
@@ -181,8 +181,10 @@ export const cardShadow = Platform.select({
 
 export const defaultScheme = "light" satisfies ColorScheme;
 
-export function makeStyles<T extends StyleSheet.NamedStyles<T> | StyleSheet.NamedStyles<any>>(
-  factory: (colors: ThemeColors) => T & StyleSheet.NamedStyles<any>,
+type NamedStyles<T> = { [P in keyof T]: ViewStyle | TextStyle | ImageStyle };
+
+export function makeStyles<T extends NamedStyles<T> | NamedStyles<any>>(
+  factory: (colors: ThemeColors) => T & NamedStyles<any>,
 ): () => T {
   return function useStyles(): T {
     const { colors } = useTheme();

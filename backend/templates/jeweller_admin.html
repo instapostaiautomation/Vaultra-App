@@ -68,6 +68,7 @@
     let products = [];
     let lookupResult = null;
     let redeemGrams = '';
+    let tenant = null; // set when opened on this jeweller's own admin domain
 
     async function apiFetch(path, opts = {}) {
         const h = {'Content-Type':'application/json'};
@@ -81,6 +82,7 @@
 
     async function login(email, pass) {
         const r = await apiFetch('/jeweller/login', {method:'POST', body:{email, password: pass}});
+        if (tenant && r.jeweller.id !== tenant.id) throw new Error('This account does not belong to ' + tenant.business_name);
         token = r.access_token;
         jeweller = r.jeweller;
         localStorage.setItem('jeweller_token', token);
@@ -140,6 +142,21 @@
         try { await apiFetch(`/jeweller/kyc/${cid}/decide?approve=${approve}`, {method:'POST'}); loadKycQueue(); } catch(e) { alert(e.message); }
     }
 
+    async function updateMargins() {
+        const v = id => parseFloat(document.getElementById(id)?.value || '0');
+        try {
+            const r = await apiFetch('/jeweller/settings/margins', {method:'PUT', body:{
+                gold_buy_markup_pct: v('m_gb'), gold_sell_discount_pct: v('m_gs'),
+                silver_buy_markup_pct: v('m_sb'), silver_sell_discount_pct: v('m_ss'),
+            }});
+            const price = r.price; delete r.price;
+            jeweller = {...jeweller, ...r};
+            if (dashboard) dashboard.price = price;
+            alert(`Saved! Your customers now buy gold at ${inr(price.buy)}/g and sell at ${inr(price.sell)}/g`);
+            render();
+        } catch(e) { alert(e.message); }
+    }
+
     async function updateMinRedemption() {
         const v = document.getElementById('min_grams')?.value;
         if(!v) return;
@@ -154,10 +171,11 @@
 
     function renderLogin() {
         return `<div class="login-wrap"><div class="login-box">
-            <h2>💎 Jeweller Admin</h2>
+            ${tenant?.logo_url ? `<img src="${tenant.logo_url}" alt="" style="height:56px;margin-bottom:12px">` : ''}
+            <h2>💎 ${tenant ? tenant.business_name : 'Jeweller Admin'}</h2>
             <div id="loginError" class="error"></div>
-            <input id="le" class="form-input" placeholder="Email" value="sharma@vaultra.in">
-            <input id="lp" class="form-input" type="password" placeholder="Password" value="jeweller123">
+            <input id="le" class="form-input" placeholder="Email" value="${tenant ? '' : 'sharma@vaultra.in'}">
+            <input id="lp" class="form-input" type="password" placeholder="Password" value="${tenant ? '' : 'jeweller123'}">
             <button class="btn-primary" onclick="handleLogin()">Login</button>
         </div></div>`;
     }
@@ -193,7 +211,7 @@
             <div class="stat-card"><div class="label">Pending Pickups</div><div class="value">${d.pending_pickups}</div></div>
             <div class="stat-card"><div class="label">Pending KYC</div><div class="value">${d.pending_kyc}</div></div>
             <div class="stat-card"><div class="label">Min Redemption</div><div class="value">${d.min_redemption_grams}g</div></div>
-            <div class="stat-card"><div class="label">Gold Rate</div><div class="value">${inr(d.price?.buy)}/g</div></div>
+            <div class="stat-card"><div class="label">Your Gold Rate</div><div class="value">${inr(d.price?.buy)}/g</div><div class="sub">${d.price?.live ? '● Live MT5' : 'Indicative'} · base ${inr(d.price?.base_rate)}/g</div></div>
         </div>`;
     }
 
@@ -277,6 +295,23 @@
             </div>
         </div>
         <div class="settings-card">
+            <h4 style="margin-bottom:12px">Price Margins</h4>
+            <p style="color:#6B7280;font-size:13px;margin-bottom:12px">Applied on top of the live MT5 base rate${dashboard?.price ? ` (gold now ${inr(dashboard.price.base_rate)}/g, silver ${inr(dashboard.price.silver?.base_rate)}/g)` : ''}. Customers buy at base + markup and sell back at base − discount.</p>
+            <div class="form-grid">
+                <div class="form-group"><label>Gold buy markup %</label><input id="m_gb" class="form-input" type="number" step="0.1" min="0" value="${jeweller?.gold_buy_markup_pct ?? 0}"></div>
+                <div class="form-group"><label>Gold sell-back discount %</label><input id="m_gs" class="form-input" type="number" step="0.1" min="0" value="${jeweller?.gold_sell_discount_pct ?? 3}"></div>
+                <div class="form-group"><label>Silver buy markup %</label><input id="m_sb" class="form-input" type="number" step="0.1" min="0" value="${jeweller?.silver_buy_markup_pct ?? 0}"></div>
+                <div class="form-group"><label>Silver sell-back discount %</label><input id="m_ss" class="form-input" type="number" step="0.1" min="0" value="${jeweller?.silver_sell_discount_pct ?? 3}"></div>
+            </div>
+            <button id="save-margins" class="btn-primary" style="width:auto;padding:12px 24px" onclick="updateMargins()">Save Margins</button>
+        </div>
+        <div class="settings-card">
+            <h4 style="margin-bottom:8px">Your Domains</h4>
+            <p style="color:#6B7280;font-size:13px"><strong>Customer app:</strong> ${jeweller?.domain || 'Not set'}</p>
+            <p style="color:#6B7280;font-size:13px"><strong>Admin panel:</strong> ${jeweller?.admin_domain || 'Not set'}</p>
+            <p style="color:#9CA3AF;font-size:12px;margin-top:6px">Contact Vaultra support to change your domains.</p>
+        </div>
+        <div class="settings-card">
             <h4>Store Information</h4>
             <p style="color:#6B7280;font-size:13px;margin-top:8px"><strong>Business:</strong> ${jeweller?.business_name || ''}</p>
             <p style="color:#6B7280;font-size:13px"><strong>Owner:</strong> ${jeweller?.owner_name || ''}</p>
@@ -295,9 +330,18 @@
         }
     };
 
-    // Init
-    if (token) loadDashboard();
-    else render();
+    // Init — brand the panel when opened on a jeweller's own domain
+    (async () => {
+        try {
+            const r = await fetch(`${API}/tenant/resolve?host=${encodeURIComponent(location.hostname)}`);
+            if (r.ok) {
+                tenant = (await r.json()).jeweller;
+                document.title = `${tenant.business_name} · Admin`;
+            }
+        } catch {}
+        if (token) loadDashboard();
+        else render();
+    })();
     </script>
 </body>
 </html>

@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api, setToken } from "@/src/api";
 
@@ -47,6 +48,8 @@ export interface PriceData {
   purity: string;
   gst_rate: number;
   updated_at: string;
+  source: "mt5" | "simulated";
+  live: boolean;
   silver: {
     buy: number;
     sell: number;
@@ -63,6 +66,8 @@ interface AppState {
   price: PriceData | null;
   isLoading: boolean;
   isLoggedIn: boolean;
+  /** true when opened on a jeweller's own custom domain (tenant is fixed) */
+  tenantLocked: boolean;
   login: (challengeId: string, otp: string, extra?: Record<string, string>) => Promise<void>;
   requestOtp: (phone: string) => Promise<{ challenge_id: string; demo_otp: string; is_new_user: boolean }>;
   logout: () => Promise<void>;
@@ -78,6 +83,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [jewellerConfig, setJewellerConfig] = useState<JewellerConfig | null>(null);
   const [price, setPrice] = useState<PriceData | null>(null);
   const [isLoading, setLoading] = useState(true);
+  const [tenantLocked, setTenantLocked] = useState(false);
 
   // Load saved session
   useEffect(() => {
@@ -87,12 +93,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           AsyncStorage.getItem("customer_token"),
           AsyncStorage.getItem("jeweller_id"),
         ]);
-        if (jid) setJewellerId(jid);
-        const activeJid = jid || DEFAULT_JEWELLER_ID;
+        let activeJid = jid || DEFAULT_JEWELLER_ID;
+        let locked = false;
+        // Custom domain → fixed tenant (web only)
+        if (Platform.OS === "web" && typeof window !== "undefined") {
+          try {
+            const t = await api<{ kind: "app" | "admin"; jeweller: JewellerConfig }>(
+              `/tenant/resolve?host=${encodeURIComponent(window.location.hostname)}`, { auth: "none" }
+            );
+            if (t.kind === "admin") {
+              window.location.replace("/api/admin/jeweller");
+              return;
+            }
+            activeJid = t.jeweller.id;
+            locked = true;
+            setTenantLocked(true);
+          } catch {}
+        }
+        setJewellerId(activeJid);
         if (tok) {
           setToken("customer", tok);
           try {
             const u = await api<User>("/me");
+            if (locked && u.jeweller_id !== activeJid) throw new Error("Different jeweller");
             setUser(u);
           } catch {
             await AsyncStorage.removeItem("customer_token");
@@ -106,7 +129,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         } catch {}
         // Load price
         try {
-          const p = await api<PriceData>("/price", { auth: "none" });
+          const p = await api<PriceData>(`/price?jeweller_id=${activeJid}`, { auth: "none" });
           setPrice(p);
         } catch {}
       } finally {
@@ -119,12 +142,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const id = setInterval(async () => {
       try {
-        const p = await api<PriceData>("/price", { auth: "none" });
+        const p = await api<PriceData>(`/price?jeweller_id=${jewellerId}`, { auth: "none" });
         setPrice(p);
       } catch {}
     }, 5000);
     return () => clearInterval(id);
-  }, []);
+  }, [jewellerId]);
 
   const requestOtp = useCallback(async (phone: string) => {
     const resp = await api<{ challenge_id: string; demo_otp: string; is_new_user: boolean }>(
@@ -164,17 +187,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const refreshPrice = useCallback(async () => {
     try {
-      const p = await api<PriceData>("/price", { auth: "none" });
+      const p = await api<PriceData>(`/price?jeweller_id=${jewellerId}`, { auth: "none" });
       setPrice(p);
     } catch {}
-  }, []);
+  }, [jewellerId]);
 
   const value = useMemo(
     () => ({
       user, jewellerId, jewellerConfig, price, isLoading,
-      isLoggedIn: !!user, login, requestOtp, logout, refreshUser, refreshPrice,
+      isLoggedIn: !!user, tenantLocked, login, requestOtp, logout, refreshUser, refreshPrice,
     }),
-    [user, jewellerId, jewellerConfig, price, isLoading, login, requestOtp, logout, refreshUser, refreshPrice]
+    [user, jewellerId, jewellerConfig, price, isLoading, tenantLocked, login, requestOtp, logout, refreshUser, refreshPrice]
   );
 
   return React.createElement(Ctx.Provider, { value }, children);
