@@ -1,28 +1,35 @@
+"""Vaultra DigiGold — Multi-tenant Digital Gold Platform Backend
+FastAPI + PostgreSQL (SQLAlchemy async)
+"""
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Query
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
-from urllib.parse import urlencode
+from sqlalchemy import select, update, delete, func, and_, or_, desc, asc, text
+from sqlalchemy.ext.asyncio import AsyncSession
 import os, logging, uuid, random, asyncio, hmac, hashlib, secrets, math
-import bcrypt, jwt, httpx
+import bcrypt, jwt
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-client = AsyncIOMotorClient(os.environ['MONGO_URL'])
-db = client[os.environ['DB_NAME']]
-JWT_SECRET = os.environ['JWT_SECRET']
-RZP_KEY_ID = os.environ.get('RAZORPAY_KEY_ID', '')
-RZP_KEY_SECRET = os.environ.get('RAZORPAY_KEY_SECRET', '')
-RAZORPAY_ENABLED = bool(RZP_KEY_ID and RZP_KEY_SECRET)
+from database import get_db, init_db, AsyncSessionLocal
+from models import (
+    Jeweller, Customer, OtpChallenge, Transaction, Order, PoolAccumulator,
+    PoolContribution, BifurcationInvoice, Product, Pickup, SIP, Alert, Goal,
+    Gift, Notification, WalletTransaction, Quote, MasterAdmin
+)
 
-app = FastAPI()
+JWT_SECRET = os.environ['JWT_SECRET']
+SETU_CLIENT_ID = os.environ.get('SETU_CLIENT_ID', '')
+SETU_CLIENT_SECRET = os.environ.get('SETU_CLIENT_SECRET', '')
+
+app = FastAPI(title="Vaultra DigiGold API")
 api = APIRouter(prefix="/api")
 bearer = HTTPBearer(auto_error=False)
 logger = logging.getLogger("vaultra")
@@ -31,30 +38,19 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 GST_RATE = 0.03
 SELL_SPREAD = 0.97
 QUOTE_SECONDS = 300
-TENANTS = {
-    "vaultra": {"id": "vaultra", "name": "Vaultra Gold Bullion", "markup": 0.0},
-    "tanishq": {"id": "tanishq", "name": "Tanishq Partner", "markup": 12.40},
-    "malabar": {"id": "malabar", "name": "Malabar Partner", "markup": 8.75},
-}
-PRODUCTS = [
-    {"id": "p1", "name": "Heritage 24K Necklace", "category": "necklaces", "grams": 12.5, "making_charges": 4850, "image": "heritage-necklace", "tag": "Trending"},
-    {"id": "p2", "name": "Minimalist 24K Gold Bangle", "category": "bangles", "grams": 8.2, "making_charges": 2650, "image": "minimalist-bangle", "tag": "Bestseller"},
-    {"id": "p3", "name": "Classic Solitaire Ring", "category": "rings", "grams": 3.4, "making_charges": 1150, "image": "rings", "tag": "New"},
-    {"id": "p4", "name": "Rope Twist Chain", "category": "chains", "grams": 6.8, "making_charges": 1980, "image": "chain", "tag": "Trending"},
-    {"id": "p5", "name": "Royal Kada", "category": "kadas", "grams": 15.0, "making_charges": 5200, "image": "kada", "tag": "Premium"},
-    {"id": "p6", "name": "Lakshmi Pendant Set", "category": "pendant-sets", "grams": 9.6, "making_charges": 3400, "image": "pendant-set", "tag": "Festive"},
-    {"id": "p7", "name": "Gold Dial Watch", "category": "watches", "grams": 18.0, "making_charges": 7900, "image": "watch", "tag": "Luxury"},
-    {"id": "p8", "name": "Tanmaniya Mangalsutra", "category": "necklaces", "grams": 7.1, "making_charges": 2300, "image": "tanmaniya", "tag": "Classic"},
-]
-COINS = [1, 2, 5, 10]
+POOL_THRESHOLD = 10.0  # grams
 
-# ---------------- price engine (simulated live feed) ----------------
+# ─── Price Engine (Simulated) ────────────────────────────────────────────────
 PRICE = {"base": 7285.50, "open": 7285.50, "prev": 7285.50, "updated_at": None}
 SILVER_PRICE = {"base": 92.50, "open": 92.50, "prev": 92.50, "updated_at": None}
 
 
+def now_utc():
+    return datetime.now(timezone.utc)
+
+
 def now_iso():
-    return datetime.now(timezone.utc).isoformat()
+    return now_utc().isoformat()
 
 
 def r4(x):
@@ -65,24 +61,22 @@ def r2(x):
     return round(x + 1e-9, 2)
 
 
-def tenant_rate(tenant: str):
-    t = TENANTS.get(tenant, TENANTS["vaultra"])
-    buy = r2(PRICE["base"] + t["markup"])
-    return buy, r2(buy * SELL_SPREAD)
+def gold_rate():
+    return r2(PRICE["base"]), r2(PRICE["base"] * SELL_SPREAD)
 
 
 def silver_rate():
     return r2(SILVER_PRICE["base"]), r2(SILVER_PRICE["base"] * SELL_SPREAD)
 
 
-def price_payload(tenant: str):
-    buy, sell = tenant_rate(tenant)
+def price_payload():
+    buy, sell = gold_rate()
     change = r2(PRICE["base"] - PRICE["open"])
     silver_buy, silver_sell = silver_rate()
     silver_change = r2(SILVER_PRICE["base"] - SILVER_PRICE["open"])
     return {
-        "tenant": tenant, "purity": "24K (99.9%)", "buy": buy, "sell": sell,
-        "change": change, "change_pct": r2(change / PRICE["open"] * 100),
+        "purity": "24K (99.9%)", "buy": buy, "sell": sell,
+        "change": change, "change_pct": r2(change / PRICE["open"] * 100) if PRICE["open"] else 0,
         "direction": "up" if PRICE["base"] >= PRICE["prev"] else "down",
         "gst_rate": GST_RATE, "updated_at": PRICE["updated_at"] or now_iso(),
         "silver": {
@@ -94,42 +88,29 @@ def price_payload(tenant: str):
     }
 
 
-async def publish(channel: str, message: str, tenant: str = "all", meta: Optional[dict] = None):
-    """Simulated Redis pub/sub: events are persisted to a capped-like collection and polled by staff consoles."""
-    await db.events.insert_one({"id": str(uuid.uuid4()), "channel": channel, "message": message,
-                                "tenant": tenant, "meta": meta or {}, "created_at": now_iso()})
-
-
 async def price_loop():
-    tick = 0
     while True:
         await asyncio.sleep(3)
         PRICE["prev"] = PRICE["base"]
         drift = (7285.50 - PRICE["base"]) * 0.05
         PRICE["base"] = r2(max(6900, min(7700, PRICE["base"] + drift + random.uniform(-4.5, 4.8))))
         PRICE["updated_at"] = now_iso()
-        # Silver price simulation
         SILVER_PRICE["prev"] = SILVER_PRICE["base"]
-        silver_drift = (92.50 - SILVER_PRICE["base"]) * 0.05
-        SILVER_PRICE["base"] = r2(max(80, min(110, SILVER_PRICE["base"] + silver_drift + random.uniform(-0.15, 0.18))))
+        sd = (92.50 - SILVER_PRICE["base"]) * 0.05
+        SILVER_PRICE["base"] = r2(max(80, min(110, SILVER_PRICE["base"] + sd + random.uniform(-0.15, 0.18))))
         SILVER_PRICE["updated_at"] = now_iso()
-        tick += 1
-        if tick % 5 == 0:
-            arrow = "▲" if PRICE["base"] >= PRICE["prev"] else "▼"
-            await publish("price:tick", f"24K spot {arrow} ₹{PRICE['base']:,.2f}/g")
-            count = await db.events.count_documents({})
-            if count > 400:
-                old = await db.events.find({}, {"_id": 1}).sort("created_at", 1).limit(count - 300).to_list(500)
-                await db.events.delete_many({"_id": {"$in": [o["_id"] for o in old]}})
 
 
-# ---------------- auth helpers ----------------
-def make_token(sub: str, role: str, days: int = 7):
-    n = datetime.now(timezone.utc)
-    return jwt.encode({"sub": sub, "role": role, "iat": n, "exp": n + timedelta(days=days)}, JWT_SECRET, algorithm="HS256")
+# ─── Auth Helpers ─────────────────────────────────────────────────────────────
+def make_token(sub: str, role: str, extra: dict = None, days: int = 7):
+    n = now_utc()
+    payload = {"sub": sub, "role": role, "iat": n, "exp": n + timedelta(days=days)}
+    if extra:
+        payload.update(extra)
+    return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
 
 
-def decode(creds: Optional[HTTPAuthorizationCredentials], role: str):
+def decode_token(creds: Optional[HTTPAuthorizationCredentials], role: str):
     if not creds:
         raise HTTPException(401, "Not authenticated")
     try:
@@ -138,23 +119,34 @@ def decode(creds: Optional[HTTPAuthorizationCredentials], role: str):
         raise HTTPException(401, "Invalid token")
     if p.get("role") != role:
         raise HTTPException(403, "Forbidden")
-    return p["sub"]
+    return p
 
 
-async def current_user(creds: Optional[HTTPAuthorizationCredentials] = Depends(bearer)):
-    uid = decode(creds, "user")
-    u = await db.users.find_one({"id": uid}, {"_id": 0})
-    if not u:
-        raise HTTPException(401, "User not found")
-    return u
+async def get_current_customer(creds: Optional[HTTPAuthorizationCredentials] = Depends(bearer), db: AsyncSession = Depends(get_db)):
+    p = decode_token(creds, "customer")
+    result = await db.execute(select(Customer).where(Customer.id == p["sub"]))
+    customer = result.scalar_one_or_none()
+    if not customer:
+        raise HTTPException(401, "Customer not found")
+    return customer
 
 
-async def current_staff(creds: Optional[HTTPAuthorizationCredentials] = Depends(bearer)):
-    sid = decode(creds, "staff")
-    s = await db.staff.find_one({"staff_id": sid}, {"_id": 0, "pin_hash": 0})
-    if not s:
-        raise HTTPException(401, "Staff not found")
-    return s
+async def get_current_jeweller(creds: Optional[HTTPAuthorizationCredentials] = Depends(bearer), db: AsyncSession = Depends(get_db)):
+    p = decode_token(creds, "jeweller")
+    result = await db.execute(select(Jeweller).where(Jeweller.id == p["sub"]))
+    jeweller = result.scalar_one_or_none()
+    if not jeweller:
+        raise HTTPException(401, "Jeweller not found")
+    return jeweller
+
+
+async def get_master_admin(creds: Optional[HTTPAuthorizationCredentials] = Depends(bearer), db: AsyncSession = Depends(get_db)):
+    p = decode_token(creds, "master_admin")
+    result = await db.execute(select(MasterAdmin).where(MasterAdmin.id == p["sub"]))
+    admin = result.scalar_one_or_none()
+    if not admin:
+        raise HTTPException(401, "Admin not found")
+    return admin
 
 
 def otp_digest(code: str):
@@ -166,86 +158,73 @@ def norm_phone(p: str):
     return d[-10:]
 
 
-def _gen_referral_code():
-    """Generate a unique 6-char alphanumeric referral code."""
+def gen_wallet_id():
+    return "VW" + secrets.token_hex(4).upper()
+
+
+def gen_referral_code():
     return "VDG" + secrets.token_hex(3).upper()[:5]
 
 
-def public_user(u: dict):
-    grams = u.get("gold_grams", 0)
-    return {k: u.get(k) for k in ["id", "phone", "name", "first_name", "last_name", "email", "dob", "gender", "tenant", "kyc_status", "created_at"]} | {
-        "gold_grams": r4(grams), "silver_grams": r4(u.get("silver_grams", 0)),
-        "invested": r2(u.get("invested", 0)),
-        "avg_buy_price": r2(u["invested"] / grams) if grams > 0 else 0,
-        "kyc": {k: v for k, v in (u.get("kyc") or {}).items()},
-        "referral_code": u.get("referral_code", ""),
-        "referral_balance": r2(u.get("referral_balance", 0)),
-        "wallet_balance": r2(u.get("wallet_balance", 0)),
-        "referred_by": u.get("referred_by"),
+def invoice_no():
+    return "VDG" + now_utc().strftime("%y%m%d") + str(random.randint(10000, 99999))
+
+
+def customer_dict(c: Customer):
+    """Serialize customer for API response."""
+    grams = c.gold_grams or 0
+    return {
+        "id": c.id, "phone": c.phone, "wallet_id": c.wallet_id,
+        "first_name": c.first_name, "last_name": c.last_name,
+        "name": f"{c.first_name} {c.last_name}".strip() or "Gold Saver",
+        "email": c.email, "dob": c.dob, "gender": c.gender,
+        "jeweller_id": c.jeweller_id,
+        "gold_grams": r4(grams), "silver_grams": r4(c.silver_grams or 0),
+        "invested": r2(c.invested or 0),
+        "avg_buy_price": r2(c.invested / grams) if grams > 0 else 0,
+        "kyc_status": c.kyc_status, "kyc": c.kyc_data or {},
+        "referral_code": c.referral_code,
+        "referral_balance": r2(c.referral_balance or 0),
+        "wallet_balance": r2(c.wallet_balance or 0),
+        "referred_by": c.referred_by,
+        "created_at": c.created_at.isoformat() if c.created_at else "",
     }
 
 
-# ---------------- ledger helpers ----------------
-def entries_for(t: dict):
-    typ, amt, gst, total = t["type"], t.get("amount", 0), t.get("gst", 0), t.get("total", 0)
-    if typ in ("buy", "sip", "counter_sale"):
-        cash = {"counter_sale": "Store Cash / POS Terminal"}.get(typ, "Payment Gateway Clearing")
-        return [{"account": cash, "debit": total, "credit": 0},
-                {"account": "Customer Gold Liability", "debit": 0, "credit": amt},
-                {"account": "GST Output Payable", "debit": 0, "credit": gst}]
-    if typ == "sell":
-        return [{"account": "Customer Gold Liability", "debit": amt, "credit": 0},
-                {"account": "Customer Bank Payable", "debit": 0, "credit": amt}]
-    if typ == "gift_sent":
-        return [{"account": f"Customer Gold Liability · {t['phone']}", "debit": amt, "credit": 0},
-                {"account": f"Customer Gold Liability · {t.get('counterparty_phone', '')}", "debit": 0, "credit": amt}]
-    if typ == "redemption":
-        return [{"account": "Customer Gold Liability", "debit": amt, "credit": 0},
-                {"account": "Physical Bullion Inventory", "debit": 0, "credit": amt}]
-    return []
+def jeweller_dict(j: Jeweller):
+    return {
+        "id": j.id, "business_name": j.business_name, "owner_name": j.owner_name,
+        "phone": j.phone, "email": j.email, "address": j.address,
+        "city": j.city, "state": j.state, "pincode": j.pincode,
+        "logo_url": j.logo_url, "primary_color": j.primary_color,
+        "secondary_color": j.secondary_color, "domain": j.domain,
+        "min_redemption_grams": j.min_redemption_grams,
+        "status": j.status,
+        "created_at": j.created_at.isoformat() if j.created_at else "",
+    }
 
 
-def invoice_no():
-    return "VDG" + datetime.now(timezone.utc).strftime("%y%m%d") + str(random.randint(10000, 99999))
+def txn_dict(t: Transaction):
+    return {
+        "id": t.id, "invoice_no": t.invoice_no, "customer_id": t.customer_id,
+        "jeweller_id": t.jeweller_id, "type": t.type, "metal": t.metal,
+        "grams": r4(t.grams), "rate": r2(t.rate), "amount": r2(t.amount),
+        "gst": r2(t.gst), "total": r2(t.total), "method": t.method,
+        "status": t.status, "note": t.note, "extra": t.extra or {},
+        "created_at": t.created_at.isoformat() if t.created_at else "",
+    }
 
 
-async def record_txn(user: dict, typ: str, grams: float, rate: float, amount: float, gst: float, total: float,
-                     tenant: str, method: str, status: str = "completed", note: str = "", staff_id: str = None,
-                     extra: Optional[dict] = None):
-    t = {"id": str(uuid.uuid4()), "invoice_no": invoice_no(), "user_id": user["id"], "phone": user["phone"],
-         "name": user.get("name") or "Customer", "tenant": tenant, "type": typ, "grams": r4(grams), "rate": rate,
-         "amount": r2(amount), "gst": r2(gst), "total": r2(total), "method": method, "status": status,
-         "note": note, "staff_id": staff_id, "created_at": now_iso()}
-    if extra:
-        t.update(extra)
-    t["entries"] = entries_for(t)
-    await db.transactions.insert_one(dict(t))
-    t.pop("_id", None)
-    return t
-
-
-async def credit_gold(user_id: str, grams: float, amount: float):
-    await db.users.update_one({"id": user_id}, {"$inc": {"gold_grams": grams, "invested": amount}})
-
-
-async def debit_gold(user: dict, grams: float):
-    bal = user.get("gold_grams", 0)
-    if grams > bal + 1e-9:
-        raise HTTPException(400, "Insufficient vault balance")
-    avg = (user.get("invested", 0) / bal) if bal > 0 else 0
-    await db.users.update_one({"id": user["id"]}, {"$inc": {"gold_grams": -grams, "invested": -avg * grams}})
-
-
-# ---------------- models ----------------
+# ─── Pydantic Models ─────────────────────────────────────────────────────────
 class OtpRequest(BaseModel):
     phone: str = Field(min_length=10, max_length=15)
+    jeweller_id: str = ""
 
 
 class OtpVerify(BaseModel):
     challenge_id: str
     otp: str = Field(pattern=r"^\d{6}$")
-    tenant: str = "vaultra"
-    name: Optional[str] = None
+    jeweller_id: str = ""
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     email: Optional[str] = None
@@ -254,25 +233,9 @@ class OtpVerify(BaseModel):
     referral_code: Optional[str] = None
 
 
-class StaffLogin(BaseModel):
-    staff_id: str
-    pin: str = Field(pattern=r"^\d{4,6}$")
-
-
-class ProfileUpdate(BaseModel):
-    name: Optional[str] = None
-
-
-class KycSubmit(BaseModel):
-    full_name: str = Field(min_length=2)
-    aadhaar: str = Field(pattern=r"^\d{12}$")
-    pan: str = Field(pattern=r"^[A-Z]{5}\d{4}[A-Z]$")
-    dob: str = ""
-
-
 class BuyRequest(BaseModel):
     quote_id: str
-    mode: str = "rupees"  # rupees | grams
+    mode: str = "rupees"
     value: float = Field(gt=0)
     method: str = "upi"
 
@@ -284,517 +247,35 @@ class MockConfirm(BaseModel):
 
 class SellRequest(BaseModel):
     grams: float = Field(gt=0)
-    tenant: str = "vaultra"
 
 
 class RedeemRequest(BaseModel):
     kind: str  # coin | product
     coin_grams: Optional[float] = None
     product_id: Optional[str] = None
-    tenant: str = "vaultra"
 
 
 class SipCreate(BaseModel):
     amount: float = Field(ge=100, le=100000)
-    frequency: str = "monthly"  # daily | weekly | monthly
-    tenant: str = "vaultra"
-
-
-class KycDecision(BaseModel):
-    approve: bool
-    note: str = ""
-
-
-class CollectRequest(BaseModel):
-    otp: str = Field(pattern=r"^\d{6}$")
-
-
-class CounterSale(BaseModel):
-    phone: str
-    name: Optional[str] = None
-    grams: float = Field(gt=0, le=1000)
-    method: str = "cash"
-
-
-class ReverseRequest(BaseModel):
-    reason: str = Field(min_length=3)
-
-
-# ---------------- public ----------------
-@api.get("/")
-async def root():
-    return {"app": "Vaultra DigiGold", "razorpay_enabled": RAZORPAY_ENABLED}
-
-
-@api.get("/tenants")
-async def tenants():
-    return [{"id": t["id"], "name": t["name"]} for t in TENANTS.values()]
-
-
-@api.get("/price")
-async def get_price(tenant: str = "vaultra"):
-    return price_payload(tenant)
-
-
-@api.post("/quote")
-async def create_quote(tenant: str = "vaultra"):
-    buy, sell = tenant_rate(tenant)
-    exp = datetime.now(timezone.utc) + timedelta(seconds=QUOTE_SECONDS)
-    q = {"id": str(uuid.uuid4()), "tenant": tenant, "buy": buy, "sell": sell, "expires_at": exp.isoformat(),
-         "created_at": now_iso()}
-    await db.quotes.insert_one(dict(q))
-    return q | {"lock_seconds": QUOTE_SECONDS}
-
-
-@api.get("/products")
-async def products(category: Optional[str] = None):
-    return [p for p in PRODUCTS if not category or p["category"] == category]
-
-
-@api.get("/config")
-async def config():
-    return {"razorpay_enabled": RAZORPAY_ENABLED, "gst_rate": GST_RATE, "coins": COINS}
-
-
-# ---------------- customer auth ----------------
-@api.post("/auth/otp/request")
-async def otp_request(body: OtpRequest):
-    phone = norm_phone(body.phone)
-    if len(phone) != 10:
-        raise HTTPException(400, "Enter a valid 10-digit mobile number")
-    n = datetime.now(timezone.utc)
-    recent = await db.otp_challenges.count_documents({"phone": phone, "created_at": {"$gt": (n - timedelta(minutes=1)).isoformat()}})
-    if recent >= 5:
-        raise HTTPException(429, "Too many requests. Try again in a minute")
-    code = f"{secrets.randbelow(1_000_000):06d}"
-    cid = str(uuid.uuid4())
-    await db.otp_challenges.insert_one({"id": cid, "phone": phone, "digest": otp_digest(code), "attempts": 0,
-                                        "used": False, "created_at": n.isoformat(),
-                                        "expires_at": (n + timedelta(minutes=5)).isoformat()})
-    exists = await db.users.find_one({"phone": phone}, {"_id": 0, "id": 1})
-    return {"challenge_id": cid, "demo_otp": code, "expires_in": 300, "is_new_user": not exists}
-
-
-@api.post("/auth/otp/verify")
-async def otp_verify(body: OtpVerify):
-    c = await db.otp_challenges.find_one({"id": body.challenge_id}, {"_id": 0})
-    if not c or c["used"] or c["expires_at"] <= now_iso() or c["attempts"] >= 5:
-        raise HTTPException(401, "Invalid or expired code")
-    if not hmac.compare_digest(c["digest"], otp_digest(body.otp)):
-        await db.otp_challenges.update_one({"id": body.challenge_id}, {"$inc": {"attempts": 1}})
-        raise HTTPException(401, f"Incorrect OTP. {4 - c['attempts']} attempts left")
-    await db.otp_challenges.update_one({"id": body.challenge_id}, {"$set": {"used": True}})
-    u = await db.users.find_one({"phone": c["phone"]}, {"_id": 0})
-    if not u:
-        fname = (body.first_name or "").strip()
-        lname = (body.last_name or "").strip()
-        full_name = f"{fname} {lname}".strip() or (body.name or "").strip() or "Gold Saver"
-        u = {"id": str(uuid.uuid4()), "phone": c["phone"], "name": full_name,
-             "first_name": fname or full_name.split()[0], "last_name": lname,
-             "email": (body.email or "").strip(), "dob": (body.dob or "").strip(),
-             "gender": (body.gender or "").strip(),
-             "tenant": body.tenant if body.tenant in TENANTS else "vaultra", "kyc_status": "not_submitted",
-             "kyc": {}, "gold_grams": 0.0, "silver_grams": 0.0, "invested": 0.0,
-             "wallet_balance": 0.0, "referral_code": _gen_referral_code(),
-             "referral_balance": 0.0, "referred_by": None, "created_at": now_iso()}
-        # Check and apply referral code
-        if body.referral_code:
-            referrer = await db.users.find_one({"referral_code": body.referral_code.strip().upper()}, {"_id": 0})
-            if referrer and referrer["id"] != u["id"]:
-                u["referred_by"] = referrer["id"]
-                u["referral_balance"] = 50.0
-                await db.users.update_one({"id": referrer["id"]}, {"$inc": {"referral_balance": 50.0}})
-                await db.notifications.insert_one({
-                    "id": str(uuid.uuid4()), "user_id": referrer["id"],
-                    "title": "Referral Bonus!",
-                    "message": f"Your friend {full_name} joined! ₹50 added to your rewards.",
-                    "type": "referral", "read": False, "created_at": now_iso()
-                })
-                await db.notifications.insert_one({
-                    "id": str(uuid.uuid4()), "user_id": u["id"],
-                    "title": "Welcome Bonus!",
-                    "message": "₹50 referral bonus credited to your rewards!",
-                    "type": "referral", "read": False, "created_at": now_iso()
-                })
-        await db.users.insert_one(dict(u))
-        await publish("customer:registered", f"New customer +91 {c['phone'][:5]}xxxxx joined", u["tenant"])
-    return {"access_token": make_token(u["id"], "user"), "user": public_user(u)}
-
-
-@api.get("/me")
-async def me(user=Depends(current_user)):
-    return public_user(user)
-
-
-@api.patch("/me")
-async def update_me(body: ProfileUpdate, user=Depends(current_user)):
-    if body.name:
-        await db.users.update_one({"id": user["id"]}, {"$set": {"name": body.name.strip()}})
-    return public_user(await db.users.find_one({"id": user["id"]}, {"_id": 0}))
-
-
-@api.post("/kyc/submit")
-async def kyc_submit(body: KycSubmit, user=Depends(current_user)):
-    if user.get("kyc_status") in ("pending", "approved"):
-        raise HTTPException(400, f"KYC already {user['kyc_status']}")
-    kyc = {"full_name": body.full_name, "aadhaar": body.aadhaar, "pan": body.pan, "dob": body.dob,
-           "submitted_at": now_iso()}
-    await db.users.update_one({"id": user["id"]}, {"$set": {"kyc_status": "pending", "kyc": kyc}})
-    await publish("kyc:submitted", f"KYC submitted by {body.full_name}", user["tenant"])
-    return public_user(await db.users.find_one({"id": user["id"]}, {"_id": 0}))
-
-
-# ---------------- vault ----------------
-@api.get("/vault")
-async def vault(tenant: str = "vaultra", user=Depends(current_user)):
-    buy, sell = tenant_rate(tenant)
-    pu = public_user(user)
-    value = r2(pu["gold_grams"] * sell)
-    pnl = r2(value - pu["invested"])
-    pnl_pct = r2(pnl / pu["invested"] * 100) if pu["invested"] > 0 else 0
-    pickups = await db.pickups.find({"user_id": user["id"], "status": "pending"}, {"_id": 0}).sort("created_at", -1).to_list(20)
-    return {"user": pu, "buy_rate": buy, "sell_rate": sell, "current_value": value, "unrealized_pnl": pnl,
-            "unrealized_pct": pnl_pct, "pending_pickups": pickups}
-
-
-@api.get("/transactions")
-async def my_transactions(type: Optional[str] = None, user=Depends(current_user)):
-    q = {"user_id": user["id"]}
-    if type and type != "all":
-        q["type"] = {"$in": ["buy", "counter_sale"]} if type == "buy" else {"$in": ["gift_sent", "gift_received"]} if type == "gift" else type
-    return await db.transactions.find(q, {"_id": 0}).sort("created_at", -1).to_list(200)
-
-
-# ---------------- buy / payments ----------------
-async def finalize_order(order: dict, method: str, payment_id: str = ""):
-    """Idempotent: only one caller can flip status created -> paid."""
-    res = await db.orders.find_one_and_update({"id": order["id"], "status": "created"},
-                                              {"$set": {"status": "paid", "payment_id": payment_id, "method": method,
-                                                        "paid_at": now_iso()}})
-    if not res:
-        return await db.transactions.find_one({"order_id": order["id"]}, {"_id": 0})
-    user = await db.users.find_one({"id": order["user_id"]}, {"_id": 0})
-    await credit_gold(user["id"], order["grams"], order["amount"])
-    t = await record_txn(user, order.get("txn_type", "buy"), order["grams"], order["rate"], order["amount"],
-                         order["gst"], order["total"], order["tenant"], method,
-                         extra={"order_id": order["id"], "payment_id": payment_id})
-    await publish("vault:buy", f"{user.get('name')} bought {order['grams']:.4f}g (₹{order['total']:,.2f})", order["tenant"])
-    return t
-
-
-@api.post("/orders/buy")
-async def buy(body: BuyRequest, request: Request, user=Depends(current_user)):
-    q = await db.quotes.find_one({"id": body.quote_id}, {"_id": 0})
-    if not q:
-        raise HTTPException(400, "Price quote not found")
-    if q["expires_at"] <= now_iso():
-        raise HTTPException(409, "Price lock expired. Refresh the rate")
-    rate = q["buy"]
-    if body.mode == "grams":
-        grams = r4(body.value)
-        amount = r2(grams * rate)
-    else:
-        amount = r2(body.value)
-        grams = r4(amount / rate)
-    if amount < 10:
-        raise HTTPException(400, "Minimum purchase is ₹10")
-    if amount > 200000:
-        raise HTTPException(400, "Maximum single purchase is ₹2,00,000")
-    gst = r2(amount * GST_RATE)
-    total = r2(amount + gst)
-    order = {"id": str(uuid.uuid4()), "user_id": user["id"], "tenant": q["tenant"], "grams": grams, "rate": rate,
-             "amount": amount, "gst": gst, "total": total, "status": "created", "txn_type": "buy",
-             "provider": "razorpay" if RAZORPAY_ENABLED else "mock", "created_at": now_iso()}
-    if RAZORPAY_ENABLED:
-        async with httpx.AsyncClient(timeout=15) as c:
-            r = await c.post("https://api.razorpay.com/v1/orders", auth=(RZP_KEY_ID, RZP_KEY_SECRET),
-                             json={"amount": int(round(total * 100)), "currency": "INR", "receipt": order["id"][:32]})
-        if r.status_code >= 400:
-            raise HTTPException(502, "Payment gateway order creation failed")
-        order["razorpay_order_id"] = r.json()["id"]
-        host = request.headers.get("x-forwarded-host") or request.headers.get("host")
-        order["checkout_url"] = f"https://{host}/api/payments/checkout/{order['id']}"
-    await db.orders.insert_one(dict(order))
-    order.pop("_id", None)
-    return order
-
-
-@api.post("/orders/{order_id}/mock-confirm")
-async def mock_confirm(order_id: str, body: MockConfirm, user=Depends(current_user)):
-    o = await db.orders.find_one({"id": order_id, "user_id": user["id"]}, {"_id": 0})
-    if not o:
-        raise HTTPException(404, "Order not found")
-    if o["provider"] != "mock":
-        raise HTTPException(400, "Order must be paid via Razorpay")
-    if not body.success:
-        await db.orders.update_one({"id": order_id, "status": "created"}, {"$set": {"status": "failed"}})
-        raise HTTPException(402, "Payment declined")
-    t = await finalize_order(o, body.method, "pay_mock_" + uuid.uuid4().hex[:14])
-    return {"status": "paid", "transaction": t}
-
-
-@api.get("/orders/{order_id}")
-async def order_status(order_id: str, user=Depends(current_user)):
-    o = await db.orders.find_one({"id": order_id, "user_id": user["id"]}, {"_id": 0})
-    if not o:
-        raise HTTPException(404, "Order not found")
-    t = await db.transactions.find_one({"order_id": order_id}, {"_id": 0})
-    return {"order": o, "transaction": t}
-
-
-@api.get("/payments/checkout/{order_id}", response_class=HTMLResponse)
-async def checkout_page(order_id: str, request: Request):
-    o = await db.orders.find_one({"id": order_id}, {"_id": 0})
-    if not o or not o.get("razorpay_order_id"):
-        raise HTTPException(404, "Order not found")
-    host = request.headers.get("x-forwarded-host") or request.headers.get("host")
-    cb = f"https://{host}/api/payments/callback"
-    html = f'''<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="background:#fff;font-family:sans-serif"><script src="https://checkout.razorpay.com/v1/checkout.js"></script>
-<script>new Razorpay({{key:{RZP_KEY_ID!r},amount:{int(round(o["total"]*100))},currency:"INR",name:"Vaultra DigiGold",
-description:"24K Gold {o["grams"]:.4f}g",order_id:{o["razorpay_order_id"]!r},callback_url:{cb!r},redirect:true,
-theme:{{color:"#D4AF37"}}}}).open();</script></body></html>'''
-    return HTMLResponse(html)
-
-
-@api.post("/payments/callback")
-async def payment_callback(request: Request):
-    form = await request.form()
-    pid, roid, sig = str(form.get("razorpay_payment_id", "")), str(form.get("razorpay_order_id", "")), str(form.get("razorpay_signature", ""))
-    o = await db.orders.find_one({"razorpay_order_id": roid}, {"_id": 0}) if roid else None
-    status = "failed"
-    if o and pid and sig:
-        expected = hmac.new(RZP_KEY_SECRET.encode(), f"{o['razorpay_order_id']}|{pid}".encode(), hashlib.sha256).hexdigest()
-        if hmac.compare_digest(expected, sig):
-            await finalize_order(o, "razorpay", pid)
-            status = "success"
-    return RedirectResponse(f"/api/payments/result?{urlencode({'status': status, 'order_id': o['id'] if o else ''})}", 303)
-
-
-@api.get("/payments/result", response_class=HTMLResponse)
-async def payment_result(status: str = "failed"):
-    ok = status == "success"
-    return HTMLResponse(f'<html><meta name="viewport" content="width=device-width"><body style="font-family:sans-serif;text-align:center;padding:40px"><h2 style="color:{"#16A34A" if ok else "#DC2626"}">{"Payment successful" if ok else "Payment failed"}</h2></body></html>')
-
-
-# ---------------- sell / redeem / sip ----------------
-@api.post("/sell")
-async def sell(body: SellRequest, user=Depends(current_user)):
-    if user.get("kyc_status") != "approved":
-        raise HTTPException(403, "Complete KYC verification to sell gold")
-    grams = r4(body.grams)
-    _, rate = tenant_rate(body.tenant)
-    await debit_gold(user, grams)
-    amount = r2(grams * rate)
-    t = await record_txn(user, "sell", grams, rate, amount, 0, amount, body.tenant, "bank_transfer", status="processing",
-                         note="Credit to linked bank account in T+1")
-    await publish("vault:sell", f"{user.get('name')} sold {grams:.4f}g (₹{amount:,.2f})", body.tenant)
-    return t
-
-
-@api.post("/redeem")
-async def redeem(body: RedeemRequest, user=Depends(current_user)):
-    if user.get("kyc_status") != "approved":
-        raise HTTPException(403, "Complete KYC verification to redeem gold")
-    making = 0
-    if body.kind == "coin":
-        if body.coin_grams not in COINS:
-            raise HTTPException(400, "Invalid coin denomination")
-        grams, item = float(body.coin_grams), f"{body.coin_grams:g}g 24K Gold Coin"
-        making = 250 * len(str(int(body.coin_grams)))
-    else:
-        p = next((x for x in PRODUCTS if x["id"] == body.product_id), None)
-        if not p:
-            raise HTTPException(404, "Product not found")
-        grams, item, making = p["grams"], p["name"], p["making_charges"]
-    buy_rate, _ = tenant_rate(body.tenant)
-    await debit_gold(user, grams)
-    amount = r2(grams * buy_rate)
-    otp = f"{secrets.randbelow(1_000_000):06d}"
-    t = await record_txn(user, "redemption", grams, buy_rate, amount, 0, making, body.tenant, "vault_gold",
-                         status="processing", note=f"{item} · In-store pickup", extra={"item": item, "making_charges": making})
-    pickup = {"id": str(uuid.uuid4()), "user_id": user["id"], "name": user.get("name"), "phone": user["phone"],
-              "tenant": body.tenant, "item": item, "grams": grams, "making_charges": making, "otp": otp,
-              "attempts": 0, "locked": False, "status": "pending", "txn_id": t["id"], "created_at": now_iso()}
-    await db.pickups.insert_one(dict(pickup))
-    pickup.pop("_id", None)
-    await publish("pickup:created", f"Pickup booked: {item} for {user.get('name')}", body.tenant)
-    return {"transaction": t, "pickup": pickup}
-
-
-@api.get("/sips")
-async def list_sips(user=Depends(current_user)):
-    return await db.sips.find({"user_id": user["id"], "status": {"$ne": "cancelled"}}, {"_id": 0}).sort("created_at", -1).to_list(50)
-
-
-def next_run(freq: str):
-    d = {"daily": 1, "weekly": 7, "monthly": 30}.get(freq, 30)
-    return (datetime.now(timezone.utc) + timedelta(days=d)).isoformat()
-
-
-@api.post("/sips")
-async def create_sip(body: SipCreate, user=Depends(current_user)):
-    if body.frequency not in ("daily", "weekly", "monthly"):
-        raise HTTPException(400, "Invalid frequency")
-    s = {"id": str(uuid.uuid4()), "user_id": user["id"], "amount": r2(body.amount), "frequency": body.frequency,
-         "tenant": body.tenant, "status": "active", "installments": 0, "grams_accumulated": 0.0,
-         "next_run": next_run(body.frequency), "mandate": "UPI AutoPay", "created_at": now_iso()}
-    await db.sips.insert_one(dict(s))
-    s.pop("_id", None)
-    await publish("sip:created", f"{user.get('name')} started ₹{body.amount:,.0f} {body.frequency} SIP", body.tenant)
-    return s
-
-
-@api.post("/sips/{sip_id}/toggle")
-async def toggle_sip(sip_id: str, user=Depends(current_user)):
-    s = await db.sips.find_one({"id": sip_id, "user_id": user["id"]}, {"_id": 0})
-    if not s:
-        raise HTTPException(404, "SIP not found")
-    ns = "paused" if s["status"] == "active" else "active"
-    await db.sips.update_one({"id": sip_id}, {"$set": {"status": ns}})
-    return s | {"status": ns}
-
-
-@api.delete("/sips/{sip_id}")
-async def cancel_sip(sip_id: str, user=Depends(current_user)):
-    r = await db.sips.update_one({"id": sip_id, "user_id": user["id"]}, {"$set": {"status": "cancelled"}})
-    if not r.matched_count:
-        raise HTTPException(404, "SIP not found")
-    return {"ok": True}
-
-
-@api.post("/sips/{sip_id}/run")
-async def run_sip(sip_id: str, user=Depends(current_user)):
-    """Simulates the UPI AutoPay mandate debit for the next installment."""
-    s = await db.sips.find_one({"id": sip_id, "user_id": user["id"], "status": "active"}, {"_id": 0})
-    if not s:
-        raise HTTPException(404, "Active SIP not found")
-    rate, _ = tenant_rate(s["tenant"])
-    amount = s["amount"]
-    gst = r2(amount * GST_RATE)
-    grams = r4(amount / rate)
-    await credit_gold(user["id"], grams, amount)
-    t = await record_txn(user, "sip", grams, rate, amount, gst, r2(amount + gst), s["tenant"], "upi_autopay",
-                         note=f"{s['frequency'].title()} SIP installment", extra={"sip_id": sip_id})
-    await db.sips.update_one({"id": sip_id}, {"$inc": {"installments": 1, "grams_accumulated": grams},
-                                              "$set": {"next_run": next_run(s["frequency"])}})
-    await publish("sip:debit", f"SIP debit ₹{amount + gst:,.2f} for {user.get('name')}", s["tenant"])
-    return t
-
-
-# ---------------- gift gold ----------------
-GIFT_THEMES = ("diwali", "birthday", "wedding", "thank_you", "congrats")
+    frequency: str = "monthly"
 
 
 class GiftCreate(BaseModel):
     phone: str
     recipient_name: Optional[str] = None
-    mode: str = "grams"  # grams | rupees
+    mode: str = "grams"
     value: float = Field(gt=0)
     theme: str = "diwali"
     message: str = Field(default="", max_length=240)
-    tenant: str = "vaultra"
 
 
-@api.post("/gifts")
-async def send_gift(body: GiftCreate, user=Depends(current_user)):
-    phone = norm_phone(body.phone)
-    if len(phone) != 10:
-        raise HTTPException(400, "Enter a valid 10-digit mobile number")
-    if phone == user["phone"]:
-        raise HTTPException(400, "You can't gift gold to yourself")
-    if body.theme not in GIFT_THEMES:
-        raise HTTPException(400, "Invalid greeting card")
-    rate, _ = tenant_rate(body.tenant)
-    g = r4(body.value) if body.mode == "grams" else r4(body.value / rate)
-    if g < 0.001:
-        raise HTTPException(400, "Minimum gift is 0.001g")
-    if g > 50:
-        raise HTTPException(400, "Maximum gift is 50g per transfer")
-    await debit_gold(user, g)
-    amount = r2(g * rate)
-    rec = await db.users.find_one({"phone": phone}, {"_id": 0})
-    if not rec:
-        rec = {"id": str(uuid.uuid4()), "phone": phone, "name": (body.recipient_name or "").strip() or "Gold Saver",
-               "tenant": body.tenant, "kyc_status": "not_submitted", "kyc": {}, "gold_grams": 0.0, "invested": 0.0,
-               "created_at": now_iso()}
-        await db.users.insert_one(dict(rec))
-    await credit_gold(rec["id"], g, amount)
-    gid = str(uuid.uuid4())
-    sname = user.get("name") or "A friend"
-    rname = (body.recipient_name or "").strip() or rec.get("name")
-    common = {"gift_id": gid, "theme": body.theme, "gift_message": body.message.strip()}
-    await record_txn(user, "gift_sent", g, rate, amount, 0, amount, body.tenant, "vault_gold",
-                     note=f"Gift to {rname}", extra=common | {"counterparty_phone": phone, "counterparty_name": rname})
-    await record_txn(rec, "gift_received", g, rate, amount, 0, amount, body.tenant, "vault_gold",
-                     note=f"Gift from {sname}", extra=common | {"counterparty_phone": user["phone"], "counterparty_name": sname})
-    gift = {"id": gid, "sender_id": user["id"], "sender_name": sname, "sender_phone": user["phone"],
-            "recipient_id": rec["id"], "recipient_name": rname, "recipient_phone": phone, "grams": g, "rate": rate,
-            "amount": amount, "theme": body.theme, "message": body.message.strip(), "tenant": body.tenant,
-            "seen": False, "created_at": now_iso()}
-    await db.gifts.insert_one(dict(gift))
-    await publish("gift:sent", f"{sname} gifted {g:.4f}g to {rname}", body.tenant)
-    return gift
+class AlertCreateModel(BaseModel):
+    target: float = Field(gt=0)
+    metal: str = "gold"
+    alert_type: str = "alert"  # alert | book
+    buy_amount: Optional[float] = None
 
 
-@api.get("/gifts")
-async def list_gifts(user=Depends(current_user)):
-    sent = await db.gifts.find({"sender_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(100)
-    received = await db.gifts.find({"recipient_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(100)
-    return {"sent": sent, "received": received, "unseen": sum(1 for g in received if not g.get("seen"))}
-
-
-@api.post("/gifts/mark-seen")
-async def gifts_seen(user=Depends(current_user)):
-    await db.gifts.update_many({"recipient_id": user["id"], "seen": False}, {"$set": {"seen": True}})
-    return {"ok": True}
-
-
-# ---------------- price alerts ----------------
-class AlertCreate(BaseModel):
-    target: float = Field(gt=1000, lt=100000)
-    tenant: str = "vaultra"
-
-
-@api.get("/alerts")
-async def list_alerts(user=Depends(current_user)):
-    return await db.alerts.find({"user_id": user["id"], "status": {"$ne": "deleted"}}, {"_id": 0}).sort("created_at", -1).to_list(50)
-
-
-@api.post("/alerts")
-async def create_alert(body: AlertCreate, user=Depends(current_user)):
-    if body.tenant not in TENANTS:
-        raise HTTPException(400, "Invalid store")
-    if await db.alerts.count_documents({"user_id": user["id"], "status": "active"}) >= 5:
-        raise HTTPException(400, "You can have up to 5 active alerts")
-    a = {"id": str(uuid.uuid4()), "user_id": user["id"], "target": r2(body.target), "tenant": body.tenant,
-         "status": "active", "created_at": now_iso(), "triggered_at": None, "triggered_price": None}
-    await db.alerts.insert_one(dict(a))
-    a.pop("_id", None)
-    return a
-
-
-@api.post("/alerts/{alert_id}/trigger")
-async def trigger_alert(alert_id: str, user=Depends(current_user)):
-    """Validates against the server-side live price before marking the alert as triggered."""
-    a = await db.alerts.find_one({"id": alert_id, "user_id": user["id"]}, {"_id": 0})
-    if not a:
-        raise HTTPException(404, "Alert not found")
-    buy, _ = tenant_rate(a["tenant"])
-    if a["status"] == "active" and buy <= a["target"]:
-        await db.alerts.update_one({"id": alert_id}, {"$set": {"status": "triggered", "triggered_at": now_iso(), "triggered_price": buy}})
-    return await db.alerts.find_one({"id": alert_id}, {"_id": 0})
-
-
-@api.delete("/alerts/{alert_id}")
-async def delete_alert(alert_id: str, user=Depends(current_user)):
-    r = await db.alerts.update_one({"id": alert_id, "user_id": user["id"]}, {"$set": {"status": "deleted"}})
-    if not r.matched_count:
-        raise HTTPException(404, "Alert not found")
-    return {"ok": True}
-
-
-# ---------------- gold goals ----------------
 class GoalCreate(BaseModel):
     name: str = Field(min_length=2, max_length=40)
     occasion: str = "custom"
@@ -802,454 +283,1441 @@ class GoalCreate(BaseModel):
     months: int = Field(ge=1, le=120)
 
 
-@api.get("/goals")
-async def list_goals(user=Depends(current_user)):
-    return await db.goals.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", 1).to_list(20)
+class KycSubmit(BaseModel):
+    full_name: str = Field(min_length=2)
+    aadhaar: str = Field(min_length=12, max_length=12)
+    pan: str = Field(min_length=10, max_length=10)
+    dob: str = ""
 
 
-@api.post("/goals")
-async def create_goal(body: GoalCreate, user=Depends(current_user)):
-    if await db.goals.count_documents({"user_id": user["id"]}) >= 5:
-        raise HTTPException(400, "You can have up to 5 goals")
-    n = datetime.now(timezone.utc)
-    g = {"id": str(uuid.uuid4()), "user_id": user["id"], "name": body.name.strip(), "occasion": body.occasion,
-         "target_grams": r4(body.target_grams), "months": body.months,
-         "deadline": (n + timedelta(days=round(body.months * 30.44))).isoformat(),
-         "start_grams": r4(user.get("gold_grams", 0)), "created_at": n.isoformat()}
-    await db.goals.insert_one(dict(g))
-    g.pop("_id", None)
-    return g
-
-
-@api.delete("/goals/{goal_id}")
-async def delete_goal(goal_id: str, user=Depends(current_user)):
-    r = await db.goals.delete_one({"id": goal_id, "user_id": user["id"]})
-    if not r.deleted_count:
-        raise HTTPException(404, "Goal not found")
-    return {"ok": True}
-
-
-# ---------------- staff / admin ----------------
-def scope(staff: dict, tenant: Optional[str]):
-    if staff["tenant"] != "all":
-        return staff["tenant"]
-    return tenant if tenant and tenant != "all" else None
-
-
-def tq(t: Optional[str], key="tenant"):
-    return {key: t} if t else {}
-
-
-@api.post("/admin/login")
-async def staff_login(body: StaffLogin):
-    sid = body.staff_id.strip().upper()
-    s = await db.staff.find_one({"staff_id": sid}, {"_id": 0})
-    n = now_iso()
-    if s and s.get("locked_until") and s["locked_until"] > n:
-        raise HTTPException(423, "Account locked for 15 minutes after 5 failed attempts")
-    ok = bool(s) and bcrypt.checkpw(body.pin.encode(), s["pin_hash"].encode())
-    if not ok:
-        if s:
-            failed = s.get("failed", 0) + 1
-            upd = {"failed": failed}
-            if failed >= 5:
-                upd = {"failed": 0, "locked_until": (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat()}
-            await db.staff.update_one({"staff_id": sid}, {"$set": upd})
-        raise HTTPException(401, "Invalid Staff ID or PIN")
-    await db.staff.update_one({"staff_id": sid}, {"$set": {"failed": 0, "locked_until": None, "last_login": n}})
-    s.pop("pin_hash", None)
-    return {"access_token": make_token(sid, "staff", days=1), "staff": s}
-
-
-@api.get("/admin/me")
-async def staff_me(staff=Depends(current_staff)):
-    return staff
-
-
-@api.get("/admin/stats")
-async def admin_stats(tenant: Optional[str] = None, staff=Depends(current_staff)):
-    t = scope(staff, tenant)
-    agg = await db.users.aggregate([{"$match": tq(t)}, {"$group": {"_id": None, "g": {"$sum": "$gold_grams"}, "n": {"$sum": 1}}}]).to_list(1)
-    today = datetime.now(timezone.utc).date().isoformat()
-    sales = await db.transactions.aggregate([{"$match": {"type": "counter_sale", "status": "completed", "created_at": {"$gte": today}} | tq(t)},
-                                             {"$group": {"_id": None, "s": {"$sum": "$total"}, "n": {"$sum": 1}}}]).to_list(1)
-    return {
-        "tenant": t or "all",
-        "vault_custody_grams": r4(agg[0]["g"]) if agg else 0, "customers": agg[0]["n"] if agg else 0,
-        "counter_sales_today": r2(sales[0]["s"]) if sales else 0, "counter_sales_count": sales[0]["n"] if sales else 0,
-        "pending_pickups": await db.pickups.count_documents({"status": "pending"} | tq(t)),
-        "pending_kyc": await db.users.count_documents({"kyc_status": "pending"} | tq(t)),
-        "price": price_payload(t or "vaultra"),
-    }
-
-
-@api.get("/admin/events")
-async def admin_events(tenant: Optional[str] = None, staff=Depends(current_staff)):
-    t = scope(staff, tenant)
-    q = {"tenant": {"$in": [t, "all"]}} if t else {}
-    return await db.events.find(q, {"_id": 0}).sort("created_at", -1).to_list(30)
-
-
-@api.get("/admin/customers")
-async def admin_customers(tenant: Optional[str] = None, search: str = "", staff=Depends(current_staff)):
-    q = tq(scope(staff, tenant))
-    if search:
-        q["$or"] = [{"phone": {"$regex": search}}, {"name": {"$regex": search, "$options": "i"}}]
-    rows = await db.users.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
-    return [public_user(u) for u in rows]
-
-
-@api.get("/admin/customers/lookup")
-async def lookup(phone: str, staff=Depends(current_staff)):
-    u = await db.users.find_one({"phone": norm_phone(phone)}, {"_id": 0})
-    return {"found": bool(u), "customer": public_user(u) if u else None}
-
-
-@api.get("/admin/kyc-queue")
-async def kyc_queue(tenant: Optional[str] = None, staff=Depends(current_staff)):
-    rows = await db.users.find({"kyc_status": "pending"} | tq(scope(staff, tenant)), {"_id": 0}).sort("kyc.submitted_at", 1).to_list(200)
-    return [public_user(u) for u in rows]
-
-
-@api.get("/admin/kyc-reviewed")
-async def kyc_reviewed(tenant: Optional[str] = None, staff=Depends(current_staff)):
-    rows = await db.users.find({"kyc_status": {"$in": ["approved", "rejected"]}, "kyc.reviewed_by": {"$exists": True}} | tq(scope(staff, tenant)),
-                               {"_id": 0}).sort("kyc.reviewed_at", -1).to_list(30)
-    return [public_user(u) for u in rows]
-
-
-@api.post("/admin/kyc/{user_id}/decision")
-async def kyc_decide(user_id: str, body: KycDecision, staff=Depends(current_staff)):
-    u = await db.users.find_one({"id": user_id, "kyc_status": "pending"}, {"_id": 0})
-    if not u:
-        raise HTTPException(404, "No pending KYC for this customer")
-    if staff["tenant"] != "all" and u["tenant"] != staff["tenant"]:
-        raise HTTPException(403, "Customer belongs to another store")
-    st = "approved" if body.approve else "rejected"
-    await db.users.update_one({"id": user_id}, {"$set": {"kyc_status": st, "kyc.reviewed_by": staff["staff_id"],
-                                                         "kyc.reviewer_name": staff["name"], "kyc.reviewed_at": now_iso(),
-                                                         "kyc.note": body.note}})
-    await publish(f"kyc:{st}", f"KYC {st} for {u.get('name')} by {staff['staff_id']}", u["tenant"])
-    return public_user(await db.users.find_one({"id": user_id}, {"_id": 0}))
-
-
-@api.get("/admin/pickups")
-async def admin_pickups(tenant: Optional[str] = None, status: str = "pending", staff=Depends(current_staff)):
-    t = scope(staff, tenant)
-    q = {"status": status} | tq(t)
-    if status == "collected":
-        q["collected_at"] = {"$gte": datetime.now(timezone.utc).date().isoformat()}
-    rows = await db.pickups.find(q, {"_id": 0, "otp": 0}).sort("created_at", 1 if status == "pending" else -1).to_list(200)
-    return rows
-
-
-@api.post("/admin/pickups/{pickup_id}/collect")
-async def collect(pickup_id: str, body: CollectRequest, staff=Depends(current_staff)):
-    p = await db.pickups.find_one({"id": pickup_id, "status": "pending"}, {"_id": 0})
-    if not p:
-        raise HTTPException(404, "Pending pickup not found")
-    if p.get("locked"):
-        raise HTTPException(423, "Pickup locked after 5 failed OTP attempts. Escalate to store manager")
-    if not hmac.compare_digest(p["otp"], body.otp):
-        attempts = p.get("attempts", 0) + 1
-        locked = attempts >= 5
-        await db.pickups.update_one({"id": pickup_id}, {"$set": {"attempts": attempts, "locked": locked}})
-        if locked:
-            await publish("pickup:locked", f"Pickup locked for {p['name']} after 5 failed OTPs", p["tenant"])
-            raise HTTPException(423, "Pickup locked after 5 failed OTP attempts")
-        raise HTTPException(400, f"Incorrect OTP. {5 - attempts} attempts left")
-    n = now_iso()
-    await db.pickups.update_one({"id": pickup_id}, {"$set": {"status": "collected", "collected_at": n,
-                                                             "collected_by": staff["staff_id"], "collected_by_name": staff["name"]}})
-    await db.transactions.update_one({"id": p["txn_id"]}, {"$set": {"status": "completed"}})
-    await publish("pickup:collected", f"{p['item']} handed over to {p['name']} by {staff['staff_id']}", p["tenant"])
-    return {"ok": True, "collected_at": n}
-
-
-@api.post("/admin/counter-sale")
-async def counter_sale(body: CounterSale, staff=Depends(current_staff)):
-    if body.method not in ("cash", "card", "upi"):
-        raise HTTPException(400, "Invalid payment method")
-    phone = norm_phone(body.phone)
-    if len(phone) != 10:
-        raise HTTPException(400, "Invalid phone number")
-    tenant = staff["tenant"] if staff["tenant"] != "all" else "vaultra"
-    u = await db.users.find_one({"phone": phone}, {"_id": 0})
-    if not u:
-        u = {"id": str(uuid.uuid4()), "phone": phone, "name": (body.name or "").strip() or "Walk-in Customer", "tenant": tenant,
-             "kyc_status": "not_submitted", "kyc": {}, "gold_grams": 0.0, "invested": 0.0, "created_at": now_iso()}
-        await db.users.insert_one(dict(u))
-    rate, _ = tenant_rate(tenant)
-    grams = r4(body.grams)
-    amount = r2(grams * rate)
-    gst = r2(amount * GST_RATE)
-    await credit_gold(u["id"], grams, amount)
-    t = await record_txn(u, "counter_sale", grams, rate, amount, gst, r2(amount + gst), tenant, body.method,
-                         staff_id=staff["staff_id"], note=f"Counter sale by {staff['name']}")
-    await publish("pos:sale", f"Counter sale {grams:.3f}g · ₹{t['total']:,.2f} ({body.method.upper()})", tenant)
-    return t
-
-
-@api.get("/admin/ledger")
-async def admin_ledger(tenant: Optional[str] = None, type: Optional[str] = None, staff=Depends(current_staff)):
-    q = tq(scope(staff, tenant))
-    if type and type != "all":
-        q["type"] = type
-    return await db.transactions.find(q, {"_id": 0}).sort("created_at", -1).to_list(200)
-
-
-@api.post("/admin/ledger/{txn_id}/reverse")
-async def reverse(txn_id: str, body: ReverseRequest, staff=Depends(current_staff)):
-    t = await db.transactions.find_one({"id": txn_id}, {"_id": 0})
-    if not t:
-        raise HTTPException(404, "Transaction not found")
-    if t["type"] in ("reversal", "gift_sent", "gift_received") or t["status"] in ("reversed", "failed"):
-        raise HTTPException(400, "Transaction cannot be reversed")
-    if staff["tenant"] != "all" and t["tenant"] != staff["tenant"]:
-        raise HTTPException(403, "Transaction belongs to another store")
-    u = await db.users.find_one({"id": t["user_id"]}, {"_id": 0})
-    if t["type"] in ("buy", "sip", "counter_sale"):
-        await debit_gold(u, t["grams"])
-    elif t["type"] in ("sell", "redemption"):
-        await credit_gold(u["id"], t["grams"], t["amount"])
-        if t["type"] == "redemption":
-            await db.pickups.update_one({"txn_id": txn_id, "status": "pending"}, {"$set": {"status": "cancelled"}})
-    mirrored = [{"account": e["account"], "debit": e["credit"], "credit": e["debit"]} for e in t.get("entries", [])]
-    rev = await record_txn(u, "reversal", t["grams"], t["rate"], t["amount"], t.get("gst", 0), t["total"], t["tenant"],
-                           t["method"], staff_id=staff["staff_id"], note=body.reason, extra={"reversed_of": txn_id, "original_type": t["type"]})
-    await db.transactions.update_one({"id": rev["id"]}, {"$set": {"entries": mirrored}})
-    await db.transactions.update_one({"id": txn_id}, {"$set": {"status": "reversed", "reversal_id": rev["id"],
-                                                               "reversal_reason": body.reason, "reversed_by": staff["staff_id"]}})
-    await publish("ledger:reversal", f"{t['invoice_no']} reversed by {staff['staff_id']}: {body.reason}", t["tenant"])
-    return rev | {"entries": mirrored}
-
-
-# ---------------- wallet system ----------------
 class WalletDeposit(BaseModel):
     amount: float = Field(gt=0, le=500000)
+
 
 class WalletWithdraw(BaseModel):
     amount: float = Field(gt=0)
 
 
-@api.get("/wallet")
-async def wallet_info(user=Depends(current_user)):
-    balance = r2(user.get("wallet_balance", 0))
-    referral = r2(user.get("referral_balance", 0))
-    txns = await db.wallet_txns.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(100)
-    return {"balance": balance, "referral_balance": referral, "transactions": txns}
+class JewellerOnboard(BaseModel):
+    business_name: str = Field(min_length=2)
+    owner_name: str = Field(min_length=2)
+    phone: str = Field(min_length=10, max_length=15)
+    email: str
+    password: str = Field(min_length=4)
+    pan: str = ""
+    aadhaar: str = ""
+    address: str = ""
+    city: str = ""
+    state: str = ""
+    pincode: str = ""
+    logo_url: str = ""
+    primary_color: str = "#D4AF37"
+    secondary_color: str = "#1A1A2E"
+    domain: str = ""
+    min_redemption_grams: float = 1.0
 
 
-@api.post("/wallet/deposit")
-async def wallet_deposit(body: WalletDeposit, user=Depends(current_user)):
-    txn = {"id": str(uuid.uuid4()), "user_id": user["id"], "type": "deposit",
-           "amount": r2(body.amount), "description": "Wallet deposit via UPI",
-           "created_at": now_iso()}
-    await db.wallet_txns.insert_one(dict(txn))
-    await db.users.update_one({"id": user["id"]}, {"$inc": {"wallet_balance": body.amount}})
-    u = await db.users.find_one({"id": user["id"]}, {"_id": 0})
-    return {"ok": True, "balance": r2(u.get("wallet_balance", 0)), "transaction": txn}
+class JewellerLogin(BaseModel):
+    email: str
+    password: str
 
 
-@api.post("/wallet/withdraw")
-async def wallet_withdraw(body: WalletWithdraw, user=Depends(current_user)):
-    bal = user.get("wallet_balance", 0)
-    if body.amount > bal:
-        raise HTTPException(400, f"Insufficient wallet balance. Available: ₹{r2(bal)}")
-    txn = {"id": str(uuid.uuid4()), "user_id": user["id"], "type": "withdraw",
-           "amount": r2(body.amount), "description": "Wallet withdrawal to bank",
-           "created_at": now_iso()}
-    await db.wallet_txns.insert_one(dict(txn))
-    await db.users.update_one({"id": user["id"]}, {"$inc": {"wallet_balance": -body.amount}})
-    u = await db.users.find_one({"id": user["id"]}, {"_id": 0})
-    return {"ok": True, "balance": r2(u.get("wallet_balance", 0)), "transaction": txn}
+class MasterAdminLogin(BaseModel):
+    username: str
+    password: str
 
 
-# ---------------- silver quote & buy ----------------
-@api.post("/quote/silver")
-async def create_silver_quote(tenant: str = "vaultra"):
-    buy, sell = silver_rate()
-    exp = datetime.now(timezone.utc) + timedelta(seconds=QUOTE_SECONDS)
-    q = {"id": str(uuid.uuid4()), "tenant": tenant, "buy": buy, "sell": sell, "metal": "silver",
-         "expires_at": exp.isoformat(), "created_at": now_iso()}
-    await db.quotes.insert_one(dict(q))
-    return q | {"lock_seconds": QUOTE_SECONDS}
+class RedemptionApprove(BaseModel):
+    wallet_id: str
+    grams: float = Field(gt=0)
+    item: str = "Physical Gold"
+    note: str = ""
 
 
-@api.post("/orders/buy-silver")
-async def buy_silver(body: BuyRequest, user=Depends(current_user)):
-    q = await db.quotes.find_one({"id": body.quote_id}, {"_id": 0})
-    if not q or q["expires_at"] <= now_iso():
-        raise HTTPException(409, "Quote expired. Please refresh price")
-    rate = q["buy"]
-    if body.mode == "rupees":
-        g = r4(body.value / rate)
-        amt = r2(body.value)
-    else:
-        g = r4(body.value)
-        amt = r2(body.value * rate)
-    gst = r2(amt * GST_RATE)
-    total = r2(amt + gst)
-    # Credit silver
-    await db.users.update_one({"id": user["id"]}, {"$inc": {"silver_grams": g}})
-    txn = {"id": str(uuid.uuid4()), "invoice_no": invoice_no(), "user_id": user["id"],
-           "phone": user["phone"], "name": user.get("name", ""), "tenant": q.get("tenant", "vaultra"),
-           "type": "buy_silver", "grams": r4(g), "rate": rate, "amount": amt, "gst": gst,
-           "total": total, "method": body.method, "status": "completed", "metal": "silver",
-           "created_at": now_iso()}
-    await db.transactions.insert_one(dict(txn))
-    txn.pop("_id", None)
-    u = await db.users.find_one({"id": user["id"]}, {"_id": 0})
-    return {"id": txn["id"], "status": "completed", "grams": g, "total": total, "provider": "mock", "user": public_user(u)}
+class ProductCreate(BaseModel):
+    name: str = Field(min_length=2)
+    category: str = ""
+    grams: float = Field(gt=0)
+    making_charges: float = 0
+    image_url: str = ""
+    tag: str = ""
+    description: str = ""
 
 
-# ---------------- book alert (auto-buy) ----------------
-class BookAlertCreate(BaseModel):
-    target: float = Field(gt=0)
-    metal: str = "gold"  # gold | silver
-    buy_amount: float = Field(gt=0)  # rupees to auto-buy
-    tenant: str = "vaultra"
+class PoolThresholdUpdate(BaseModel):
+    threshold: float = Field(gt=0)
 
 
-@api.post("/alerts/book")
-async def create_book_alert(body: BookAlertCreate, user=Depends(current_user)):
-    a = {"id": str(uuid.uuid4()), "user_id": user["id"], "target": r2(body.target),
-         "metal": body.metal, "buy_amount": r2(body.buy_amount), "alert_type": "book",
-         "tenant": body.tenant, "status": "active", "created_at": now_iso()}
-    await db.alerts.insert_one(dict(a))
-    return a
+class MinRedemptionUpdate(BaseModel):
+    min_grams: float = Field(gt=0)
 
 
-# ---------------- referral system ----------------
-@api.get("/referral")
-async def referral_info(user=Depends(current_user)):
-    code = user.get("referral_code", "")
-    if not code:
-        code = _gen_referral_code()
-        await db.users.update_one({"id": user["id"]}, {"$set": {"referral_code": code}})
-    referral_count = await db.users.count_documents({"referred_by": user["id"]})
-    referrals = await db.users.find({"referred_by": user["id"]}, {"_id": 0, "name": 1, "created_at": 1}).sort("created_at", -1).to_list(50)
+# ─── Pool Logic ───────────────────────────────────────────────────────────────
+async def add_to_pool(db: AsyncSession, txn: Transaction, customer: Customer):
+    """Add grams to the active pool and check threshold."""
+    result = await db.execute(
+        select(PoolAccumulator).where(PoolAccumulator.status == "accumulating").order_by(desc(PoolAccumulator.created_at))
+    )
+    pool = result.scalar_one_or_none()
+    if not pool:
+        pool = PoolAccumulator(id=str(uuid.uuid4()), total_grams=0.0, threshold_grams=POOL_THRESHOLD)
+        db.add(pool)
+        await db.flush()
+
+    contrib = PoolContribution(
+        id=str(uuid.uuid4()), pool_id=pool.id, transaction_id=txn.id,
+        customer_id=customer.id, jeweller_id=txn.jeweller_id, grams=txn.grams
+    )
+    db.add(contrib)
+    pool.total_grams = r4(pool.total_grams + txn.grams)
+
+    triggered = False
+    if pool.total_grams >= pool.threshold_grams:
+        pool.status = "triggered"
+        pool.triggered_at = now_utc()
+        triggered = True
+        # Generate bifurcation invoice
+        contribs = await db.execute(
+            select(PoolContribution).where(PoolContribution.pool_id == pool.id)
+        )
+        details = []
+        for c in contribs.scalars().all():
+            j_result = await db.execute(select(Jeweller.business_name).where(Jeweller.id == c.jeweller_id))
+            j_name = j_result.scalar_one_or_none() or "Unknown"
+            cust_result = await db.execute(
+                select(Customer.first_name, Customer.last_name).where(Customer.id == c.customer_id)
+            )
+            cust_row = cust_result.one_or_none()
+            cust_name = f"{cust_row[0]} {cust_row[1]}".strip() if cust_row else "Customer"
+            details.append({
+                "jeweller_id": c.jeweller_id, "jeweller_name": j_name,
+                "customer_id": c.customer_id, "customer_name": cust_name,
+                "grams": r4(c.grams)
+            })
+        invoice = BifurcationInvoice(
+            id=str(uuid.uuid4()), pool_id=pool.id,
+            total_grams=r4(pool.total_grams), details=details
+        )
+        db.add(invoice)
+        # Start a new pool
+        new_pool = PoolAccumulator(id=str(uuid.uuid4()), total_grams=0.0, threshold_grams=pool.threshold_grams)
+        db.add(new_pool)
+
+    await db.flush()
+    return pool, triggered
+
+
+# ═══════════════════ PUBLIC ROUTES ════════════════════════════════════════════
+@api.get("/")
+async def root():
+    return {"app": "Vaultra DigiGold", "version": "2.0"}
+
+
+@api.get("/price")
+async def get_price():
+    return price_payload()
+
+
+@api.get("/config")
+async def config():
+    return {"gst_rate": GST_RATE, "coins": [1, 2, 5, 10]}
+
+
+@api.get("/health")
+async def health():
+    return {"status": "ok", "db": "postgresql"}
+
+
+# ─── Jeweller Config (for white-label) ────────────────────────────────────────
+@api.get("/jeweller/{jeweller_id}/config")
+async def jeweller_config(jeweller_id: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Jeweller).where(Jeweller.id == jeweller_id, Jeweller.status == "active"))
+    j = result.scalar_one_or_none()
+    if not j:
+        raise HTTPException(404, "Jeweller not found")
     return {
-        "referral_code": code,
-        "referral_balance": r2(user.get("referral_balance", 0)),
-        "referral_count": referral_count,
-        "referrals": [{"name": r.get("name", "User"), "joined": r.get("created_at", "")} for r in referrals],
+        "id": j.id, "business_name": j.business_name,
+        "logo_url": j.logo_url, "primary_color": j.primary_color,
+        "secondary_color": j.secondary_color,
+        "min_redemption_grams": j.min_redemption_grams,
     }
 
 
-# ---------------- notifications ----------------
-@api.get("/notifications")
-async def list_notifications(user=Depends(current_user)):
-    notifs = await db.notifications.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(50)
-    unread = sum(1 for n in notifs if not n.get("read"))
-    return {"notifications": notifs, "unread_count": unread}
+@api.get("/jewellers/list")
+async def list_jewellers_public(db: AsyncSession = Depends(get_db)):
+    """Public list of active jewellers for app selection."""
+    result = await db.execute(select(Jeweller).where(Jeweller.status == "active").order_by(Jeweller.business_name))
+    return [{"id": j.id, "business_name": j.business_name, "city": j.city, "logo_url": j.logo_url} for j in result.scalars().all()]
 
 
-@api.post("/notifications/mark-read")
-async def mark_notifications_read(user=Depends(current_user)):
-    await db.notifications.update_many({"user_id": user["id"], "read": False}, {"$set": {"read": True}})
-    return {"ok": True}
+# ─── Products (Public) ────────────────────────────────────────────────────────
+@api.get("/products")
+async def list_products(jeweller_id: str = "", category: str = "", db: AsyncSession = Depends(get_db)):
+    q = select(Product).where(Product.is_active == True)
+    if jeweller_id:
+        q = q.where(Product.jeweller_id == jeweller_id)
+    if category:
+        q = q.where(Product.category == category)
+    result = await db.execute(q.order_by(Product.created_at.desc()))
+    prods = result.scalars().all()
+    buy, _ = gold_rate()
+    return [{
+        "id": p.id, "name": p.name, "category": p.category, "grams": p.grams,
+        "making_charges": p.making_charges, "image_url": p.image_url, "tag": p.tag,
+        "description": p.description, "jeweller_id": p.jeweller_id,
+        "gold_value": r2(p.grams * buy), "total_price": r2(p.grams * buy + p.making_charges),
+        "live_rate": buy,
+    } for p in prods]
 
 
 @api.get("/products/{product_id}")
-async def get_product(product_id: str):
-    p = next((x for x in PRODUCTS if x["id"] == product_id), None)
+async def get_product(product_id: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Product).where(Product.id == product_id))
+    p = result.scalar_one_or_none()
     if not p:
         raise HTTPException(404, "Product not found")
-    buy, _ = tenant_rate("vaultra")
-    gold_value = r2(p["grams"] * buy)
-    total_price = r2(gold_value + p["making_charges"])
-    return p | {
-        "gold_value": gold_value,
-        "total_price": total_price,
+    buy, _ = gold_rate()
+    return {
+        "id": p.id, "name": p.name, "category": p.category, "grams": p.grams,
+        "making_charges": p.making_charges, "image_url": p.image_url, "tag": p.tag,
+        "description": p.description, "jeweller_id": p.jeweller_id,
+        "gold_value": r2(p.grams * buy), "total_price": r2(p.grams * buy + p.making_charges),
         "live_rate": buy,
-        "description": f"Exquisite {p['name']} crafted in 24K 99.9% pure LBMA certified gold. "
-                        f"Weight: {p['grams']}g. BIS Hallmarked. Making charges: ₹{p['making_charges']:,}.",
-        "features": [
-            "24K 99.9% Pure Gold",
-            "LBMA Certified",
-            "BIS Hallmarked",
-            "BRINK'S Insured Delivery",
-            "Lifetime Buyback Guarantee",
-        ],
+        "features": ["24K 99.9% Pure Gold", "BIS Hallmarked", "LBMA Certified",
+                      "Insured Delivery", "Lifetime Buyback Guarantee"],
     }
 
 
-# ---------------- seed ----------------
-async def seed():
-    await db.users.create_index("phone", unique=True)
-    await db.users.create_index("id", unique=True)
-    await db.staff.create_index("staff_id", unique=True)
-    await db.transactions.create_index([("user_id", 1), ("created_at", -1)])
-    staff = [("STF001", "Arjun Mehta", "all", "HQ Admin", "1234"), ("STF002", "Priya Nair", "tanishq", "Store Manager", "5678"),
-             ("STF003", "Rahul Menon", "malabar", "Counter Executive", "2468")]
-    for sid, name, tenant, role, pin in staff:
-        if not await db.staff.find_one({"staff_id": sid}):
-            await db.staff.insert_one({"staff_id": sid, "name": name, "tenant": tenant, "role": role, "failed": 0,
-                                       "locked_until": None, "pin_hash": bcrypt.hashpw(pin.encode(), bcrypt.gensalt()).decode()})
-    if await db.users.find_one({"phone": "9876543210"}):
-        return
-    base = datetime.now(timezone.utc)
-    people = [("9876543210", "Aarav Sharma", "vaultra", "approved"), ("9812345670", "Diya Patel", "vaultra", "pending"),
-              ("9823456781", "Kabir Singh", "tanishq", "pending"), ("9834567892", "Meera Iyer", "tanishq", "approved"),
-              ("9845678903", "Rohan Gupta", "malabar", "pending"), ("9856789014", "Ananya Reddy", "malabar", "approved"),
-              ("9867890125", "Vihaan Joshi", "vaultra", "pending"), ("9878901236", "Isha Kapoor", "tanishq", "not_submitted")]
-    for i, (phone, name, tenant, kyc) in enumerate(people):
-        created = (base - timedelta(days=40 - i * 4)).isoformat()
-        kycd = {}
-        if kyc != "not_submitted":
-            kycd = {"full_name": name, "aadhaar": f"{random.randint(2000, 9999)}{random.randint(1000, 9999)}{random.randint(1000, 9999)}",
-                    "pan": f"{''.join(random.choice('ABCDEFGHJKLMNPQRSTUVWXYZ') for _ in range(5))}{random.randint(1000, 9999)}{random.choice('ABCFGHLPT')}",
-                    "dob": f"19{random.randint(75, 99)}-0{random.randint(1, 9)}-1{random.randint(0, 9)}",
-                    "submitted_at": (base - timedelta(hours=60 - i * 7)).isoformat()}
-            if kyc == "approved":
-                kycd |= {"reviewed_by": "STF001", "reviewer_name": "Arjun Mehta", "reviewed_at": (base - timedelta(hours=30 - i)).isoformat()}
-        u = {"id": str(uuid.uuid4()), "phone": phone, "name": name, "first_name": name.split()[0],
-             "last_name": " ".join(name.split()[1:]), "email": "", "dob": "", "gender": "",
-             "tenant": tenant, "kyc_status": kyc, "kyc": kycd,
-             "gold_grams": 0.0, "silver_grams": 0.0, "invested": 0.0,
-             "wallet_balance": 0.0, "referral_code": _gen_referral_code(),
-             "referral_balance": 0.0, "referred_by": None, "created_at": created}
-        await db.users.insert_one(dict(u))
-        for j in range(random.randint(2, 4)):
-            rate = r2(7120 + random.uniform(-60, 120))
-            amount = float(random.choice([1000, 2000, 2500, 5000, 10000]))
-            grams = r4(amount / rate)
-            typ = random.choice(["buy", "buy", "sip"])
-            await credit_gold(u["id"], grams, amount)
-            t = await record_txn(u, typ, grams, rate, amount, r2(amount * GST_RATE), r2(amount * (1 + GST_RATE)), tenant,
-                                 "upi" if typ == "buy" else "upi_autopay", note="Seeded")
-            await db.transactions.update_one({"id": t["id"]}, {"$set": {"created_at": (base - timedelta(days=30 - i * 3 - j)).isoformat()}})
-    demo = await db.users.find_one({"phone": "9876543210"}, {"_id": 0})
-    await db.sips.insert_one({"id": str(uuid.uuid4()), "user_id": demo["id"], "amount": 1000.0, "frequency": "monthly", "tenant": "vaultra",
-                              "status": "active", "installments": 3, "grams_accumulated": 0.4181, "next_run": next_run("monthly"),
-                              "mandate": "UPI AutoPay", "created_at": (base - timedelta(days=90)).isoformat()})
-    for phone, item, grams, otp in [("9876543210", "1g 24K Gold Coin", 1.0, "482913"), ("9834567892", "2g 24K Gold Coin", 2.0, "135790"),
-                                    ("9856789014", "1g 24K Gold Coin", 1.0, "246802")]:
-        u = await db.users.find_one({"phone": phone}, {"_id": 0})
-        if u["gold_grams"] < grams:
-            await credit_gold(u["id"], grams, grams * 7200)
-            u = await db.users.find_one({"phone": phone}, {"_id": 0})
-        await debit_gold(u, grams)
-        t = await record_txn(u, "redemption", grams, 7285.5, r2(grams * 7285.5), 0, 250, u["tenant"], "vault_gold", status="processing",
-                             note=f"{item} · In-store pickup", extra={"item": item, "making_charges": 250})
-        await db.pickups.insert_one({"id": str(uuid.uuid4()), "user_id": u["id"], "name": u["name"], "phone": phone, "tenant": u["tenant"],
-                                     "item": item, "grams": grams, "making_charges": 250, "otp": otp, "attempts": 0, "locked": False,
-                                     "status": "pending", "txn_id": t["id"], "created_at": now_iso()})
-    await publish("system:boot", "Vaultra ledger node connected · redis://pubsub/vaultra-events")
-    logger.info("Seeded demo data")
+# ═══════════════════ CUSTOMER AUTH ════════════════════════════════════════════
+@api.post("/auth/otp/request")
+async def otp_request(body: OtpRequest, db: AsyncSession = Depends(get_db)):
+    phone = norm_phone(body.phone)
+    if len(phone) != 10:
+        raise HTTPException(400, "Enter a valid 10-digit mobile number")
+
+    # Find default jeweller if not specified
+    jeweller_id = body.jeweller_id
+    if not jeweller_id:
+        result = await db.execute(select(Jeweller).where(Jeweller.status == "active").order_by(Jeweller.created_at).limit(1))
+        j = result.scalar_one_or_none()
+        if j:
+            jeweller_id = j.id
+        else:
+            raise HTTPException(400, "No active jeweller found")
+
+    # Rate limiting
+    cutoff = now_utc() - timedelta(minutes=1)
+    count_result = await db.execute(
+        select(func.count()).select_from(OtpChallenge).where(
+            OtpChallenge.phone == phone, OtpChallenge.created_at > cutoff
+        )
+    )
+    if count_result.scalar() >= 5:
+        raise HTTPException(429, "Too many requests. Try again in a minute")
+
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    cid = str(uuid.uuid4())
+    challenge = OtpChallenge(
+        id=cid, phone=phone, jeweller_id=jeweller_id,
+        digest=otp_digest(code), expires_at=now_utc() + timedelta(minutes=5)
+    )
+    db.add(challenge)
+    await db.commit()
+
+    # Check if user exists
+    exists = await db.execute(
+        select(Customer.id).where(Customer.phone == phone, Customer.jeweller_id == jeweller_id)
+    )
+    is_new = exists.scalar_one_or_none() is None
+
+    return {"challenge_id": cid, "demo_otp": code, "expires_in": 300, "is_new_user": is_new, "jeweller_id": jeweller_id}
 
 
+@api.post("/auth/otp/verify")
+async def otp_verify(body: OtpVerify, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(OtpChallenge).where(OtpChallenge.id == body.challenge_id))
+    c = result.scalar_one_or_none()
+    if not c or c.used or c.expires_at <= now_utc() or c.attempts >= 5:
+        raise HTTPException(401, "Invalid or expired code")
+
+    if not hmac.compare_digest(c.digest, otp_digest(body.otp)):
+        c.attempts += 1
+        await db.commit()
+        raise HTTPException(401, f"Incorrect OTP. {4 - c.attempts + 1} attempts left")
+
+    c.used = True
+    await db.flush()
+
+    jeweller_id = body.jeweller_id or c.jeweller_id
+
+    # Find or create customer
+    cust_result = await db.execute(
+        select(Customer).where(Customer.phone == c.phone, Customer.jeweller_id == jeweller_id)
+    )
+    customer = cust_result.scalar_one_or_none()
+
+    if not customer:
+        fname = (body.first_name or "").strip()
+        lname = (body.last_name or "").strip()
+        customer = Customer(
+            id=str(uuid.uuid4()), jeweller_id=jeweller_id, phone=c.phone,
+            first_name=fname or "Gold", last_name=lname or "Saver",
+            email=(body.email or "").strip(), dob=(body.dob or "").strip(),
+            gender=(body.gender or "").strip(),
+            wallet_id=gen_wallet_id(), referral_code=gen_referral_code(),
+        )
+        # Handle referral
+        if body.referral_code:
+            ref_result = await db.execute(
+                select(Customer).where(Customer.referral_code == body.referral_code.strip().upper())
+            )
+            referrer = ref_result.scalar_one_or_none()
+            if referrer and referrer.id != customer.id:
+                customer.referred_by = referrer.id
+                customer.referral_balance = 50.0
+                referrer.referral_balance = (referrer.referral_balance or 0) + 50.0
+                # Notifications
+                db.add(Notification(
+                    id=str(uuid.uuid4()), customer_id=referrer.id,
+                    title="Referral Bonus!", type="referral",
+                    message=f"Your friend {fname} joined! ₹50 added to your rewards."
+                ))
+                db.add(Notification(
+                    id=str(uuid.uuid4()), customer_id=customer.id,
+                    title="Welcome Bonus!", type="referral",
+                    message="₹50 referral bonus credited to your rewards!"
+                ))
+        db.add(customer)
+
+    await db.commit()
+    await db.refresh(customer)
+
+    token = make_token(customer.id, "customer", {"jeweller_id": jeweller_id})
+    return {"access_token": token, "user": customer_dict(customer)}
+
+
+# ═══════════════════ CUSTOMER ENDPOINTS ═══════════════════════════════════════
+@api.get("/me")
+async def me(customer: Customer = Depends(get_current_customer)):
+    return customer_dict(customer)
+
+
+@api.patch("/me")
+async def update_me(
+    first_name: Optional[str] = None, last_name: Optional[str] = None,
+    customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)
+):
+    if first_name:
+        customer.first_name = first_name.strip()
+    if last_name:
+        customer.last_name = last_name.strip()
+    await db.commit()
+    await db.refresh(customer)
+    return customer_dict(customer)
+
+
+# ─── KYC ──────────────────────────────────────────────────────────────────────
+@api.post("/kyc/submit")
+async def kyc_submit(body: KycSubmit, customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    if customer.kyc_status in ("pending", "approved"):
+        raise HTTPException(400, f"KYC already {customer.kyc_status}")
+    customer.kyc_status = "pending"
+    customer.kyc_data = {
+        "full_name": body.full_name, "aadhaar": body.aadhaar,
+        "pan": body.pan, "dob": body.dob, "submitted_at": now_iso()
+    }
+    await db.commit()
+    await db.refresh(customer)
+    return customer_dict(customer)
+
+
+# ─── Vault ────────────────────────────────────────────────────────────────────
+@api.get("/vault")
+async def vault(customer: Customer = Depends(get_current_customer)):
+    buy, sell = gold_rate()
+    cu = customer_dict(customer)
+    value = r2(cu["gold_grams"] * sell)
+    pnl = r2(value - cu["invested"])
+    pnl_pct = r2(pnl / cu["invested"] * 100) if cu["invested"] > 0 else 0
+    return {
+        "user": cu, "buy_rate": buy, "sell_rate": sell,
+        "current_value": value, "unrealized_pnl": pnl, "unrealized_pct": pnl_pct,
+    }
+
+
+# ─── Transactions ─────────────────────────────────────────────────────────────
+@api.get("/transactions")
+async def my_transactions(
+    type: Optional[str] = None,
+    customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)
+):
+    q = select(Transaction).where(Transaction.customer_id == customer.id)
+    if type and type != "all":
+        q = q.where(Transaction.type == type)
+    q = q.order_by(desc(Transaction.created_at)).limit(200)
+    result = await db.execute(q)
+    return [txn_dict(t) for t in result.scalars().all()]
+
+
+# ─── Quote & Buy ──────────────────────────────────────────────────────────────
+@api.post("/quote")
+async def create_quote(
+    metal: str = "gold",
+    customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)
+):
+    if metal == "silver":
+        buy, sell = silver_rate()
+    else:
+        buy, sell = gold_rate()
+    exp = now_utc() + timedelta(seconds=QUOTE_SECONDS)
+    q = Quote(
+        id=str(uuid.uuid4()), jeweller_id=customer.jeweller_id,
+        metal=metal, buy=buy, sell=sell, expires_at=exp
+    )
+    db.add(q)
+    await db.commit()
+    return {"id": q.id, "metal": metal, "buy": buy, "sell": sell,
+            "expires_at": exp.isoformat(), "lock_seconds": QUOTE_SECONDS}
+
+
+@api.post("/orders/buy")
+async def buy(body: BuyRequest, customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Quote).where(Quote.id == body.quote_id))
+    q = result.scalar_one_or_none()
+    if not q:
+        raise HTTPException(400, "Price quote not found")
+    if q.expires_at <= now_utc():
+        raise HTTPException(409, "Price lock expired. Refresh the rate")
+
+    rate = q.buy
+    metal = q.metal or "gold"
+    if body.mode == "grams":
+        grams = r4(body.value)
+        amount = r2(grams * rate)
+    else:
+        amount = r2(body.value)
+        grams = r4(amount / rate)
+
+    if amount < 10:
+        raise HTTPException(400, "Minimum purchase is ₹10")
+    gst = r2(amount * GST_RATE)
+    total = r2(amount + gst)
+
+    order = Order(
+        id=str(uuid.uuid4()), customer_id=customer.id, jeweller_id=customer.jeweller_id,
+        metal=metal, grams=grams, rate=rate, amount=amount, gst=gst, total=total,
+        provider="mock"
+    )
+    db.add(order)
+    await db.commit()
+    return {
+        "id": order.id, "metal": metal, "grams": r4(grams), "rate": rate,
+        "amount": r2(amount), "gst": r2(gst), "total": r2(total),
+        "status": "created", "provider": "mock"
+    }
+
+
+@api.post("/orders/{order_id}/mock-confirm")
+async def mock_confirm(order_id: str, body: MockConfirm,
+                       customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Order).where(Order.id == order_id, Order.customer_id == customer.id))
+    order = result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(404, "Order not found")
+    if order.status != "created":
+        raise HTTPException(400, "Order already processed")
+    if not body.success:
+        order.status = "failed"
+        await db.commit()
+        raise HTTPException(402, "Payment declined")
+
+    order.status = "paid"
+    order.method = body.method
+    order.payment_id = "pay_mock_" + uuid.uuid4().hex[:14]
+    order.paid_at = now_utc()
+
+    # Credit gold/silver
+    metal = order.metal or "gold"
+    if metal == "silver":
+        customer.silver_grams = r4((customer.silver_grams or 0) + order.grams)
+    else:
+        customer.gold_grams = r4((customer.gold_grams or 0) + order.grams)
+        customer.invested = r2((customer.invested or 0) + order.amount)
+
+    txn_type = f"buy{'_silver' if metal == 'silver' else ''}"
+    txn = Transaction(
+        id=str(uuid.uuid4()), invoice_no=invoice_no(), customer_id=customer.id,
+        jeweller_id=customer.jeweller_id, type=txn_type, metal=metal,
+        grams=order.grams, rate=order.rate, amount=order.amount,
+        gst=order.gst, total=order.total, method=body.method,
+        status="completed", extra={"order_id": order.id, "payment_id": order.payment_id},
+        pool_contribution=True
+    )
+    db.add(txn)
+    await db.flush()
+
+    # Add to pool
+    if metal == "gold":
+        await add_to_pool(db, txn, customer)
+
+    await db.commit()
+    await db.refresh(customer)
+
+    return {"status": "paid", "transaction": txn_dict(txn), "user": customer_dict(customer)}
+
+
+# ─── Sell ─────────────────────────────────────────────────────────────────────
+@api.post("/sell")
+async def sell(body: SellRequest, customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    if customer.kyc_status != "approved":
+        raise HTTPException(403, "Complete KYC verification to sell gold")
+    grams = r4(body.grams)
+    if grams > (customer.gold_grams or 0):
+        raise HTTPException(400, "Insufficient vault balance")
+    _, rate = gold_rate()
+    amount = r2(grams * rate)
+    avg = (customer.invested / customer.gold_grams) if customer.gold_grams > 0 else 0
+    customer.gold_grams = r4(customer.gold_grams - grams)
+    customer.invested = r2(customer.invested - avg * grams)
+    txn = Transaction(
+        id=str(uuid.uuid4()), invoice_no=invoice_no(), customer_id=customer.id,
+        jeweller_id=customer.jeweller_id, type="sell", grams=grams, rate=rate,
+        amount=amount, gst=0, total=amount, method="bank_transfer", status="processing",
+        note="Credit to linked bank account in T+1"
+    )
+    db.add(txn)
+    await db.commit()
+    return txn_dict(txn)
+
+
+# ─── Redeem ───────────────────────────────────────────────────────────────────
+@api.post("/redeem")
+async def redeem(body: RedeemRequest, customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    # Check minimum redemption for their jeweller
+    j_result = await db.execute(select(Jeweller).where(Jeweller.id == customer.jeweller_id))
+    jeweller = j_result.scalar_one_or_none()
+    min_grams = jeweller.min_redemption_grams if jeweller else 1.0
+
+    coins = [1, 2, 5, 10]
+    making = 0
+    if body.kind == "coin":
+        if body.coin_grams not in coins:
+            raise HTTPException(400, "Invalid coin denomination")
+        grams = float(body.coin_grams)
+        item = f"{body.coin_grams:g}g 24K Gold Coin"
+        making = 250
+    else:
+        prod_result = await db.execute(select(Product).where(Product.id == body.product_id))
+        p = prod_result.scalar_one_or_none()
+        if not p:
+            raise HTTPException(404, "Product not found")
+        grams, item, making = p.grams, p.name, p.making_charges
+
+    if grams < min_grams:
+        raise HTTPException(400, f"Minimum redemption is {min_grams}g for your jeweller")
+    if grams > (customer.gold_grams or 0):
+        raise HTTPException(400, "Insufficient vault balance")
+
+    buy_rate, _ = gold_rate()
+    avg = (customer.invested / customer.gold_grams) if customer.gold_grams > 0 else 0
+    customer.gold_grams = r4(customer.gold_grams - grams)
+    customer.invested = r2(customer.invested - avg * grams)
+    amount = r2(grams * buy_rate)
+
+    otp = f"{secrets.randbelow(1_000_000):06d}"
+    txn = Transaction(
+        id=str(uuid.uuid4()), invoice_no=invoice_no(), customer_id=customer.id,
+        jeweller_id=customer.jeweller_id, type="redemption", grams=grams, rate=buy_rate,
+        amount=amount, gst=0, total=making, method="vault_gold", status="processing",
+        note=f"{item} · In-store pickup", extra={"item": item, "making_charges": making}
+    )
+    db.add(txn)
+    await db.flush()
+
+    pickup = Pickup(
+        id=str(uuid.uuid4()), customer_id=customer.id, jeweller_id=customer.jeweller_id,
+        transaction_id=txn.id, item=item, grams=grams, making_charges=making, otp=otp
+    )
+    db.add(pickup)
+    await db.commit()
+    return {
+        "transaction": txn_dict(txn),
+        "pickup": {"id": pickup.id, "item": item, "grams": grams, "otp": otp, "status": "pending"},
+        "wallet_id": customer.wallet_id,
+    }
+
+
+# ─── SIP ──────────────────────────────────────────────────────────────────────
+@api.get("/sips")
+async def list_sips(customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(SIP).where(SIP.customer_id == customer.id, SIP.status != "cancelled").order_by(desc(SIP.created_at))
+    )
+    sips = result.scalars().all()
+    return [{"id": s.id, "amount": r2(s.amount), "frequency": s.frequency, "status": s.status,
+             "installments": s.installments, "grams_accumulated": r4(s.grams_accumulated),
+             "next_run": s.next_run.isoformat() if s.next_run else "", "created_at": s.created_at.isoformat()} for s in sips]
+
+
+@api.post("/sips")
+async def create_sip(body: SipCreate, customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    days = {"daily": 1, "weekly": 7, "monthly": 30}.get(body.frequency, 30)
+    sip = SIP(
+        id=str(uuid.uuid4()), customer_id=customer.id, jeweller_id=customer.jeweller_id,
+        amount=r2(body.amount), frequency=body.frequency,
+        next_run=now_utc() + timedelta(days=days)
+    )
+    db.add(sip)
+    await db.commit()
+    return {"id": sip.id, "amount": r2(sip.amount), "frequency": sip.frequency, "status": "active",
+            "installments": 0, "grams_accumulated": 0.0}
+
+
+@api.post("/sips/{sip_id}/toggle")
+async def toggle_sip(sip_id: str, customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(SIP).where(SIP.id == sip_id, SIP.customer_id == customer.id))
+    sip = result.scalar_one_or_none()
+    if not sip:
+        raise HTTPException(404, "SIP not found")
+    sip.status = "paused" if sip.status == "active" else "active"
+    await db.commit()
+    return {"id": sip.id, "status": sip.status}
+
+
+@api.delete("/sips/{sip_id}")
+async def cancel_sip(sip_id: str, customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(SIP).where(SIP.id == sip_id, SIP.customer_id == customer.id))
+    sip = result.scalar_one_or_none()
+    if not sip:
+        raise HTTPException(404, "SIP not found")
+    sip.status = "cancelled"
+    await db.commit()
+    return {"ok": True}
+
+
+@api.post("/sips/{sip_id}/run")
+async def run_sip(sip_id: str, customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(SIP).where(SIP.id == sip_id, SIP.customer_id == customer.id, SIP.status == "active"))
+    sip = result.scalar_one_or_none()
+    if not sip:
+        raise HTTPException(404, "Active SIP not found")
+    rate, _ = gold_rate()
+    grams = r4(sip.amount / rate)
+    gst = r2(sip.amount * GST_RATE)
+    customer.gold_grams = r4((customer.gold_grams or 0) + grams)
+    customer.invested = r2((customer.invested or 0) + sip.amount)
+    txn = Transaction(
+        id=str(uuid.uuid4()), invoice_no=invoice_no(), customer_id=customer.id,
+        jeweller_id=customer.jeweller_id, type="sip", grams=grams, rate=rate,
+        amount=sip.amount, gst=gst, total=r2(sip.amount + gst), method="upi_autopay",
+        status="completed", note=f"{sip.frequency.title()} SIP installment",
+        extra={"sip_id": sip_id}, pool_contribution=True
+    )
+    db.add(txn)
+    sip.installments += 1
+    sip.grams_accumulated = r4(sip.grams_accumulated + grams)
+    days = {"daily": 1, "weekly": 7, "monthly": 30}.get(sip.frequency, 30)
+    sip.next_run = now_utc() + timedelta(days=days)
+    await db.flush()
+    await add_to_pool(db, txn, customer)
+    await db.commit()
+    return txn_dict(txn)
+
+
+# ─── Gifts ────────────────────────────────────────────────────────────────────
+GIFT_THEMES = ("diwali", "birthday", "wedding", "thank_you", "congrats")
+
+
+@api.post("/gifts")
+async def send_gift(body: GiftCreate, customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    phone = norm_phone(body.phone)
+    if len(phone) != 10:
+        raise HTTPException(400, "Enter a valid 10-digit mobile number")
+    if phone == customer.phone:
+        raise HTTPException(400, "You can't gift gold to yourself")
+    if body.theme not in GIFT_THEMES:
+        raise HTTPException(400, "Invalid greeting card")
+
+    rate, _ = gold_rate()
+    g = r4(body.value) if body.mode == "grams" else r4(body.value / rate)
+    if g < 0.001:
+        raise HTTPException(400, "Minimum gift is 0.001g")
+    if g > (customer.gold_grams or 0):
+        raise HTTPException(400, "Insufficient vault balance")
+
+    avg = (customer.invested / customer.gold_grams) if customer.gold_grams > 0 else 0
+    customer.gold_grams = r4(customer.gold_grams - g)
+    customer.invested = r2(customer.invested - avg * g)
+    amount = r2(g * rate)
+
+    # Find or create recipient
+    rec_result = await db.execute(select(Customer).where(Customer.phone == phone, Customer.jeweller_id == customer.jeweller_id))
+    rec = rec_result.scalar_one_or_none()
+    if not rec:
+        rec = Customer(
+            id=str(uuid.uuid4()), jeweller_id=customer.jeweller_id, phone=phone,
+            first_name=(body.recipient_name or "Gold").strip(), last_name="Saver",
+            wallet_id=gen_wallet_id(), referral_code=gen_referral_code(),
+        )
+        db.add(rec)
+        await db.flush()
+
+    rec.gold_grams = r4((rec.gold_grams or 0) + g)
+    rec.invested = r2((rec.invested or 0) + amount)
+
+    gift = Gift(
+        id=str(uuid.uuid4()), sender_id=customer.id, recipient_id=rec.id,
+        jeweller_id=customer.jeweller_id, grams=g, rate=rate, amount=amount,
+        theme=body.theme, message=body.message.strip()
+    )
+    db.add(gift)
+    # Create transactions
+    t1 = Transaction(id=str(uuid.uuid4()), invoice_no=invoice_no(), customer_id=customer.id,
+                     jeweller_id=customer.jeweller_id, type="gift_sent", grams=g, rate=rate,
+                     amount=amount, total=amount, method="vault_gold", note=f"Gift to {rec.first_name}")
+    t2 = Transaction(id=str(uuid.uuid4()), invoice_no=invoice_no(), customer_id=rec.id,
+                     jeweller_id=customer.jeweller_id, type="gift_received", grams=g, rate=rate,
+                     amount=amount, total=amount, method="vault_gold",
+                     note=f"Gift from {customer.first_name}")
+    db.add(t1)
+    db.add(t2)
+    await db.commit()
+    return {"id": gift.id, "grams": r4(g), "amount": r2(amount), "recipient_phone": phone}
+
+
+@api.get("/gifts")
+async def list_gifts(customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    sent = await db.execute(select(Gift).where(Gift.sender_id == customer.id).order_by(desc(Gift.created_at)))
+    received = await db.execute(select(Gift).where(Gift.recipient_id == customer.id).order_by(desc(Gift.created_at)))
+    sent_list = [{"id": g.id, "grams": r4(g.grams), "amount": r2(g.amount), "theme": g.theme,
+                  "message": g.message, "created_at": g.created_at.isoformat()} for g in sent.scalars().all()]
+    rec_list = [{"id": g.id, "grams": r4(g.grams), "amount": r2(g.amount), "theme": g.theme,
+                 "message": g.message, "seen": g.seen, "created_at": g.created_at.isoformat()} for g in received.scalars().all()]
+    return {"sent": sent_list, "received": rec_list, "unseen": sum(1 for r in rec_list if not r.get("seen"))}
+
+
+# ─── Alerts ───────────────────────────────────────────────────────────────────
+@api.get("/alerts")
+async def list_alerts(customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Alert).where(Alert.customer_id == customer.id, Alert.status != "deleted").order_by(desc(Alert.created_at))
+    )
+    return [{"id": a.id, "target": r2(a.target), "metal": a.metal, "alert_type": a.alert_type,
+             "buy_amount": r2(a.buy_amount or 0), "status": a.status,
+             "created_at": a.created_at.isoformat()} for a in result.scalars().all()]
+
+
+@api.post("/alerts")
+async def create_alert(body: AlertCreateModel, customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    alert = Alert(
+        id=str(uuid.uuid4()), customer_id=customer.id, jeweller_id=customer.jeweller_id,
+        target=r2(body.target), metal=body.metal, alert_type=body.alert_type,
+        buy_amount=r2(body.buy_amount or 0)
+    )
+    db.add(alert)
+    await db.commit()
+    return {"id": alert.id, "target": r2(alert.target), "metal": alert.metal,
+            "alert_type": alert.alert_type, "status": "active"}
+
+
+@api.delete("/alerts/{alert_id}")
+async def delete_alert(alert_id: str, customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Alert).where(Alert.id == alert_id, Alert.customer_id == customer.id))
+    a = result.scalar_one_or_none()
+    if not a:
+        raise HTTPException(404, "Alert not found")
+    a.status = "deleted"
+    await db.commit()
+    return {"ok": True}
+
+
+# ─── Goals ────────────────────────────────────────────────────────────────────
+@api.get("/goals")
+async def list_goals(customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Goal).where(Goal.customer_id == customer.id).order_by(Goal.created_at))
+    return [{"id": g.id, "name": g.name, "occasion": g.occasion, "target_grams": r4(g.target_grams),
+             "months": g.months, "deadline": g.deadline.isoformat() if g.deadline else "",
+             "start_grams": r4(g.start_grams), "created_at": g.created_at.isoformat()} for g in result.scalars().all()]
+
+
+@api.post("/goals")
+async def create_goal(body: GoalCreate, customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    count = await db.execute(select(func.count()).select_from(Goal).where(Goal.customer_id == customer.id))
+    if count.scalar() >= 5:
+        raise HTTPException(400, "You can have up to 5 goals")
+    goal = Goal(
+        id=str(uuid.uuid4()), customer_id=customer.id, name=body.name.strip(),
+        occasion=body.occasion, target_grams=r4(body.target_grams), months=body.months,
+        deadline=now_utc() + timedelta(days=round(body.months * 30.44)),
+        start_grams=r4(customer.gold_grams or 0)
+    )
+    db.add(goal)
+    await db.commit()
+    return {"id": goal.id, "name": goal.name, "target_grams": r4(goal.target_grams), "months": goal.months}
+
+
+@api.delete("/goals/{goal_id}")
+async def delete_goal(goal_id: str, customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Goal).where(Goal.id == goal_id, Goal.customer_id == customer.id))
+    g = result.scalar_one_or_none()
+    if not g:
+        raise HTTPException(404, "Goal not found")
+    await db.delete(g)
+    await db.commit()
+    return {"ok": True}
+
+
+# ─── Wallet ───────────────────────────────────────────────────────────────────
+@api.get("/wallet")
+async def wallet_info(customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(WalletTransaction).where(WalletTransaction.customer_id == customer.id).order_by(desc(WalletTransaction.created_at)).limit(100)
+    )
+    txns = [{"id": t.id, "type": t.type, "amount": r2(t.amount), "description": t.description,
+             "created_at": t.created_at.isoformat()} for t in result.scalars().all()]
+    return {
+        "balance": r2(customer.wallet_balance or 0),
+        "referral_balance": r2(customer.referral_balance or 0),
+        "transactions": txns
+    }
+
+
+@api.post("/wallet/deposit")
+async def wallet_deposit(body: WalletDeposit, customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    txn = WalletTransaction(
+        id=str(uuid.uuid4()), customer_id=customer.id, type="deposit",
+        amount=r2(body.amount), description="Wallet deposit via UPI"
+    )
+    db.add(txn)
+    customer.wallet_balance = r2((customer.wallet_balance or 0) + body.amount)
+    await db.commit()
+    return {"ok": True, "balance": r2(customer.wallet_balance)}
+
+
+@api.post("/wallet/withdraw")
+async def wallet_withdraw(body: WalletWithdraw, customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    if body.amount > (customer.wallet_balance or 0):
+        raise HTTPException(400, "Insufficient wallet balance")
+    txn = WalletTransaction(
+        id=str(uuid.uuid4()), customer_id=customer.id, type="withdraw",
+        amount=r2(body.amount), description="Wallet withdrawal to bank"
+    )
+    db.add(txn)
+    customer.wallet_balance = r2((customer.wallet_balance or 0) - body.amount)
+    await db.commit()
+    return {"ok": True, "balance": r2(customer.wallet_balance)}
+
+
+# ─── Referral ─────────────────────────────────────────────────────────────────
+@api.get("/referral")
+async def referral_info(customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    count = await db.execute(select(func.count()).select_from(Customer).where(Customer.referred_by == customer.id))
+    refs = await db.execute(
+        select(Customer.first_name, Customer.last_name, Customer.created_at)
+        .where(Customer.referred_by == customer.id).order_by(desc(Customer.created_at)).limit(50)
+    )
+    referrals = [{"name": f"{r[0]} {r[1]}".strip(), "joined": r[2].isoformat() if r[2] else ""} for r in refs.all()]
+    return {
+        "referral_code": customer.referral_code,
+        "referral_balance": r2(customer.referral_balance or 0),
+        "referral_count": count.scalar(),
+        "referrals": referrals,
+    }
+
+
+# ─── Notifications ────────────────────────────────────────────────────────────
+@api.get("/notifications")
+async def list_notifications(customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Notification).where(Notification.customer_id == customer.id).order_by(desc(Notification.created_at)).limit(50)
+    )
+    notifs = [{"id": n.id, "title": n.title, "message": n.message, "type": n.type,
+               "read": n.read, "created_at": n.created_at.isoformat()} for n in result.scalars().all()]
+    return {"notifications": notifs, "unread_count": sum(1 for n in notifs if not n.get("read"))}
+
+
+@api.post("/notifications/mark-read")
+async def mark_notifications_read(customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    await db.execute(
+        update(Notification).where(Notification.customer_id == customer.id, Notification.read == False).values(read=True)
+    )
+    await db.commit()
+    return {"ok": True}
+
+
+# ═══════════════════ JEWELLER ADMIN ═══════════════════════════════════════════
+@api.post("/jeweller/login")
+async def jeweller_login(body: JewellerLogin, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Jeweller).where(Jeweller.email == body.email.strip().lower()))
+    j = result.scalar_one_or_none()
+    if not j or not bcrypt.checkpw(body.password.encode(), j.password_hash.encode()):
+        raise HTTPException(401, "Invalid email or password")
+    if j.status != "active":
+        raise HTTPException(403, "Account suspended")
+    return {"access_token": make_token(j.id, "jeweller", days=1), "jeweller": jeweller_dict(j)}
+
+
+@api.get("/jeweller/me")
+async def jeweller_me(jeweller: Jeweller = Depends(get_current_jeweller)):
+    return jeweller_dict(jeweller)
+
+
+@api.get("/jeweller/dashboard")
+async def jeweller_dashboard(jeweller: Jeweller = Depends(get_current_jeweller), db: AsyncSession = Depends(get_db)):
+    # Customer count
+    cust_count = await db.execute(select(func.count()).select_from(Customer).where(Customer.jeweller_id == jeweller.id))
+    # Total grams
+    grams_result = await db.execute(
+        select(func.sum(Customer.gold_grams)).where(Customer.jeweller_id == jeweller.id)
+    )
+    # Total revenue
+    rev_result = await db.execute(
+        select(func.sum(Transaction.total)).where(
+            Transaction.jeweller_id == jeweller.id, Transaction.status == "completed",
+            Transaction.type.in_(["buy", "sip", "buy_silver"])
+        )
+    )
+    # Active wallets
+    active_wallets = await db.execute(
+        select(func.count()).select_from(Customer).where(Customer.jeweller_id == jeweller.id, Customer.gold_grams > 0)
+    )
+    # Pending pickups
+    pending_pickups = await db.execute(
+        select(func.count()).select_from(Pickup).where(Pickup.jeweller_id == jeweller.id, Pickup.status == "pending")
+    )
+    # Pending KYC
+    pending_kyc = await db.execute(
+        select(func.count()).select_from(Customer).where(Customer.jeweller_id == jeweller.id, Customer.kyc_status == "pending")
+    )
+    return {
+        "customers": cust_count.scalar() or 0,
+        "total_grams": r4(grams_result.scalar() or 0),
+        "total_revenue": r2(rev_result.scalar() or 0),
+        "active_wallets": active_wallets.scalar() or 0,
+        "pending_pickups": pending_pickups.scalar() or 0,
+        "pending_kyc": pending_kyc.scalar() or 0,
+        "min_redemption_grams": jeweller.min_redemption_grams,
+        "price": price_payload(),
+    }
+
+
+@api.get("/jeweller/customers")
+async def jeweller_customers(search: str = "", jeweller: Jeweller = Depends(get_current_jeweller), db: AsyncSession = Depends(get_db)):
+    q = select(Customer).where(Customer.jeweller_id == jeweller.id)
+    if search:
+        q = q.where(or_(Customer.phone.contains(search), Customer.first_name.ilike(f"%{search}%")))
+    result = await db.execute(q.order_by(desc(Customer.created_at)).limit(500))
+    return [customer_dict(c) for c in result.scalars().all()]
+
+
+@api.get("/jeweller/customers/lookup")
+async def jeweller_lookup(wallet_id: str = "", phone: str = "",
+                          jeweller: Jeweller = Depends(get_current_jeweller), db: AsyncSession = Depends(get_db)):
+    """Lookup customer by Wallet ID or phone for redemption."""
+    q = select(Customer).where(Customer.jeweller_id == jeweller.id)
+    if wallet_id:
+        q = q.where(Customer.wallet_id == wallet_id.strip().upper())
+    elif phone:
+        q = q.where(Customer.phone == norm_phone(phone))
+    else:
+        raise HTTPException(400, "Provide wallet_id or phone")
+    result = await db.execute(q)
+    c = result.scalar_one_or_none()
+    return {"found": bool(c), "customer": customer_dict(c) if c else None}
+
+
+@api.post("/jeweller/redemption/approve")
+async def jeweller_approve_redemption(body: RedemptionApprove, jeweller: Jeweller = Depends(get_current_jeweller), db: AsyncSession = Depends(get_db)):
+    """Jeweller verifies Wallet ID and approves redemption (deducts grams)."""
+    result = await db.execute(
+        select(Customer).where(Customer.wallet_id == body.wallet_id.strip().upper(), Customer.jeweller_id == jeweller.id)
+    )
+    customer = result.scalar_one_or_none()
+    if not customer:
+        raise HTTPException(404, "Customer not found with this Wallet ID")
+    if body.grams > (customer.gold_grams or 0):
+        raise HTTPException(400, f"Customer has only {r4(customer.gold_grams)}g available")
+    if body.grams < jeweller.min_redemption_grams:
+        raise HTTPException(400, f"Minimum redemption is {jeweller.min_redemption_grams}g")
+
+    avg = (customer.invested / customer.gold_grams) if customer.gold_grams > 0 else 0
+    customer.gold_grams = r4(customer.gold_grams - body.grams)
+    customer.invested = r2(customer.invested - avg * body.grams)
+    buy_rate, _ = gold_rate()
+    amount = r2(body.grams * buy_rate)
+
+    txn = Transaction(
+        id=str(uuid.uuid4()), invoice_no=invoice_no(), customer_id=customer.id,
+        jeweller_id=jeweller.id, type="redemption", grams=body.grams, rate=buy_rate,
+        amount=amount, total=amount, method="in_store", status="completed",
+        note=f"{body.item} - Redeemed at store. {body.note}".strip(),
+        extra={"item": body.item, "approved_by": jeweller.owner_name}
+    )
+    db.add(txn)
+    await db.commit()
+    return {"ok": True, "transaction": txn_dict(txn), "customer": customer_dict(customer)}
+
+
+@api.get("/jeweller/transactions")
+async def jeweller_transactions(type: str = "", jeweller: Jeweller = Depends(get_current_jeweller), db: AsyncSession = Depends(get_db)):
+    q = select(Transaction).where(Transaction.jeweller_id == jeweller.id)
+    if type and type != "all":
+        q = q.where(Transaction.type == type)
+    result = await db.execute(q.order_by(desc(Transaction.created_at)).limit(200))
+    return [txn_dict(t) for t in result.scalars().all()]
+
+
+@api.get("/jeweller/pickups")
+async def jeweller_pickups(status: str = "pending", jeweller: Jeweller = Depends(get_current_jeweller), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Pickup).where(Pickup.jeweller_id == jeweller.id, Pickup.status == status).order_by(Pickup.created_at)
+    )
+    pickups = result.scalars().all()
+    out = []
+    for p in pickups:
+        c_result = await db.execute(select(Customer).where(Customer.id == p.customer_id))
+        c = c_result.scalar_one_or_none()
+        out.append({
+            "id": p.id, "item": p.item, "grams": r4(p.grams),
+            "making_charges": r2(p.making_charges), "status": p.status,
+            "customer_name": f"{c.first_name} {c.last_name}".strip() if c else "Customer",
+            "wallet_id": c.wallet_id if c else "",
+            "created_at": p.created_at.isoformat() if p.created_at else "",
+        })
+    return out
+
+
+@api.post("/jeweller/pickups/{pickup_id}/collect")
+async def jeweller_collect(pickup_id: str, otp: str = "",
+                           jeweller: Jeweller = Depends(get_current_jeweller), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Pickup).where(Pickup.id == pickup_id, Pickup.jeweller_id == jeweller.id, Pickup.status == "pending")
+    )
+    p = result.scalar_one_or_none()
+    if not p:
+        raise HTTPException(404, "Pending pickup not found")
+    if p.locked:
+        raise HTTPException(423, "Pickup locked after too many failed attempts")
+    if not hmac.compare_digest(p.otp, otp):
+        p.attempts += 1
+        if p.attempts >= 5:
+            p.locked = True
+        await db.commit()
+        raise HTTPException(400, f"Incorrect OTP. {5 - p.attempts} attempts left")
+    p.status = "collected"
+    p.collected_at = now_utc()
+    p.collected_by = jeweller.owner_name
+    await db.execute(update(Transaction).where(Transaction.id == p.transaction_id).values(status="completed"))
+    await db.commit()
+    return {"ok": True, "collected_at": p.collected_at.isoformat()}
+
+
+@api.get("/jeweller/kyc-queue")
+async def jeweller_kyc_queue(jeweller: Jeweller = Depends(get_current_jeweller), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Customer).where(Customer.jeweller_id == jeweller.id, Customer.kyc_status == "pending").order_by(Customer.created_at)
+    )
+    return [customer_dict(c) for c in result.scalars().all()]
+
+
+@api.post("/jeweller/kyc/{customer_id}/decide")
+async def jeweller_kyc_decide(customer_id: str, approve: bool = True, note: str = "",
+                              jeweller: Jeweller = Depends(get_current_jeweller), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Customer).where(Customer.id == customer_id, Customer.jeweller_id == jeweller.id, Customer.kyc_status == "pending")
+    )
+    c = result.scalar_one_or_none()
+    if not c:
+        raise HTTPException(404, "No pending KYC for this customer")
+    c.kyc_status = "approved" if approve else "rejected"
+    kyc = c.kyc_data or {}
+    kyc["reviewed_by"] = jeweller.owner_name
+    kyc["reviewed_at"] = now_iso()
+    kyc["note"] = note
+    c.kyc_data = kyc
+    await db.commit()
+    return customer_dict(c)
+
+
+@api.put("/jeweller/settings/min-redemption")
+async def update_min_redemption(body: MinRedemptionUpdate, jeweller: Jeweller = Depends(get_current_jeweller), db: AsyncSession = Depends(get_db)):
+    jeweller.min_redemption_grams = body.min_grams
+    await db.commit()
+    return {"ok": True, "min_redemption_grams": jeweller.min_redemption_grams}
+
+
+# ─── Jeweller Product Catalog ────────────────────────────────────────────────
+@api.get("/jeweller/products")
+async def jeweller_products(jeweller: Jeweller = Depends(get_current_jeweller), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Product).where(Product.jeweller_id == jeweller.id).order_by(desc(Product.created_at))
+    )
+    buy, _ = gold_rate()
+    return [{
+        "id": p.id, "name": p.name, "category": p.category, "grams": p.grams,
+        "making_charges": p.making_charges, "image_url": p.image_url, "tag": p.tag,
+        "description": p.description, "is_active": p.is_active,
+        "gold_value": r2(p.grams * buy), "total_price": r2(p.grams * buy + p.making_charges),
+    } for p in result.scalars().all()]
+
+
+@api.post("/jeweller/products")
+async def jeweller_add_product(body: ProductCreate, jeweller: Jeweller = Depends(get_current_jeweller), db: AsyncSession = Depends(get_db)):
+    p = Product(
+        id=str(uuid.uuid4()), jeweller_id=jeweller.id, name=body.name,
+        category=body.category, grams=body.grams, making_charges=body.making_charges,
+        image_url=body.image_url, tag=body.tag, description=body.description
+    )
+    db.add(p)
+    await db.commit()
+    return {"id": p.id, "name": p.name}
+
+
+@api.delete("/jeweller/products/{product_id}")
+async def jeweller_delete_product(product_id: str, jeweller: Jeweller = Depends(get_current_jeweller), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Product).where(Product.id == product_id, Product.jeweller_id == jeweller.id))
+    p = result.scalar_one_or_none()
+    if not p:
+        raise HTTPException(404, "Product not found")
+    p.is_active = False
+    await db.commit()
+    return {"ok": True}
+
+
+# ═══════════════════ MASTER ADMIN ═════════════════════════════════════════════
+@api.post("/master/login")
+async def master_login(body: MasterAdminLogin, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(MasterAdmin).where(MasterAdmin.username == body.username))
+    admin = result.scalar_one_or_none()
+    if not admin or not bcrypt.checkpw(body.password.encode(), admin.password_hash.encode()):
+        raise HTTPException(401, "Invalid credentials")
+    return {"access_token": make_token(admin.id, "master_admin", days=1), "admin": {"id": admin.id, "name": admin.name}}
+
+
+@api.get("/master/dashboard")
+async def master_dashboard(admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    jeweller_count = await db.execute(select(func.count()).select_from(Jeweller))
+    customer_count = await db.execute(select(func.count()).select_from(Customer))
+    total_grams = await db.execute(select(func.sum(Customer.gold_grams)))
+    total_revenue = await db.execute(
+        select(func.sum(Transaction.total)).where(Transaction.status == "completed", Transaction.type.in_(["buy", "sip", "buy_silver"]))
+    )
+    # Current pool
+    pool_result = await db.execute(
+        select(PoolAccumulator).where(PoolAccumulator.status == "accumulating").order_by(desc(PoolAccumulator.created_at)).limit(1)
+    )
+    pool = pool_result.scalar_one_or_none()
+
+    return {
+        "jewellers": jeweller_count.scalar() or 0,
+        "customers": customer_count.scalar() or 0,
+        "total_grams": r4(total_grams.scalar() or 0),
+        "total_revenue": r2(total_revenue.scalar() or 0),
+        "pool": {
+            "current_grams": r4(pool.total_grams) if pool else 0,
+            "threshold": pool.threshold_grams if pool else POOL_THRESHOLD,
+            "progress_pct": r2((pool.total_grams / pool.threshold_grams) * 100) if pool and pool.threshold_grams else 0,
+        },
+        "price": price_payload(),
+    }
+
+
+@api.get("/master/jewellers")
+async def master_jewellers(admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Jeweller).order_by(desc(Jeweller.created_at)))
+    jewellers = result.scalars().all()
+    out = []
+    for j in jewellers:
+        cust_count = await db.execute(select(func.count()).select_from(Customer).where(Customer.jeweller_id == j.id))
+        grams_sum = await db.execute(select(func.sum(Customer.gold_grams)).where(Customer.jeweller_id == j.id))
+        out.append(jeweller_dict(j) | {"customer_count": cust_count.scalar() or 0, "total_grams": r4(grams_sum.scalar() or 0)})
+    return out
+
+
+@api.post("/master/jewellers")
+async def master_onboard_jeweller(body: JewellerOnboard, admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    # Check uniqueness
+    existing = await db.execute(select(Jeweller).where(or_(Jeweller.email == body.email.lower(), Jeweller.phone == norm_phone(body.phone))))
+    if existing.scalar_one_or_none():
+        raise HTTPException(400, "Jeweller with this email or phone already exists")
+
+    j = Jeweller(
+        id=str(uuid.uuid4()), business_name=body.business_name.strip(),
+        owner_name=body.owner_name.strip(), phone=norm_phone(body.phone),
+        email=body.email.strip().lower(),
+        password_hash=bcrypt.hashpw(body.password.encode(), bcrypt.gensalt()).decode(),
+        pan=body.pan, aadhaar=body.aadhaar, address=body.address,
+        city=body.city, state=body.state, pincode=body.pincode,
+        logo_url=body.logo_url, primary_color=body.primary_color,
+        secondary_color=body.secondary_color, domain=body.domain,
+        min_redemption_grams=body.min_redemption_grams,
+    )
+    db.add(j)
+
+    # Add default products for the jeweller
+    default_products = [
+        ("Heritage 24K Necklace", "necklaces", 12.5, 4850, "Trending"),
+        ("Minimalist Gold Bangle", "bangles", 8.2, 2650, "Bestseller"),
+        ("Classic Solitaire Ring", "rings", 3.4, 1150, "New"),
+        ("Rope Twist Chain", "chains", 6.8, 1980, "Trending"),
+        ("Royal Kada", "kadas", 15.0, 5200, "Premium"),
+        ("Lakshmi Pendant Set", "pendant-sets", 9.6, 3400, "Festive"),
+        ("Gold Dial Watch", "watches", 18.0, 7900, "Luxury"),
+        ("Tanmaniya Mangalsutra", "necklaces", 7.1, 2300, "Classic"),
+    ]
+    for name, cat, grams, mc, tag in default_products:
+        db.add(Product(
+            id=str(uuid.uuid4()), jeweller_id=j.id, name=name,
+            category=cat, grams=grams, making_charges=mc, tag=tag,
+            description=f"Exquisite {name} in 24K 99.9% pure gold. Weight: {grams}g. BIS Hallmarked."
+        ))
+
+    await db.commit()
+    return jeweller_dict(j)
+
+
+@api.post("/master/jewellers/{jeweller_id}/toggle")
+async def master_toggle_jeweller(jeweller_id: str, admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Jeweller).where(Jeweller.id == jeweller_id))
+    j = result.scalar_one_or_none()
+    if not j:
+        raise HTTPException(404, "Jeweller not found")
+    j.status = "suspended" if j.status == "active" else "active"
+    await db.commit()
+    return {"id": j.id, "status": j.status}
+
+
+@api.get("/master/pool")
+async def master_pool(admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    pools = await db.execute(select(PoolAccumulator).order_by(desc(PoolAccumulator.created_at)).limit(10))
+    return [{"id": p.id, "total_grams": r4(p.total_grams), "threshold": p.threshold_grams,
+             "status": p.status, "triggered_at": p.triggered_at.isoformat() if p.triggered_at else None,
+             "created_at": p.created_at.isoformat()} for p in pools.scalars().all()]
+
+
+@api.get("/master/bifurcation-invoices")
+async def master_invoices(admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(BifurcationInvoice).order_by(desc(BifurcationInvoice.created_at)).limit(20))
+    return [{"id": i.id, "pool_id": i.pool_id, "total_grams": r4(i.total_grams),
+             "details": i.details, "status": i.status,
+             "created_at": i.created_at.isoformat()} for i in result.scalars().all()]
+
+
+@api.get("/master/transactions")
+async def master_transactions(jeweller_id: str = "", type: str = "",
+                              admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    q = select(Transaction)
+    if jeweller_id:
+        q = q.where(Transaction.jeweller_id == jeweller_id)
+    if type and type != "all":
+        q = q.where(Transaction.type == type)
+    result = await db.execute(q.order_by(desc(Transaction.created_at)).limit(200))
+    return [txn_dict(t) for t in result.scalars().all()]
+
+
+@api.get("/master/customers")
+async def master_customers(jeweller_id: str = "", search: str = "",
+                           admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    q = select(Customer)
+    if jeweller_id:
+        q = q.where(Customer.jeweller_id == jeweller_id)
+    if search:
+        q = q.where(or_(Customer.phone.contains(search), Customer.first_name.ilike(f"%{search}%")))
+    result = await db.execute(q.order_by(desc(Customer.created_at)).limit(500))
+    return [customer_dict(c) for c in result.scalars().all()]
+
+
+@api.put("/master/pool/threshold")
+async def master_update_threshold(body: PoolThresholdUpdate, admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(PoolAccumulator).where(PoolAccumulator.status == "accumulating").order_by(desc(PoolAccumulator.created_at)).limit(1)
+    )
+    pool = result.scalar_one_or_none()
+    if pool:
+        pool.threshold_grams = body.threshold
+    await db.commit()
+    return {"ok": True, "threshold": body.threshold}
+
+
+@api.get("/master/rate")
+async def master_rate(admin: MasterAdmin = Depends(get_master_admin)):
+    return price_payload()
+
+
+# ═══════════════════ SEED DATA ════════════════════════════════════════════════
+async def seed_data():
+    """Seed demo jeweller, customers, and master admin."""
+    async with AsyncSessionLocal() as db:
+        # Check if already seeded
+        existing = await db.execute(select(MasterAdmin).where(MasterAdmin.username == "admin"))
+        if existing.scalar_one_or_none():
+            logger.info("Database already seeded")
+            return
+
+        # Master admin
+        admin = MasterAdmin(
+            id=str(uuid.uuid4()), username="admin", name="Vaultra Super Admin",
+            password_hash=bcrypt.hashpw("admin123".encode(), bcrypt.gensalt()).decode()
+        )
+        db.add(admin)
+
+        # Demo jeweller
+        jeweller = Jeweller(
+            id="demo-jeweller-001", business_name="Sharma Gold & Jewellers",
+            owner_name="Rajesh Sharma", phone="9999000001",
+            email="sharma@vaultra.in",
+            password_hash=bcrypt.hashpw("jeweller123".encode(), bcrypt.gensalt()).decode(),
+            address="Shop No. 12, Gold Market", city="Mumbai", state="Maharashtra",
+            pincode="400001", primary_color="#D4AF37", secondary_color="#1A1A2E",
+            min_redemption_grams=1.0,
+        )
+        db.add(jeweller)
+
+        # Second jeweller
+        jeweller2 = Jeweller(
+            id="demo-jeweller-002", business_name="Patel Jewellery House",
+            owner_name="Amit Patel", phone="9999000002",
+            email="patel@vaultra.in",
+            password_hash=bcrypt.hashpw("jeweller123".encode(), bcrypt.gensalt()).decode(),
+            address="15, Jewellers Lane", city="Ahmedabad", state="Gujarat",
+            pincode="380001", primary_color="#B8860B", secondary_color="#2D2D44",
+            min_redemption_grams=0.5,
+        )
+        db.add(jeweller2)
+
+        await db.flush()
+
+        # Default products for jewellers
+        for jid in [jeweller.id, jeweller2.id]:
+            products_data = [
+                ("Heritage 24K Necklace", "necklaces", 12.5, 4850, "Trending"),
+                ("Minimalist Gold Bangle", "bangles", 8.2, 2650, "Bestseller"),
+                ("Classic Solitaire Ring", "rings", 3.4, 1150, "New"),
+                ("Rope Twist Chain", "chains", 6.8, 1980, "Trending"),
+                ("Royal Kada", "kadas", 15.0, 5200, "Premium"),
+                ("Lakshmi Pendant Set", "pendant-sets", 9.6, 3400, "Festive"),
+                ("Gold Dial Watch", "watches", 18.0, 7900, "Luxury"),
+                ("Tanmaniya Mangalsutra", "necklaces", 7.1, 2300, "Classic"),
+            ]
+            for name, cat, grams, mc, tag in products_data:
+                db.add(Product(
+                    id=str(uuid.uuid4()), jeweller_id=jid, name=name,
+                    category=cat, grams=grams, making_charges=mc, tag=tag,
+                    description=f"Exquisite {name} in 24K 99.9% pure gold. Weight: {grams}g. BIS Hallmarked."
+                ))
+
+        # Create initial pool
+        pool = PoolAccumulator(id=str(uuid.uuid4()), total_grams=0.0, threshold_grams=POOL_THRESHOLD)
+        db.add(pool)
+
+        # Demo customers for jeweller 1
+        base = now_utc()
+        demo_customers = [
+            ("9876543210", "Aarav", "Sharma", "approved"),
+            ("9812345670", "Diya", "Patel", "pending"),
+            ("9823456781", "Kabir", "Singh", "not_submitted"),
+            ("9834567892", "Meera", "Iyer", "approved"),
+        ]
+        for phone, fname, lname, kyc in demo_customers:
+            kyc_data = {}
+            if kyc != "not_submitted":
+                kyc_data = {
+                    "full_name": f"{fname} {lname}", "aadhaar": f"{random.randint(200000000000, 999999999999)}",
+                    "pan": f"{''.join(random.choice('ABCDEFGHJKL') for _ in range(5))}{random.randint(1000, 9999)}{'ABCFGHLPT'[random.randint(0,8)]}",
+                    "dob": f"19{random.randint(80, 99)}-0{random.randint(1,9)}-{random.randint(10,28)}",
+                    "submitted_at": now_iso(),
+                }
+                if kyc == "approved":
+                    kyc_data["reviewed_by"] = "Rajesh Sharma"
+                    kyc_data["reviewed_at"] = now_iso()
+
+            c = Customer(
+                id=str(uuid.uuid4()), jeweller_id=jeweller.id, phone=phone,
+                first_name=fname, last_name=lname,
+                wallet_id=gen_wallet_id(), referral_code=gen_referral_code(),
+                kyc_status=kyc, kyc_data=kyc_data,
+                gold_grams=0.0, silver_grams=0.0, invested=0.0,
+                created_at=base - timedelta(days=random.randint(10, 60))
+            )
+            db.add(c)
+            await db.flush()
+
+            # Seed some transactions
+            seed_txns = []
+            for _ in range(random.randint(2, 4)):
+                rate = r2(7120 + random.uniform(-60, 120))
+                amount = float(random.choice([1000, 2000, 2500, 5000]))
+                grams = r4(amount / rate)
+                c.gold_grams = r4(c.gold_grams + grams)
+                c.invested = r2(c.invested + amount)
+                gst = r2(amount * GST_RATE)
+                txn = Transaction(
+                    id=str(uuid.uuid4()), invoice_no=invoice_no(), customer_id=c.id,
+                    jeweller_id=jeweller.id, type=random.choice(["buy", "buy", "sip"]),
+                    grams=grams, rate=rate, amount=amount, gst=gst,
+                    total=r2(amount + gst), method="upi", status="completed",
+                    pool_contribution=True,
+                    created_at=base - timedelta(days=random.randint(1, 30))
+                )
+                db.add(txn)
+                seed_txns.append((txn, c, grams))
+                pool.total_grams = r4(pool.total_grams + grams)
+
+            # Flush transactions first so FKs are satisfied
+            await db.flush()
+            for txn, cust, g in seed_txns:
+                db.add(PoolContribution(
+                    id=str(uuid.uuid4()), pool_id=pool.id, transaction_id=txn.id,
+                    customer_id=cust.id, jeweller_id=jeweller.id, grams=g
+                ))
+
+        # Demo customers for jeweller 2
+        for phone, fname, lname, kyc in [("9845678903", "Rohan", "Gupta", "approved"), ("9856789014", "Ananya", "Reddy", "pending")]:
+            kyc_data = {}
+            if kyc != "not_submitted":
+                kyc_data = {"full_name": f"{fname} {lname}", "aadhaar": f"{random.randint(200000000000, 999999999999)}",
+                            "pan": f"ABCDE{random.randint(1000, 9999)}F", "submitted_at": now_iso()}
+                if kyc == "approved":
+                    kyc_data["reviewed_by"] = "Amit Patel"
+                    kyc_data["reviewed_at"] = now_iso()
+            c = Customer(
+                id=str(uuid.uuid4()), jeweller_id=jeweller2.id, phone=phone,
+                first_name=fname, last_name=lname,
+                wallet_id=gen_wallet_id(), referral_code=gen_referral_code(),
+                kyc_status=kyc, kyc_data=kyc_data,
+                gold_grams=r4(random.uniform(1, 5)), silver_grams=0.0,
+                invested=r2(random.uniform(5000, 30000)),
+                created_at=base - timedelta(days=random.randint(10, 40))
+            )
+            db.add(c)
+
+        await db.commit()
+        logger.info("Seeded demo data with 2 jewellers, 6 customers, master admin")
+
+
+# ═══════════════════ ADMIN WEB PANELS ═════════════════════════════════════════
+from fastapi.responses import FileResponse
+TEMPLATES = ROOT_DIR / "templates"
+
+
+@app.get("/api/admin/master")
+async def master_panel():
+    return FileResponse(TEMPLATES / "master_admin.html", media_type="text/html")
+
+
+@app.get("/api/admin/jeweller")
+async def jeweller_panel():
+    return FileResponse(TEMPLATES / "jeweller_admin.html", media_type="text/html")
+
+
+# ═══════════════════ STARTUP ══════════════════════════════════════════════════
 @app.on_event("startup")
 async def startup():
-    await seed()
+    await init_db()
+    await seed_data()
     asyncio.create_task(price_loop())
+    logger.info("Vaultra DigiGold v2.0 started with PostgreSQL")
 
 
 app.include_router(api)
 app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()

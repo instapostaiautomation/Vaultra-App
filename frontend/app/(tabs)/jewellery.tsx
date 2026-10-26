@@ -1,91 +1,86 @@
-import { useLocalSearchParams } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import React, { useEffect, useState } from "react";
+import {
+  View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator,
+  Dimensions,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-
+import { useRouter } from "expo-router";
+import { useTheme } from "@/src/theme";
 import { api } from "@/src/api";
-import { CATEGORIES } from "@/src/assets";
-import { LiveTicker, ScreenHeader } from "@/src/components/Header";
-import { Product, ProductCard, RedeemSheet } from "@/src/components/Product";
-import { Button, Chip, ChipRow } from "@/src/components/ui";
-import { usesNativeTabs } from "@/src/navigation";
-import { colors, fonts } from "@/src/theme";
+import { ShoppingBag } from "lucide-react-native";
 
-export default function Jewellery() {
+const { width: SW } = Dimensions.get("window");
+const CARD_W = (SW - 48) / 2;
+
+function inr(n: number) { return "₹" + n.toLocaleString("en-IN", { maximumFractionDigits: 0 }); }
+
+export default function JewelleryScreen() {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ category?: string }>();
-  const { width } = useWindowDimensions();
-  const [cat, setCat] = useState<string>("all");
-  const [products, setProducts] = useState<Product[] | null>(null);
-  const [error, setError] = useState(false);
-  const [target, setTarget] = useState<any>(null);
-  const bottomChrome = usesNativeTabs ? insets.bottom : 0;
-  const cols = width > 700 ? 3 : 2;
-  const cardW = Math.floor((Math.min(width, 960) - 32 - 12 * (cols - 1)) / cols);
+  const router = useRouter();
+  const [products, setProducts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("all");
 
   useEffect(() => {
-    if (params.category) setCat(params.category);
-  }, [params.category]);
+    api<any[]>("/products", { auth: "none" }).then(setProducts).catch(() => {}).finally(() => setLoading(false));
+  }, []);
 
-  const load = () => {
-    setError(false);
-    api<Product[]>("/products", { auth: "none" })
-      .then(setProducts)
-      .catch(() => setError(true));
-  };
-  useEffect(load, []);
+  const categories = ["all", ...Array.from(new Set(products.map(p => p.category)))];
+  const filtered = filter === "all" ? products : products.filter(p => p.category === filter);
 
-  const list = useMemo(() => (products || []).filter((p) => cat === "all" || p.category === cat), [products, cat]);
+  if (loading) return <View style={[ss.center, { backgroundColor: colors.surface }]}><ActivityIndicator size="large" color={colors.brand} /></View>;
 
   return (
-    <View style={styles.root} testID="jewellery-screen">
-      <ScreenHeader title="Jewellery" subtitle="Redeem vault gold for hallmarked 24K pieces" showBack />
-      <ChipRow style={{ borderBottomWidth: 1, borderBottomColor: colors.divider }}>
-        <Chip label="All" selected={cat === "all"} onPress={() => setCat("all")} testID="jewellery-filter-all" />
-        {CATEGORIES.map((c) => (
-          <Chip key={c.id} label={c.label} selected={cat === c.id} onPress={() => setCat(c.id)} testID={`jewellery-filter-${c.id}`} />
+    <View style={[ss.flex, { backgroundColor: colors.surface }]}>
+      <View style={{ paddingTop: insets.top + 12, paddingHorizontal: 16, paddingBottom: 8 }}>
+        <Text style={[ss.title, { color: colors.onSurface }]}>Jewellery Catalog</Text>
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={ss.filterRow}>
+        {categories.map(c => (
+          <TouchableOpacity
+            key={c}
+            style={[ss.filterBtn, { backgroundColor: filter === c ? colors.brand : colors.surfaceSecondary, borderColor: filter === c ? colors.brand : colors.border }]}
+            onPress={() => setFilter(c)}
+          >
+            <Text style={{ color: filter === c ? "#FFF" : colors.muted, fontWeight: "600", fontSize: 13 }}>
+              {c === "all" ? "All" : c.replace(/-/g, " ").replace(/\b\w/g, (l: string) => l.toUpperCase())}
+            </Text>
+          </TouchableOpacity>
         ))}
-      </ChipRow>
-      {error ? (
-        <View style={styles.center}>
-          <Text style={styles.empty}>Couldn&apos;t load the catalogue</Text>
-          <Button title="Retry" variant="outline" onPress={load} testID="jewellery-retry" />
-        </View>
-      ) : !products ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={colors.brandPrimary} />
-        </View>
-      ) : (
-        <FlatList
-          key={cols}
-          data={list}
-          numColumns={cols}
-          keyExtractor={(p) => p.id}
-          columnWrapperStyle={{ gap: 12 }}
-          contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: bottomChrome + 24 }}
-          ListHeaderComponent={
-            <View style={styles.listHead}>
-              <Text style={styles.count} testID="jewellery-count">
-                {list.length} {list.length === 1 ? "piece" : "pieces"}
-              </Text>
-              <View style={{ flex: 1, maxWidth: 240 }}>
-                <LiveTicker testID="jewellery-ticker" />
-              </View>
+      </ScrollView>
+      <ScrollView contentContainerStyle={ss.grid}>
+        {filtered.map(p => (
+          <TouchableOpacity key={p.id} style={[ss.card, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]} onPress={() => router.push(`/product-detail?id=${p.id}`)}>
+            <View style={[ss.cardImg, { backgroundColor: colors.brandTertiary }]}>
+              <ShoppingBag size={32} color={colors.brand} />
+              {p.tag ? <View style={[ss.tagBadge, { backgroundColor: colors.brand }]}><Text style={ss.tagText}>{p.tag}</Text></View> : null}
             </View>
-          }
-          ListEmptyComponent={<Text style={styles.empty}>No pieces in this category yet</Text>}
-          renderItem={({ item }) => <ProductCard p={item} width={cardW} onRedeem={(x) => setTarget({ kind: "product", product: x })} />}
-        />
-      )}
-      <RedeemSheet target={target} onClose={() => setTarget(null)} />
+            <View style={ss.cardBody}>
+              <Text style={[ss.cardName, { color: colors.onSurface }]} numberOfLines={2}>{p.name}</Text>
+              <Text style={[ss.cardMeta, { color: colors.muted }]}>{p.grams}g · {p.category}</Text>
+              <Text style={[ss.cardPrice, { color: colors.brand }]}>{inr(p.total_price)}</Text>
+            </View>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.surfaceSecondary },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
-  listHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 4 },
-  count: { fontFamily: fonts.semibold, fontSize: 13, color: colors.onSurfaceTertiary },
-  empty: { fontFamily: fonts.medium, fontSize: 14, color: colors.muted, textAlign: "center", marginTop: 24 },
+const ss = StyleSheet.create({
+  flex: { flex: 1 },
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  title: { fontSize: 22, fontWeight: "800" },
+  filterRow: { paddingHorizontal: 16, gap: 8, paddingBottom: 12 },
+  filterBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
+  grid: { flexDirection: "row", flexWrap: "wrap", paddingHorizontal: 16, gap: 12, paddingBottom: 32 },
+  card: { width: CARD_W, borderRadius: 14, borderWidth: 1, overflow: "hidden" },
+  cardImg: { width: "100%", height: 120, justifyContent: "center", alignItems: "center" },
+  tagBadge: { position: "absolute", top: 8, right: 8, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  tagText: { color: "#FFF", fontSize: 10, fontWeight: "700" },
+  cardBody: { padding: 12 },
+  cardName: { fontSize: 13, fontWeight: "600", lineHeight: 18 },
+  cardMeta: { fontSize: 11, marginTop: 4 },
+  cardPrice: { fontSize: 15, fontWeight: "700", marginTop: 6 },
 });

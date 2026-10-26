@@ -1,33 +1,78 @@
-# Vaultra DigiGold — PRD
+# Vaultra DigiGold — Product Requirements Document
 
-## Original Problem Statement
-Production-grade multi-tenant Digital Gold Platform (inspired by DigiGold), built as an Expo mobile app. Customer portal (header with tenant switch, live 24K ticker, vault pill, promo carousel, Instant Buy widget with 5-min price lock, rupees/grams toggle, quick chips, 3% GST, Razorpay/UPI payment, categories, trending jewellery, Vault & Ledger with portfolio, quick actions, passbook filters, Auto SIP, FAQ). Dark staff admin portal: Overview + live event stream, Customers directory by tenant, KYC review (Aadhaar/PAN, approve/reject with staff ID), In-store pickups with 6-digit OTP (locks after 5 tries), Counter POS sale, Ledger & reversals. Gold #D4AF37, Inter font, Lucide icons, toasts.
+## Overview
+Multi-tenant white-label digital gold platform. Vaultra onboards jewellery shop owners, each gets their own branded digital gold app. Customers buy gold at live rates (fractional grams), accumulate in a digital wallet, and redeem physical gold/jewellery at the shop.
 
-## User Choices
-- Staff access: separate Staff ID + PIN login
-- Backend: FastAPI + MongoDB with seeded demo data
-- Payments: real Razorpay requested but keys skipped, so a mock payment sheet is used for now (switches to Razorpay automatically when keys are set)
-- Gold price: simulated live ticker that moves every 3s
-- Customer sign-in: mock phone OTP, with the demo OTP shown in the app
+## Tech Stack
+- **Frontend:** Expo (React Native) with Expo Router — Customer mobile app
+- **Backend:** FastAPI (Python) with PostgreSQL (SQLAlchemy async ORM)
+- **Database:** PostgreSQL
+- **Admin Panels:** Web HTML served from FastAPI at /api/admin/master and /api/admin/jeweller
+- **Payment:** Mock/demo (real Razorpay later)
+- **OTP/SMS:** Mock/demo
+- **Gold Rate:** Simulated with price ticker
+- **KYC:** Demo (Setu KYC keys saved for Phase 2)
 
 ## Architecture
-- Backend: /app/backend/server.py (JWT auth, bcrypt staff PINs, quotes, orders, transactions with embedded double-entry entries, pickups, SIPs, events = simulated pub/sub, price loop)
-- Frontend: expo-router. (tabs): Home, Vault, Jewellery, SIP. Other routes: /login, /profile, /faq, /checkout (Razorpay WebView). Admin: /admin/login, /admin/(tabs) dashboard, kyc-review, pickups, counter-sale; /admin/customers, /admin/ledger
-- State: AppContext (customer session, tenant, price polling, vault), StaffContext (staff session, tenant filter)
+- Multi-tenant: jeweller_id isolates all data
+- Pool accumulator: all purchases contribute to a shared pool; at 10g threshold, bifurcation invoice is generated
+- Wallet ID: unique per customer, used for in-store redemption
+- Configurable minimum redemption grams per jeweller
 
-## Implemented (2026-06)
-- All customer and admin features above, tested end to end (25/25 backend tests passed, frontend flows passed)
+## Implemented Features (Phase 1)
 
-## Iteration 2 (2026-06)
-- Gift Gold: /gift screen. Send grams or rupees from your vault to any phone, with 5 greeting card themes (Diwali, Birthday, Wedding, Thank You, Congrats) and a personal message. New recipients get an account automatically. Shows sent and received history, and gifts appear in the passbook under the Gifts filter. APIs: /api/gifts (POST/GET), /api/gifts/mark-seen
-- Price Alerts: Home card opens a sheet to set a target price (max 5 active). A green banner appears on Home when the live 24K price drops below a target; the server checks the price before marking it hit. APIs: /api/alerts CRUD + /trigger
-- Sheets now scroll to the focused input when the keyboard opens
+### Backend (FastAPI + PostgreSQL)
+- [x] PostgreSQL database with SQLAlchemy async ORM
+- [x] Multi-tenant architecture with jeweller_id isolation
+- [x] Simulated gold/silver price ticker (updates every 3s)
+- [x] Customer auth: phone OTP (mock — any code works, demo OTP returned)
+- [x] Customer registration with first/last name, DOB, email, gender, referral code
+- [x] Referral program: ₹50 each for referrer and new user
+- [x] Gold/Silver buying: quote → order → mock-confirm → wallet credit
+- [x] Pool accumulator: tracks total grams across all jewellers, triggers at 10g
+- [x] Bifurcation invoice: per-customer, per-jeweller breakdown when pool triggers
+- [x] Redemption: customer shows Wallet ID at shop, jeweller approves, grams deducted
+- [x] Sell gold (requires KYC)
+- [x] SIP: create, pause, resume, cancel, run installment
+- [x] Gift gold to any phone number
+- [x] Price alerts: alert and book-alert types
+- [x] Goals: up to 5 per customer
+- [x] Wallet: deposit, withdraw, referral balance
+- [x] Notifications system
+- [x] KYC submit and review
+- [x] Jeweller admin: login, dashboard, customer list, redemption, transactions, pickups, KYC queue, products, settings
+- [x] Master admin: login, dashboard, jeweller onboarding, pool tracker, bifurcation invoices, all transactions, toggle jewellers
+- [x] Seeded demo data: 2 jewellers, 6 customers, transactions, pool contributions
 
-## Iteration 3 (2026-06)
-- Gold Goals: Vault section with a progress ring + bar, an occasion, target grams, timeline, a "₹/month needed" plan, a Start SIP shortcut, an achieved state and delete. Home shows a goal card. APIs: /api/goals GET/POST/DELETE (max 5)
-- Jewellery tab layout fixed: cards are the same width, names take a fixed 2-line height, the 'Gold value' rows line up, the button text stays on one line, and the header shows the piece count
+### Customer Mobile App (Expo)
+- [x] Home: jeweller name, live gold/silver prices, wallet ID, buy widget, quick actions, jewellery preview
+- [x] Buy gold/silver with any INR amount, metal toggle, quick amounts
+- [x] Vault: gold holdings, value, PnL, silver balance, Wallet ID, transaction history
+- [x] Jewellery catalog: filter by category, product cards with live pricing
+- [x] Product detail: pricing breakdown, features, redeem button
+- [x] SIP: create/manage recurring gold purchases
+- [x] Wallet: balance, deposit, withdraw, transaction history
+- [x] Login: phone → OTP (auto-filled demo) → register (new users)
+- [x] Profile: name, phone, KYC status, theme toggle, menu
+- [x] Referral: code, copy, share, stats
+- [x] Gift gold
+- [x] Notifications
+- [x] FAQ
+- [x] Dark/light theme
 
-## Backlog
-- P0: Add Razorpay test keys (RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET in backend/.env) to turn on the real gateway
-- P1: Doorstep BRINK'S delivery booking, PDF invoices, Razorpay webhooks
-- P2: Real SMS OTP, real gold price feed, scheduled SIP runner
+### Admin Panels (Web)
+- [x] Master Admin (/api/admin/master): dashboard, jeweller management, pool tracker, bifurcation invoices, transactions, onboard new jewellers
+- [x] Jeweller Admin (/api/admin/jeweller): dashboard, customers, redemption (Wallet ID lookup), transactions, KYC queue, products, settings (min redemption)
+
+## Access URLs
+- Customer App: http://localhost:3000
+- Master Admin: http://localhost:8001/api/admin/master (or /api/admin/master on preview URL)
+- Jeweller Admin: http://localhost:8001/api/admin/jeweller (or /api/admin/jeweller on preview URL)
+
+## Phase 2 (Future)
+- Real payment gateway (Razorpay/Cashfree per jeweller)
+- Real gold supplier API
+- Real SMS/OTP per jeweller
+- Setu KYC integration (keys already saved)
+- Custom domains per jeweller
+- App Store / Play Store publishing

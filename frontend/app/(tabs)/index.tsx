@@ -1,212 +1,348 @@
-import { Image } from "expo-image";
-import { useRouter } from "expo-router";
-import { ArrowRight, Gift, HelpCircle, Users } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
-import Animated, { FadeInDown } from "react-native-reanimated";
+import React, { useEffect, useState, useCallback } from "react";
+import {
+  View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl,
+  ActivityIndicator, Dimensions, TextInput,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-
-import { api } from "@/src/api";
-import { CATEGORIES, IMAGES } from "@/src/assets";
-import { BannerCarousel } from "@/src/components/BannerCarousel";
-import { BuyWidget } from "@/src/components/BuyWidget";
-import { HomeHeader } from "@/src/components/Header";
-import { HomeGoalCard } from "@/src/components/Goals";
-import { PriceAlertBanner, PriceAlertCard } from "@/src/components/PriceAlert";
-import { PriceCards } from "@/src/components/PriceCards";
-import { Product, ProductCard, RedeemSheet } from "@/src/components/Product";
-import { usesNativeTabs } from "@/src/navigation";
+import { useRouter } from "expo-router";
+import { useTheme } from "@/src/theme";
 import { useApp } from "@/src/store/AppContext";
-import { colors, fonts } from "@/src/theme";
+import { api } from "@/src/api";
+import {
+  Bell, User, TrendingUp, TrendingDown, Gift, Users, Shield,
+  ShoppingBag, Zap, Target, ChevronRight,
+} from "lucide-react-native";
 
-export default function Home() {
+const { width: SW } = Dimensions.get("window");
+
+function inr(n: number) {
+  return "₹" + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+export default function HomeScreen() {
+  const { colors } = useTheme();
+  const { user, isLoggedIn, price, isLoading, refreshPrice, jewellerConfig } = useApp();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { refresh, token } = useApp();
-  const [products, setProducts] = useState<Product[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [target, setTarget] = useState<any>(null);
-  const bottomChrome = usesNativeTabs ? insets.bottom : 0;
+  const [products, setProducts] = useState<any[]>([]);
 
   useEffect(() => {
-    api<Product[]>("/products", { auth: "none" }).then(setProducts).catch(() => {});
+    loadProducts();
   }, []);
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    if (token) await refresh();
-    setRefreshing(false);
+  const loadProducts = async () => {
+    try {
+      const p = await api<any[]>("/products", { auth: "none" });
+      setProducts(p.slice(0, 4));
+    } catch {}
   };
 
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([refreshPrice(), loadProducts()]);
+    setRefreshing(false);
+  }, [refreshPrice]);
+
+  if (isLoading) {
+    return (
+      <View style={[ss.center, { backgroundColor: colors.surface, flex: 1 }]}>
+        <ActivityIndicator size="large" color={colors.brand} />
+      </View>
+    );
+  }
+
+  const shopName = jewellerConfig?.business_name || "Vaultra DigiGold";
+  const goldDir = price?.direction === "up";
+  const silverDir = price?.silver?.direction === "up";
+
   return (
-    <View style={styles.root} testID="home-screen">
-      <HomeHeader />
+    <View style={[ss.flex, { backgroundColor: colors.surface }]}>
       <ScrollView
-        contentContainerStyle={{ paddingTop: 16, paddingBottom: bottomChrome + 24 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brandPrimary} />}
-        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingBottom: 32 }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brand} />}
       >
-        {/* Gold + Silver Price Cards */}
-        <Animated.View entering={FadeInDown.duration(300)}>
-          <PriceCards />
-        </Animated.View>
-
-        {/* Auto SIP - attractive card */}
-        <Pressable style={styles.sipPromo} onPress={() => router.push("/sip")} testID="home-sip-promo">
-          <View style={styles.sipGlow} />
-          <View style={{ flex: 1, zIndex: 1 }}>
-            <Text style={styles.sipEyebrow}>AUTO SIP</Text>
-            <Text style={styles.sipTitle}>Save in gold daily from ₹100</Text>
-            <Text style={styles.sipSub}>UPI AutoPay · Pause or cancel anytime</Text>
-          </View>
-          <View style={styles.sipArrow}>
-            <ArrowRight size={20} color={colors.onBrandPrimary} />
-          </View>
-        </Pressable>
-
-        <PriceAlertBanner />
-        <Animated.View entering={FadeInDown.delay(50).duration(400)} style={{ marginTop: 8 }}>
-          <BannerCarousel />
-        </Animated.View>
-
-        <Animated.View entering={FadeInDown.delay(100).duration(400)} style={{ marginTop: 20 }}>
-          <BuyWidget />
-        </Animated.View>
-
-        <PriceAlertCard />
-        <HomeGoalCard />
-
-        <View style={styles.sectionHead}>
-          <Text style={styles.sectionTitle}>Shop by Category</Text>
-        </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 16 }}>
-          {CATEGORIES.map((c) => (
-            <Pressable
-              key={c.id}
-              testID={`category-${c.id}`}
-              onPress={() => router.push({ pathname: "/jewellery", params: { category: c.id } })}
-              style={styles.cat}
-            >
-              <View style={styles.catImg}>
-                <Image source={IMAGES[c.image]} style={StyleSheet.absoluteFill} contentFit="cover" />
-              </View>
-              <Text style={styles.catLabel} numberOfLines={1}>
-                {c.label}
+        {/* Header */}
+        <View style={[ss.header, { paddingTop: insets.top + 12, backgroundColor: colors.surface }]}>
+          <View style={ss.headerLeft}>
+            <Text style={[ss.shopName, { color: colors.brand }]}>{shopName}</Text>
+            {isLoggedIn && user ? (
+              <Text style={[ss.greeting, { color: colors.muted }]}>
+                Hi, {user.first_name} 👋
               </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
+            ) : (
+              <TouchableOpacity onPress={() => router.push("/login")}>
+                <Text style={[ss.loginPrompt, { color: colors.brand }]}>Login / Sign Up →</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          <View style={ss.headerRight}>
+            {isLoggedIn && (
+              <TouchableOpacity style={[ss.iconBtn, { backgroundColor: colors.surfaceSecondary }]} onPress={() => router.push("/notifications")}>
+                <Bell size={20} color={colors.onSurface} />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={[ss.iconBtn, { backgroundColor: colors.surfaceSecondary }]}
+              onPress={() => isLoggedIn ? router.push("/profile") : router.push("/login")}
+            >
+              <User size={20} color={colors.onSurface} />
+            </TouchableOpacity>
+          </View>
+        </View>
 
-        <View style={styles.sectionHead}>
-          <Text style={styles.sectionTitle}>Trending Jewellery</Text>
-          <Pressable onPress={() => router.push("/jewellery")} style={styles.seeAll} testID="see-all-jewellery">
-            <Text style={styles.seeAllText}>See all</Text>
-            <ArrowRight size={14} color={colors.brandSecondary} />
-          </Pressable>
+        {/* Price Cards */}
+        <View style={ss.priceRow}>
+          {/* Gold Card */}
+          <View style={[ss.priceCard, { backgroundColor: "#FFF8E1", borderColor: "#FFD54F" }]}>
+            <View style={ss.priceCardHeader}>
+              <Text style={ss.metalEmoji}>🪙</Text>
+              <Text style={[ss.metalLabel, { color: "#5D4037" }]}>24K Gold</Text>
+            </View>
+            <Text style={[ss.metalPrice, { color: "#5D4037" }]}>
+              {price ? inr(price.buy) : "—"}/g
+            </Text>
+            <View style={ss.changeRow}>
+              {goldDir ? <TrendingUp size={14} color="#16A34A" /> : <TrendingDown size={14} color="#DC2626" />}
+              <Text style={{ fontSize: 12, color: goldDir ? "#16A34A" : "#DC2626", marginLeft: 4 }}>
+                {price ? `${goldDir ? "+" : ""}${price.change.toFixed(2)} (${price.change_pct}%)` : "—"}
+              </Text>
+            </View>
+          </View>
+          {/* Silver Card */}
+          <View style={[ss.priceCard, { backgroundColor: "#F5F5F5", borderColor: "#BDBDBD" }]}>
+            <View style={ss.priceCardHeader}>
+              <Text style={ss.metalEmoji}>🥈</Text>
+              <Text style={[ss.metalLabel, { color: "#455A64" }]}>Silver</Text>
+            </View>
+            <Text style={[ss.metalPrice, { color: "#455A64" }]}>
+              {price?.silver ? inr(price.silver.buy) : "—"}/g
+            </Text>
+            <View style={ss.changeRow}>
+              {silverDir ? <TrendingUp size={14} color="#16A34A" /> : <TrendingDown size={14} color="#DC2626" />}
+              <Text style={{ fontSize: 12, color: silverDir ? "#16A34A" : "#DC2626", marginLeft: 4 }}>
+                {price?.silver ? `${silverDir ? "+" : ""}${price.silver.change.toFixed(2)} (${price.silver.change_pct}%)` : "—"}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Wallet ID Banner (for logged in users) */}
+        {isLoggedIn && user && (
+          <View style={[ss.walletBanner, { backgroundColor: colors.brandTertiary, borderColor: colors.brand }]}>
+            <View>
+              <Text style={[ss.walletLabel, { color: colors.muted }]}>Your Wallet ID</Text>
+              <Text style={[ss.walletId, { color: colors.brand }]}>{user.wallet_id}</Text>
+            </View>
+            <View>
+              <Text style={[ss.walletLabel, { color: colors.muted }]}>Gold Balance</Text>
+              <Text style={[ss.walletGrams, { color: colors.onSurface }]}>{user.gold_grams.toFixed(4)}g</Text>
+            </View>
+          </View>
+        )}
+
+        {/* Buy Gold Quick Action */}
+        {isLoggedIn && (
+          <BuyWidget />
+        )}
+
+        {/* Quick Actions */}
+        <Text style={[ss.sectionTitle, { color: colors.onSurface }]}>Quick Actions</Text>
+        <View style={ss.actionsGrid}>
+          <ActionCard icon={<Zap size={22} color="#D4AF37" />} label="Auto SIP" sub="Recurring gold" onPress={() => router.push("/(tabs)/sip")} colors={colors} />
+          <ActionCard icon={<Gift size={22} color="#E91E63" />} label="Gift Gold" sub="Send gold" onPress={() => isLoggedIn ? router.push("/gift") : router.push("/login")} colors={colors} />
+          <ActionCard icon={<Target size={22} color="#2196F3" />} label="Price Alert" sub="Track rates" onPress={() => router.push("/(tabs)/vault")} colors={colors} />
+          <ActionCard icon={<Users size={22} color="#4CAF50" />} label="Refer & Earn" sub="₹50 each" onPress={() => isLoggedIn ? router.push("/referral") : router.push("/login")} colors={colors} />
+        </View>
+
+        {/* Jewellery Preview */}
+        <View style={ss.sectionHeader}>
+          <Text style={[ss.sectionTitle, { color: colors.onSurface }]}>Jewellery Catalog</Text>
+          <TouchableOpacity onPress={() => router.push("/(tabs)/jewellery")}>
+            <Text style={{ color: colors.brand, fontSize: 13 }}>View All <ChevronRight size={13} color={colors.brand} /></Text>
+          </TouchableOpacity>
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}>
-          {products.slice(0, 4).map((p) => (
-            <ProductCard key={p.id} p={p} width={196} onRedeem={(x) => setTarget({ kind: "product", product: x })} />
+          {products.map((p) => (
+            <TouchableOpacity
+              key={p.id}
+              style={[ss.productCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}
+              onPress={() => router.push(`/product-detail?id=${p.id}`)}
+            >
+              <View style={[ss.productImg, { backgroundColor: colors.brandTertiary }]}>
+                <ShoppingBag size={28} color={colors.brand} />
+              </View>
+              <Text style={[ss.productName, { color: colors.onSurface }]} numberOfLines={1}>{p.name}</Text>
+              <Text style={[ss.productMeta, { color: colors.muted }]}>{p.grams}g · {p.tag}</Text>
+              <Text style={[ss.productPrice, { color: colors.brand }]}>{inr(p.total_price)}</Text>
+            </TouchableOpacity>
           ))}
         </ScrollView>
 
-        <Pressable style={styles.giftPromo} onPress={() => router.push("/gift")} testID="home-gift-promo">
-          <View style={styles.giftIcon}>
-            <Gift size={22} color={colors.giftDiwaliAccent} />
+        {/* Info Cards */}
+        <View style={[ss.infoCard, { backgroundColor: colors.surfaceSecondary, marginHorizontal: 16, marginTop: 20 }]}>
+          <Shield size={20} color={colors.brand} />
+          <View style={{ marginLeft: 12, flex: 1 }}>
+            <Text style={[ss.infoTitle, { color: colors.onSurface }]}>24K 99.9% Pure Gold</Text>
+            <Text style={[ss.infoSub, { color: colors.muted }]}>BIS Hallmarked · LBMA Certified · Secure Vault Storage</Text>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.giftTitle}>Gift Gold</Text>
-            <Text style={styles.giftSub}>Send grams to any phone with a greeting card</Text>
-          </View>
-          <ArrowRight size={18} color={colors.giftDiwaliAccent} />
-        </Pressable>
-
-        {/* Refer & Earn promo */}
-        <Pressable style={styles.referPromo} onPress={() => router.push("/referral")} testID="home-refer-promo">
-          <View style={styles.referIcon}>
-            <Users size={22} color={colors.brandPrimary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.referTitle}>Refer & Earn ₹50</Text>
-            <Text style={styles.referSub}>Invite friends · You both earn ₹50 reward</Text>
-          </View>
-          <ArrowRight size={18} color={colors.brandPrimary} />
-        </Pressable>
-
-        <Pressable style={styles.faqRow} onPress={() => router.push("/faq")} testID="home-faq-link">
-          <HelpCircle size={20} color={colors.onSurfaceTertiary} />
-          <Text style={styles.faqText}>Frequently asked questions</Text>
-          <ArrowRight size={16} color={colors.muted} />
-        </Pressable>
+        </View>
       </ScrollView>
-      <RedeemSheet target={target} onClose={() => setTarget(null)} />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.surfaceSecondary },
-  sectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, marginTop: 32, marginBottom: 12 },
-  sectionTitle: { fontFamily: fonts.black, fontSize: 20, letterSpacing: -0.6, color: colors.onSurface },
-  seeAll: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 44 },
-  seeAllText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.brandSecondary },
-  cat: { alignItems: "center", width: 72 },
-  catImg: { width: 68, height: 68, borderRadius: 34, overflow: "hidden", borderWidth: 2, borderColor: colors.brandPrimary, backgroundColor: colors.surfaceTertiary },
-  catLabel: { fontFamily: fonts.medium, fontSize: 12, color: colors.onSurface, marginTop: 6 },
-  sipPromo: {
-    marginHorizontal: 16,
-    marginTop: 12,
-    backgroundColor: colors.surfaceInverse,
-    borderRadius: 14,
-    padding: 20,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    overflow: "hidden",
-  },
-  sipGlow: {
-    position: "absolute",
-    right: -30,
-    top: -30,
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: "rgba(212,175,55,0.15)",
-  },
-  sipEyebrow: { fontFamily: fonts.bold, fontSize: 11, color: colors.brandPrimary, letterSpacing: 1 },
-  sipTitle: { fontFamily: fonts.black, fontSize: 18, color: colors.onSurfaceInverse, letterSpacing: -0.4, marginTop: 4 },
-  sipSub: { fontFamily: fonts.regular, fontSize: 12, color: colors.mutedLight, marginTop: 4 },
-  sipArrow: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" },
-  giftPromo: { marginHorizontal: 16, marginTop: 12, flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: 14, backgroundColor: colors.giftDiwali },
-  giftIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.overlayLight, alignItems: "center", justifyContent: "center" },
-  giftTitle: { fontFamily: fonts.black, fontSize: 17, color: colors.onSurfaceInverse, letterSpacing: -0.4 },
-  giftSub: { fontFamily: fonts.regular, fontSize: 12, color: colors.giftDiwaliAccent, marginTop: 2 },
-  referPromo: {
-    marginHorizontal: 16,
-    marginTop: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    padding: 16,
-    borderRadius: 14,
-    backgroundColor: colors.brandTertiary,
-    borderWidth: 1,
-    borderColor: "#F0E2B0",
-  },
-  referIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border },
-  referTitle: { fontFamily: fonts.black, fontSize: 17, color: colors.onSurface, letterSpacing: -0.4 },
-  referSub: { fontFamily: fonts.regular, fontSize: 12, color: colors.onBrandTertiary, marginTop: 2 },
-  faqRow: {
-    marginHorizontal: 16,
-    marginTop: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    padding: 16,
-    borderRadius: 14,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  faqText: { flex: 1, fontFamily: fonts.semibold, fontSize: 14, color: colors.onSurface },
+function BuyWidget() {
+  const { colors } = useTheme();
+  const { price, refreshUser } = useApp();
+  const [amount, setAmount] = useState("");
+  const [metal, setMetal] = useState<"gold" | "silver">("gold");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  const rate = metal === "gold" ? price?.buy : price?.silver?.buy;
+  const grams = rate && amount ? (parseFloat(amount) / rate) : 0;
+
+  const handleBuy = async () => {
+    if (!amount || parseFloat(amount) < 10) return;
+    setLoading(true);
+    setResult(null);
+    try {
+      const quote = await api<any>(`/quote?metal=${metal}`, { method: "POST" });
+      const order = await api<any>("/orders/buy", {
+        method: "POST",
+        body: { quote_id: quote.id, mode: "rupees", value: parseFloat(amount), method: "upi" },
+      });
+      const confirmed = await api<any>(`/orders/${order.id}/mock-confirm`, {
+        method: "POST", body: { method: "upi", success: true },
+      });
+      setResult(`✅ Bought ${confirmed.transaction.grams.toFixed(4)}g ${metal} for ${inr(confirmed.transaction.total)}`);
+      setAmount("");
+      refreshUser();
+    } catch (e: any) {
+      setResult(`❌ ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <View style={[ss.buySection, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+      <Text style={[ss.buySectionTitle, { color: colors.onSurface }]}>Buy {metal === "gold" ? "Gold" : "Silver"}</Text>
+      <View style={ss.metalToggle}>
+        {(["gold", "silver"] as const).map((m) => (
+          <TouchableOpacity
+            key={m}
+            style={[ss.metalBtn, metal === m && { backgroundColor: colors.brand }]}
+            onPress={() => setMetal(m)}
+          >
+            <Text style={{ color: metal === m ? "#FFF" : colors.muted, fontWeight: "600", fontSize: 13 }}>
+              {m === "gold" ? "🪙 Gold" : "🥈 Silver"}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      <View style={ss.buyInputRow}>
+        <View style={[ss.buyInputWrap, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+          <Text style={[ss.rupeeSign, { color: colors.muted }]}>₹</Text>
+          <View style={ss.buyInputInner}>
+            <TextInput
+              value={amount}
+              onChangeText={setAmount}
+              placeholder="Enter amount"
+              keyboardType="numeric"
+              style={[ss.buyInput, { color: colors.onSurface }]}
+              placeholderTextColor={colors.mutedLight}
+            />
+          </View>
+        </View>
+        <TouchableOpacity
+          style={[ss.buyBtn, { backgroundColor: colors.brand, opacity: loading ? 0.6 : 1 }]}
+          onPress={handleBuy}
+          disabled={loading}
+        >
+          {loading ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={ss.buyBtnText}>Buy</Text>}
+        </TouchableOpacity>
+      </View>
+      {grams > 0 && (
+        <Text style={[ss.gramsPreview, { color: colors.muted }]}>
+          ≈ {grams.toFixed(4)}g at {inr(rate || 0)}/g + 3% GST
+        </Text>
+      )}
+      <View style={ss.quickAmounts}>
+        {[500, 1000, 2000, 5000].map((a) => (
+          <TouchableOpacity key={a} style={[ss.quickAmt, { borderColor: colors.border }]} onPress={() => setAmount(a.toString())}>
+            <Text style={{ color: colors.onSurface, fontSize: 12 }}>{inr(a)}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      {result && <Text style={[ss.resultText, { color: result.startsWith("✅") ? colors.success : colors.error }]}>{result}</Text>}
+    </View>
+  );
+}
+
+// TextInput already imported above
+
+function ActionCard({ icon, label, sub, onPress, colors }: any) {
+  return (
+    <TouchableOpacity style={[ss.actionCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]} onPress={onPress}>
+      <View style={[ss.actionIcon, { backgroundColor: colors.brandTertiary }]}>{icon}</View>
+      <Text style={[ss.actionLabel, { color: colors.onSurface }]}>{label}</Text>
+      <Text style={[ss.actionSub, { color: colors.muted }]}>{sub}</Text>
+    </TouchableOpacity>
+  );
+}
+
+const ss = StyleSheet.create({
+  flex: { flex: 1 },
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", paddingHorizontal: 16, paddingBottom: 12 },
+  headerLeft: { flex: 1 },
+  headerRight: { flexDirection: "row", gap: 8 },
+  shopName: { fontSize: 20, fontWeight: "800", letterSpacing: 0.5 },
+  greeting: { fontSize: 14, marginTop: 2 },
+  loginPrompt: { fontSize: 14, fontWeight: "600", marginTop: 2 },
+  iconBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: "center", alignItems: "center" },
+  priceRow: { flexDirection: "row", paddingHorizontal: 16, gap: 12, marginTop: 4 },
+  priceCard: { flex: 1, borderRadius: 16, padding: 16, borderWidth: 1 },
+  priceCardHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
+  metalEmoji: { fontSize: 20 },
+  metalLabel: { fontSize: 13, fontWeight: "600" },
+  metalPrice: { fontSize: 20, fontWeight: "800", marginTop: 8 },
+  changeRow: { flexDirection: "row", alignItems: "center", marginTop: 4 },
+  walletBanner: { marginHorizontal: 16, marginTop: 16, borderRadius: 14, padding: 16, borderWidth: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  walletLabel: { fontSize: 11, fontWeight: "500" },
+  walletId: { fontSize: 18, fontWeight: "800", letterSpacing: 1 },
+  walletGrams: { fontSize: 18, fontWeight: "700", textAlign: "right" },
+  buySection: { margin: 16, borderRadius: 16, padding: 16, borderWidth: 1 },
+  buySectionTitle: { fontSize: 16, fontWeight: "700", marginBottom: 12 },
+  metalToggle: { flexDirection: "row", gap: 8, marginBottom: 12 },
+  metalBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
+  buyInputRow: { flexDirection: "row", gap: 10, alignItems: "center" },
+  buyInputWrap: { flex: 1, flexDirection: "row", alignItems: "center", borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, height: 48 },
+  rupeeSign: { fontSize: 18, fontWeight: "600", marginRight: 4 },
+  buyInputInner: { flex: 1 },
+  buyInput: { fontSize: 18, fontWeight: "600", height: 48, padding: 0 },
+  buyBtn: { height: 48, paddingHorizontal: 24, borderRadius: 12, justifyContent: "center", alignItems: "center" },
+  buyBtnText: { color: "#FFF", fontSize: 16, fontWeight: "700" },
+  gramsPreview: { fontSize: 12, marginTop: 8 },
+  quickAmounts: { flexDirection: "row", gap: 8, marginTop: 10 },
+  quickAmt: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
+  resultText: { fontSize: 13, marginTop: 10, fontWeight: "600" },
+  sectionTitle: { fontSize: 17, fontWeight: "700", paddingHorizontal: 16, marginTop: 20, marginBottom: 12 },
+  sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingRight: 16, marginTop: 20, marginBottom: 12 },
+  actionsGrid: { flexDirection: "row", flexWrap: "wrap", paddingHorizontal: 16, gap: 12 },
+  actionCard: { width: (SW - 44) / 2, borderRadius: 14, padding: 16, borderWidth: 1 },
+  actionIcon: { width: 42, height: 42, borderRadius: 12, justifyContent: "center", alignItems: "center", marginBottom: 10 },
+  actionLabel: { fontSize: 14, fontWeight: "700" },
+  actionSub: { fontSize: 12, marginTop: 2 },
+  productCard: { width: 150, borderRadius: 14, padding: 12, borderWidth: 1 },
+  productImg: { width: "100%", height: 80, borderRadius: 10, justifyContent: "center", alignItems: "center", marginBottom: 8 },
+  productName: { fontSize: 13, fontWeight: "600" },
+  productMeta: { fontSize: 11, marginTop: 2 },
+  productPrice: { fontSize: 14, fontWeight: "700", marginTop: 4 },
+  infoCard: { flexDirection: "row", alignItems: "center", padding: 16, borderRadius: 14 },
+  infoTitle: { fontSize: 14, fontWeight: "600" },
+  infoSub: { fontSize: 12, marginTop: 2 },
 });
