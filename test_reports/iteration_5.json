@@ -1,0 +1,68 @@
+{
+  "summary": "Iteration 5 tested the restored old customer UI (Expo web, 390x844) and the new backend compatibility endpoints. BACKEND: all 17 tests in the new compat suite /app/backend/tests/test_compat_restore.py pass. Covered: the tenant alias on /price and /otp/verify; /quote with no auth, with a body tenant and with no body; /quote/silver; /orders/buy-silver; GET /orders/{id} (and its 404); vault.pending_pickups; txn.tenant; gift sender/recipient names and phones; /gifts/mark-seen; alerts create, book, trigger (above and below target) and delete; redeem coin creating a pending pickup with an OTP; both admin panels loading with no emojis. FRONTEND: the home screen renders the old UI. Inter fonts load (400-800). The header shows 'Sharma Gold & Jewellers' and the ticker shows INDICATIVE. Price-card arrows follow the sign of change_pct (checked with a negative gold and a positive silver change). The ticker, price-alert banner, Auto SIP banner, carousel, BuyWidget with its 4:59 lock timer, categories, trending, gift, refer and FAQ sections all render. OTP login shows the 'Your code' banner, 'Use code' fills the code in, Verify works, and there is no 'Demo customer' text. Vault works: balance, P&L, passbook, invoice sheet, sell 0.01g (1.3406 to 1.3306g), and redeem a 1g coin (pickup OTP shown in the sheet and in the vault pending-pickup card). Wallet deposit 500 and withdraw 200 update the balance and history. SIP create, pause/resume, pay-now and delete work. Gift to a new phone works and the Sent tab shows the name, phone and amount. Price-alert Only and Book create/delete work. Refer & Earn, Notifications (empty state), Profile with KYC submit (status becomes Pending), FAQ expand, and Goals create/delete all work. Both admin panels log in and show the dashboard. CRITICAL: buying from the home BuyWidget shows a success screen, but no gold or silver is credited. Three purchases left Meera at 1.3406g and none appeared in the passbook, because BuyWidget never calls /orders/{id}/mock-confirm. HIGH: product images are blank on Jewellery, Trending and product detail. HIGH: the app lists 24 products from all 3 jewellers, including Patel's and the leftover 'Test Jewellers 37514'. HIGH: the inputs on the register screen are squashed to about 22px. Older v1 test suites show some v2 behaviour changes (listed in critical_code_review_comments). No deprecated Expo packages and no SafeAreaView from react-native were found.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/products (no jeweller_id)", "issue": "Returns active products from ALL jewellers (8 x 3 = 24). The app calls it without a tenant, so Sharma customers see Patel's and 'Test Jewellers 37514' products. Every product also has image_url=''.", "priority": "HIGH"},
+      {"endpoint": "POST /api/redeem (kind=product)", "issue": "Does not check product.jeweller_id == customer.jeweller_id, so a customer can redeem another jeweller's product while the pickup is created under their own jeweller. It also has no KYC check: a non-KYC user gets 400 'Insufficient' or succeeds, where the v1 test expected 403.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/gifts + otp/verify", "issue": "'Saver' is appended to names as a default last_name. A gift to 'Riya Kapoor' shows 'Dear Riya Kapoor Saver', and a pytest user became 'TEST User Saver'. Reference: server.py lines 658 and 1106."},
+      {"endpoint": "POST /api/alerts", "issue": "No limit of 5 active alerts, and an absurd target (500 when the price is 7,300) is accepted. v1 rejected both."},
+      {"endpoint": "POST /api/alerts/{id}/trigger (book alerts)", "issue": "Only marks the alert triggered. A book alert never auto-buys, even though the UI toast says 'Will auto-buy ₹1000 ... when rate ≤ ...'."},
+      {"endpoint": "POST /api/goals", "issue": "The response omits 'occasion' and progress fields that GET /goals returns."},
+      {"endpoint": "GET /api/transactions", "issue": "gift_sent/gift_received transactions have no gift_id, so they cannot be linked to the gift."},
+      {"endpoint": "POST /api/orders/buy", "issue": "Accepts a quote_id belonging to another jeweller; it does not check q.jeweller_id against customer.jeweller_id."},
+      {"endpoint": "GET /api/jewellers/list", "issue": "Leftover test jeweller 'Test Jewellers 37514' (id 4ac3d937...) is active and visible to customers."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "BuyWidget confirmPurchase", "issue": "Calls /orders/buy or /orders/buy-silver (status=created) and immediately shows 'Gold added to your vault!' without calling /orders/{id}/mock-confirm. The vault is never credited and no transaction is recorded. Reproduced: 3 purchases (gold ₹1000, gold 0.01g, silver ₹500); the header stayed at 1.3406g and the passbook was unchanged. Reference: src/components/BuyWidget.tsx:71-86", "testID": "confirm-buy-button", "priority": "CRITICAL"},
+      {"component": "Product images (Jewellery grid, Home Trending, Product detail)", "issue": "All product images are blank. The frontend uses IMAGES[p.image] (old v1 key), but the v2 backend returns image_url='' and no 'image' key. Reference: src/components/Product.tsx:27, app/product-detail.tsx:94,112", "testID": "product-card-*", "priority": "HIGH"},
+      {"component": "Jewellery/Home product list", "issue": "/products is called without jeweller_id, so 24 pieces from 3 jewellers are shown instead of the tenant's 8. Reference: app/(tabs)/jewellery.tsx:32, app/(tabs)/index.tsx:32", "testID": "jewellery-count", "priority": "HIGH"},
+      {"component": "Login register step (Complete your profile)", "issue": "First name, last name, DOB, email and referral inputs collapse to about 22px tall: the text touches the borders and the touch target is under 44px. RCA: style=[styles.field, styles.input] applies flex:1 from styles.input inside a column ScrollView, and flex-basis 0 overrides height on web. Reference: app/login.tsx:182 (and siblings), styles at lines 253/255", "testID": "login-firstname-input", "priority": "HIGH"}
+    ],
+    "integration_issues": [
+      {"flow": "Home BuyWidget -> payment sheet -> success -> vault", "issue": "Success is shown but the balance and ledger are not updated (mock-confirm is missing).", "affected_testIDs": ["confirm-buy-button", "buy-done-button", "portfolio-grams"]},
+      {"flow": "Client-side alert trigger", "issue": "The AppContext effect compares the gold price.buy against every alert, including silver ones, so silver alerts never trigger on the client. Reference: src/store/AppContext.tsx:118", "affected_testIDs": ["alert-metal-silver"]}
+    ],
+    "design_issues": [
+      {"screen": "Home BuyWidget / Alert sheet", "issues": ["The Coins icon on the active 'Gold (24K)' toggle is invisible: colors.onBrandPrimary on a brandTertiary background (BuyWidget.tsx:105, PriceAlert.tsx gold metal button).", "The success icon is a plain '✓' glyph in dark text on green; use a white Check icon (BuyWidget.tsx:182).", "The '⚖' emoji is used as the grams mode label (BuyWidget.tsx:121). The user asked for no emojis.", "'Mock payment · Instant completion' is visible to customers in the confirm sheet and reads as a dev/demo hint (BuyWidget.tsx:170)."]},
+      {"screen": "Home banner carousel", "issues": ["On slide 2 the previous slide shows about 16px at the left edge, so the card is not aligned with the 16px page margin (snapToInterval=width+12 does not match the content offset). Reference: src/components/BannerCarousel.tsx:36"]},
+      {"screen": "Home categories", "issues": ["The 'Pendant Sets' label overflows its 72px column and is truncated."]},
+      {"screen": "Vault Tax Invoice sheet", "issues": ["The date line ('26 Oct, 06:49 pm') is indented about 16px relative to the invoice number above it, so the two lines are misaligned."]},
+      {"screen": "Gift Gold", "issues": ["The converted value next to the amount input ('≈ ₹72.99') wraps onto 2 lines and is clipped past the right edge of the input (testID gift-converted).", "The gift card brand reads 'VAULTRA DIGIGOLD' instead of the jeweller name."]},
+      {"screen": "Jewellery tab ticker", "issues": ["The LiveTicker is too narrow: '24K (99.9%)' and '▲ INDICATIVE' each wrap onto 2 lines (testID jewellery-ticker)."]},
+      {"screen": "SIP", "issues": ["'1 installments' should be '1 installment'.", "'Next debit 27 Oct 2026 ·' has a dangling separator.", "The ₹5,000 amount chip wraps alone onto a second row."]},
+      {"screen": "Jeweller admin panel", "issues": ["The 'Rajesh Sharma · Mumbai' text touches the Logout button with no gap.", "The tab label 'Kyc' should be 'KYC'."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_compat_restore.py", "/app/test_reports/pytest/iteration_5.xml", "/app/test_reports/pytest/iteration_5_all.xml"],
+  "action_items": [
+    "CRITICAL: In BuyWidget.confirmPurchase, after /orders/buy or /orders/buy-silver, call POST /orders/{r.id}/mock-confirm {method:'upi', success:true}, use the returned transaction for the success view, then refresh(). Alternatively, auto-confirm on the backend when method=='mock'.",
+    "Product images: map the v2 product schema to images. Either return an 'image' key from the backend or make the frontend use image_url with a fallback to IMAGES by category/name, and seed image_url for the products.",
+    "Pass jeweller_id=tenant to /products in jewellery.tsx and index.tsx, and make the backend require or default the tenant. Validate product.jeweller_id in /redeem and quote.jeweller_id in /orders/buy.",
+    "Fix the collapsed register inputs in app/login.tsx: drop flex:1 from the standalone TextInputs (use a separate style with height 56).",
+    "Remove the default last_name 'Saver' for gift recipients and new users (server.py:658, 1106), or stop concatenating it into display names.",
+    "Remove the '⚖' and '✓' glyphs (use lucide Scale and Check icons) and the 'Mock payment · Instant completion' text.",
+    "Make the active Gold toggle icon visible (use colors.brandSecondary when active).",
+    "Fix the alignment of the invoice date line, the clipping of the gift converted value, the wrapping of the Jewellery ticker, carousel snap alignment, and the 'Pendant Sets' truncation.",
+    "Book alerts: implement the auto-buy on trigger, or change the copy. Match alerts to the price of their own metal in AppContext.",
+    "Optional parity: enforce a maximum of 5 active alerts with a sane target range, add a KYC check on /redeem, return 'occasion' from POST /goals, and deactivate the leftover 'Test Jewellers 37514'."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 2034 lines; split it into routers (auth, orders, vault, gifts, alerts, admin, master).",
+    "BuyWidget computes total = amt*1.03 on the client, while the backend rounds separately. That is fine, but the success view shows the order values, not a confirmed transaction.",
+    "_quote_jeweller silently falls back to the first active jeweller when the tenant is unknown, which hides misconfiguration.",
+    "The legacy suites test_vaultra_api.py, test_gifts_alerts.py and test_goals.py target v1 endpoints (/tenants, admin PIN) and fail against v2 (8 failed, 7 errors). Update or retire them; test_compat_restore.py and test_margins_domains_feed.py are the v2 suites.",
+    "No deprecated packages (expo-av, expo-barcode-scanner, expo-background-fetch) were found, and SafeAreaView is not imported from react-native."
+  ],
+  "updated_files": ["/app/backend/tests/test_compat_restore.py"],
+  "success_rate": {"backend": "100% of the new compat suite (17/17); 65/80 overall including the outdated v1 suites", "frontend": "~80% (buy flow does not credit the vault; images blank; register inputs collapsed)"},
+  "seed_data_creation": "Test users: TEST pytest users (91xxxxxxxx), gift recipients (92xxxxxxxx, 93570 48801 'Riya Kapoor'), and new user 9425167996 'Tanvi Desai' with KYC pending (appears in the Sharma KYC queue). Meera (9834567892) sold 0.01g and redeemed a 1g coin (pending pickup OTP 290405) and has 3 orders left in status 'created'. Aarav's alerts were deleted, and the test SIP and goal were deleted. Margins and domains were not changed.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run pytest with -n 0. Use ' >> visible=true' locators because the Expo web stack keeps hidden copies of earlier screens. Sheets animate, so click inside them via locator.evaluate('e=>e.click()') after a ~1.5s wait. RN ScrollView ignores mouse.wheel; use scrollIntoView. Login testIDs: login-phone-input, login-send-otp-button, login-autofill-otp, login-verify-button; register step: login-firstname-input, login-register-button. BuyWidget: toggle-gold/silver, buy-mode-rupees/grams, buy-input, quick-*, buy-proceed-button, confirm-buy-button, buy-done-button. To verify the buy fix, check that portfolio-grams changes after a BuyWidget purchase.",
+  "rca_of_issue": "BuyWidget not crediting: v2 split purchase into /orders/buy (create order, status=created) and /orders/{id}/mock-confirm (credit metal, create txn, add to pool). The restored v1 BuyWidget assumed /orders/buy completed the purchase. Product images: the v1 product schema had 'image' as a key into the local IMAGES map; v2 returns 'image_url' (empty). Register inputs: a shared style with flex:1 collapses standalone TextInputs in a column on react-native-web."
+}

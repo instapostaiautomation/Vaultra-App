@@ -1,33 +1,20 @@
 const BASE = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api`;
 
-const tokens: { customer: string | null; jeweller: string | null; master: string | null } = {
-  customer: null, jeweller: null, master: null,
-};
+const tokens: { user: string | null; staff: string | null } = { user: null, staff: null };
 
-export type AuthRole = "customer" | "jeweller" | "master" | "none";
-
-export function setToken(role: AuthRole, token: string | null) {
-  if (role !== "none") tokens[role] = token;
+export function setToken(kind: "user" | "staff", token: string | null) {
+  tokens[kind] = token;
 }
 
-export function getToken(role: AuthRole): string | null {
-  if (role === "none") return null;
-  return tokens[role];
-}
+type Opts = { method?: string; body?: unknown; auth?: "user" | "staff" | "none" };
 
-type Opts = { method?: string; body?: unknown; auth?: AuthRole };
-
-export async function api<T = any>(path: string, { method = "GET", body, auth = "customer" }: Opts = {}): Promise<T> {
+export async function api<T = any>(path: string, { method = "GET", body, auth = "user" }: Opts = {}): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   const tok = auth === "none" ? null : tokens[auth];
   if (tok) headers.Authorization = `Bearer ${tok}`;
   let res: Response;
   try {
-    res = await fetch(`${BASE}${path}`, {
-      method,
-      headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
+    res = await fetch(`${BASE}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   } catch {
     throw new Error("Network unavailable. Check your connection");
   }

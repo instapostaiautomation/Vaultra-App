@@ -1,0 +1,52 @@
+{
+  "summary": "Iteration 6 RETEST of the iteration_5 fixes. BACKEND: 30/30 pytest pass. That is 13 new tests in test_iteration6_fixes.py plus the 17 in test_compat_restore.py. Covered: gold buy in rupees and in grams, and silver buy, each followed by mock-confirm, which credits the vault and creates passbook transactions; a second confirm is rejected with 400; products carry an `image` key; /products?jeweller_id= returns only that jeweller's products; /orders/buy rejects a Patel quote with 400; /redeem rejects a Patel product with 404; no 'Saver' in new-user or gift names; silver alerts trigger against the silver price; the 5-active-alert cap returns 400 and frees up after a delete. FRONTEND (390x844): The CRITICAL issue is FIXED. In the BuyWidget, gold Rs2000 credited +0.2744g, gold 0.05g credited +0.0500g and silver Rs1000 credited +10.7388g. Meera went from 0.3306g to 0.6550g, shown in the header pill and in portfolio-grams. The passbook shows all 3 purchases. The success sheet shows the lucide Check icon, +grams, Rate and Total paid. There is no 'Mock' text, the ⚖ glyph is replaced by the Scale icon, and the active Gold toggle icon is visible (#C5A028). Product images render on Home Trending, Jewellery and product detail. The Jewellery tab shows only Sharma's 8 pieces. The register inputs are all 56px. The invoice number and date are left-aligned at x=20. The gift ≈ value is not clipped. The carousel snaps cleanly with no sliver. The 'Pendant Sets' label is not truncated. SIP shows '1 installment', has no dangling '·', and its chips fit. The jeweller panel has a 12px gap between the owner name and Logout, and the tab reads 'KYC'. Regression passed: OTP login and register, vault sell 0.01g, wallet deposit 500 and withdraw 200, gift send with Sent tab, referral code, notifications empty state, profile KYC Approved, and the coin-redeem insufficient-balance state. NEW ISSUES FOUND: silver purchases look wrong in the passbook (raw 'buy_silver' label, shown as a −debit) and in the invoice (empty Type, 'Gold (24K 99.9%)' label); the silver balance is not shown anywhere in the app; the Jewellery ticker no longer wraps but now cuts off all 3 texts with ellipsis; the gift recipient-name input is squashed to 32px. No deprecated Expo packages were found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/products (no jeweller_id)", "issue": "Without jeweller_id it still returns products from all jewellers, including Patel and the leftover test jeweller 4ac3d937…. The frontend now always passes the tenant, so customers are not affected, but the backend does not default to the customer's tenant."},
+      {"endpoint": "POST /api/orders/buy (rupees mode)", "issue": "r4() floors the grams (2000/7286.05 credits 0.2744g), but the BuyWidget preview and the confirm sheet round up and show 0.2745g. The preview and the credited amount differ by 0.0001g."},
+      {"endpoint": "POST /api/orders/{id}/mock-confirm (silver)", "issue": "A silver buy is added to the pool as type 'buy_silver' but does not update invested. That is acceptable, but nothing in the UI reads silver_grams (see integration_issues)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Passbook TxnRow (silver buy)", "issue": "Silver purchases show the raw label 'buy_silver' and are displayed as a debit '−10.7388g'. TXN_LABEL (src/format.ts:40) has no buy_silver entry, and the credit list in src/components/TxnRow.tsx:23 does not include 'buy_silver'.", "testID": "txn-row-*", "priority": "HIGH"},
+      {"component": "Invoice sheet (silver buy)", "issue": "The Type row is empty because TXN_LABEL['buy_silver'] is undefined. The grams row is always labelled 'Gold (24K 99.9%)' even for silver. The share text also says 'Gold: … 24K'. Reference: app/(tabs)/vault.tsx:266,283-286", "testID": "invoice-sheet", "priority": "MEDIUM"},
+      {"component": "Gift recipient name input", "issue": "gift-name-input renders 32px tall because the input style uses flex:1 inside a column. This is the same bug that was fixed on the register screen. Reference: app/gift.tsx:147 (styles.input has flex:1)", "testID": "gift-name-input", "priority": "MEDIUM"},
+      {"component": "Jewellery tab LiveTicker", "issue": "The ticker is now on one line, but it is squeezed into maxWidth 240. All 3 texts are cut off with ellipsis: '24K (99....', '₹7,292....', '▲ INDICA...'. The price itself is unreadable. Reference: app/(tabs)/jewellery.tsx:74", "testID": "jewellery-ticker", "priority": "HIGH"},
+      {"component": "BuyWidget silver confirm sheet", "issue": "The note says 'Gold is credited to your vault instantly' even when buying silver. Reference: src/components/BuyWidget.tsx:171", "testID": "buy-payment-sheet", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Silver holdings", "issue": "Silver buys are credited on the backend (user.silver_grams), but no screen shows the silver balance. Vault, the header pill and Profile show gold only, so after buying silver the user cannot see what they own.", "affected_testIDs": ["portfolio-grams", "portfolio-card"]},
+      {"flow": "Price alerts", "issue": "Silver can only be picked on the 'Book Alert' tab; 'Only Alert' is always gold. The active-alerts list does not show which metal an alert is for (a silver ₹85 alert reads '₹85.00/g Book Alert · Auto-buy'). The 'Alert created' toast always says '24K'. Book alerts promise an auto-buy that is not implemented (known and out of scope). Reference: src/components/PriceAlert.tsx:60,121"}
+    ],
+    "design_issues": [
+      {"screen": "Home", "issues": ["The PriceAlertBanner says '24K dropped below ₹7,290' while the gold card shows '▲ 0.06% Since yesterday'. The banner uses the tick direction, the card uses the daily change, so the two contradict each other. The banner's '×' close is a text glyph with no testID.", "The jeweller admin login (/api/admin/jeweller) is prefilled with sharma@vaultra.in and the password, which looks like demo content."]},
+      {"screen": "Product detail", "issues": ["All 4 thumbnails are the same image."]},
+      {"screen": "Vault coin sheet", "issues": ["With an insufficient balance (0.6088g against a 1g coin), 'Balance after' shows 0.0000g instead of making the shortfall clear. The CTA correctly reads 'Add 0.3912g more gold'."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration6_fixes.py", "/app/backend/tests/test_compat_restore.py", "/app/test_reports/pytest/iteration_6.xml"],
+  "action_items": [
+    "HIGH: Add `buy_silver: 'Silver Purchase'` to TXN_LABEL (src/format.ts) and add 'buy_silver' to the credit list in TxnRow.tsx:23. In the invoice sheet, label the grams row by t.metal (Silver 99.9% or Gold 24K 99.9%). Also make the passbook 'Buy' filter include buy_silver.",
+    "HIGH: Show the silver balance (user.silver_grams and its value at the silver sell rate) on Vault, and ideally in the header pill and on Profile.",
+    "HIGH: The Jewellery tab ticker cuts off its text. Remove maxWidth:240 or let it take the full row width (or show a compact variant) so the price is readable.",
+    "MEDIUM: In app/gift.tsx:147, give gift-name-input a standalone style with height 48-56 and no flex:1.",
+    "LOW: Make the BuyWidget confirm note match the metal ('Silver is credited…'). Show the metal in the alert rows and toasts, and offer the metal choice for 'Only Alert' too.",
+    "LOW: Make the preview grams use the same floor as the backend (or make the backend round) so the preview matches the credited grams.",
+    "LOW: Default /products to an active-jeweller filter (or require jeweller_id), and deactivate the test jeweller 4ac3d937….",
+    "LOW: Make the home price-drop banner use the same signal as the price card. Remove the prefilled credentials from the jeweller admin login."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 2051 lines; split it into routers (auth, orders, vault, gifts, alerts, admin).",
+    "r4() uses math.floor, which credits a little less gold than the UI preview shows; use one rounding rule everywhere.",
+    "TENANT_NAME is a module-level object mutated at runtime in AppContext.tsx:149; this works, but it is fragile (no re-render when it changes)."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration6_fixes.py"],
+  "success_rate": {"backend": "100% (30/30)", "frontend": "~88% (all requested retest items pass except the Jewellery ticker, which is still cut off with ellipsis; new silver-display bugs found)"},
+  "seed_data_creation": "Test customers were created with phones 93xxxxxxxx, 95xxxxxxxx, 96xxxxxxxx and 97xxxxxxxx (names prefixed 'TEST'). Meera (9834567892) gained 0.3244g gold and 10.7388g silver. Aarav sold 0.01g, his wallet went +500/−200, and he gifted 0.001g to 9988776655.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -n 0 and export EXPO_PUBLIC_BACKEND_URL. Use ' >> visible=true' locators; to click inside sheets use locator('[data-testid=X]').last.locator(...).evaluate('e=>e.click()'). The alert sheet closes after each create. Alert metal selection exists only on the alert-tab-book tab. The jeweller admin login button: get_by_role('button', name='Login') (#submit is not clickable). Aarav has about 0.6g, which is below the 1g coin minimum. To check the silver fixes, buy silver on Home, then check the Vault passbook label and sign, and the invoice Type row."
+}

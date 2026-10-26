@@ -84,3 +84,9 @@ Multi-tenant white-label digital gold platform. Vaultra onboards jewellery shop 
 - Custom domains per jeweller (app + admin domain), master admin Domains modal with DNS check; /api/tenant/resolve.
 - Pending (iteration_4): home screen lacks "Indicative/Live" label, change arrow/sign mismatch, margin error alert shows [object Object], onboarding domain uniqueness, quote-tenant check, suspended-domain fallback.
 - Paused: Claude AI integration request.
+
+## Update — Old UI restored (Oct 2026)
+- Customer Expo screens restored from the pre-v2 UI (commit 369ac86) and wired to the PostgreSQL multi-tenant backend via compat endpoints (tenant alias, /quote/silver, /orders/buy-silver, GET /orders/{id}, /gifts/mark-seen, /alerts/book, /alerts/{id}/trigger, vault.pending_pickups).
+- Inter fonts restored; header shows jeweller name; demo/AI-looking text and emojis removed; admin login forms no longer prefilled.
+- Silver balance + silver passbook/invoice labels; products scoped to the jeweller; product images by category.
+- Backlog: book alerts auto-buy, MT5 URL connection, legacy test suites cleanup.

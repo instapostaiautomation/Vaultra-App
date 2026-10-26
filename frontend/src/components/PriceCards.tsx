@@ -8,8 +8,8 @@ export function PriceCards() {
   const { price } = useApp();
   const live = !!price?.live;
   const liveLabel = live ? "Live Rate" : "Indicative Rate";
-  const goldUp = price?.direction !== "down";
-  const silverUp = price?.silver?.direction !== "down";
+  const goldUp = (price?.change_pct ?? 0) >= 0;
+  const silverUp = (price?.silver?.change_pct ?? 0) >= 0;
 
   return (
     <View style={styles.row} testID="price-cards">

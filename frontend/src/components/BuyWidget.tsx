@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { Coins, Timer } from "lucide-react-native";
+import { Coins, Timer, Scale, Check } from "lucide-react-native";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import Animated, { ZoomIn } from "react-native-reanimated";
@@ -23,7 +23,7 @@ export function BuyWidget() {
   const [val, setVal] = useState("2000");
   const [quote, setQuote] = useState<any>(null);
   const [secs, setSecs] = useState(0);
-  const iv = useRef<ReturnType<typeof setInterval>>();
+  const iv = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const [showPay, setShowPay] = useState(false);
   const [payStage, setPayStage] = useState<"select" | "processing" | "success">("select");
   const [lastTxn, setLastTxn] = useState<any>(null);
@@ -53,7 +53,7 @@ export function BuyWidget() {
 
   const rate = quote?.buy ?? liveRate;
   const n = parseFloat(val) || 0;
-  const g = mode === "rupees" ? (rate ? n / rate : 0) : n;
+  const g = mode === "rupees" ? (rate ? Math.floor((n / rate) * 10000) / 10000 : 0) : n;
   const amt = mode === "rupees" ? n : n * rate;
   const gst = amt * 0.03;
   const total = amt + gst;
@@ -72,11 +72,12 @@ export function BuyWidget() {
     setPayStage("processing");
     try {
       const endpoint = metal === "gold" ? "/orders/buy" : "/orders/buy-silver";
-      const r = await api(endpoint, {
+      const order = await api(endpoint, {
         method: "POST",
-        body: { quote_id: quote.id, mode, value: n, method: "mock" },
+        body: { quote_id: quote.id, mode, value: n, method: "upi" },
       });
-      setLastTxn(r);
+      const r = await api(`/orders/${order.id}/mock-confirm`, { method: "POST", body: { method: "upi", success: true } });
+      setLastTxn(r.transaction || order);
       setPayStage("success");
       await refresh();
     } catch (e: any) {
@@ -102,7 +103,7 @@ export function BuyWidget() {
       {/* Metal Toggle */}
       <View style={styles.toggleRow} testID="metal-toggle">
         <Pressable style={[styles.toggleBtn, metal === "gold" && styles.toggleActive]} onPress={() => setMetal("gold")} testID="toggle-gold">
-          <Coins size={14} color={metal === "gold" ? colors.onBrandPrimary : colors.muted} />
+          <Coins size={14} color={metal === "gold" ? colors.brandSecondary : colors.muted} />
           <Text style={[styles.toggleText, metal === "gold" && styles.toggleActiveText]}>Gold (24K)</Text>
         </Pressable>
         <Pressable style={[styles.toggleBtn, metal === "silver" && styles.toggleSilverActive]} onPress={() => setMetal("silver")} testID="toggle-silver">
@@ -118,7 +119,7 @@ export function BuyWidget() {
           <Text style={[styles.modeText, mode === "rupees" && styles.modeActiveText]}>Buy in Rupees (₹)</Text>
         </Pressable>
         <Pressable style={[styles.modeBtn, mode === "grams" && styles.modeActive]} onPress={() => setMode("grams")} testID="buy-mode-grams">
-          <Text style={styles.modeLabel}>⚖</Text>
+          <Scale size={14} color={colors.onSurface} />
           <Text style={[styles.modeText, mode === "grams" && styles.modeActiveText]}>Buy in Grams (g)</Text>
         </Pressable>
       </View>
@@ -167,7 +168,7 @@ export function BuyWidget() {
             <Row label={`${metalLabel} value`} value={inr(amt)} />
             <Row label="GST (3%)" value={inr(gst)} />
             <Row label="Total" value={inr(total)} bold />
-            <Text style={styles.payNote}>Mock payment · Instant completion</Text>
+            <Text style={styles.payNote}>Paid via UPI · {metalLabel} is credited to your vault instantly</Text>
             <Button testID="confirm-buy-button" title={`Pay ${inr(total)} & Buy ${metalLabel}`} size="lg" onPress={confirmPurchase} style={{ marginTop: 16 }} />
           </View>
         ) : payStage === "processing" ? (
@@ -179,7 +180,7 @@ export function BuyWidget() {
         ) : lastTxn ? (
           <View style={styles.center}>
             <Animated.View entering={ZoomIn.springify()} style={styles.successIcon}>
-              <Text style={{ fontSize: 28 }}>✓</Text>
+              <Check size={34} color="#FFFFFF" strokeWidth={3} />
             </Animated.View>
             <Text style={styles.procTitle}>{metalLabel} added to your vault!</Text>
             <Text style={styles.successGrams}>+{grams(lastTxn.grams)}</Text>

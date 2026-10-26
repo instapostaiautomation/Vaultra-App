@@ -25,15 +25,15 @@ export function PulseDot({ color = colors.success, size = 8 }: { color?: string;
 
 export function LiveTicker({ testID = "live-gold-ticker" }: { testID?: string }) {
   const { price, priceError } = useApp();
-  const up = price?.direction !== "down";
+  const up = (price?.change_pct ?? 0) >= 0;
   return (
     <View style={styles.ticker} testID={testID}>
       <PulseDot color={priceError ? colors.error : colors.success} />
-      <Text style={styles.tickerLabel}>24K (99.9%)</Text>
-      <Text style={styles.tickerPrice} testID="live-gold-price">
+      <Text style={styles.tickerLabel} numberOfLines={1}>24K (99.9%)</Text>
+      <Text style={styles.tickerPrice} numberOfLines={1} testID="live-gold-price">
         {price ? `${inr(price.buy)}/g` : "—"}
       </Text>
-      <Text style={[styles.tickerLive, { color: up ? colors.success : colors.error }]}>{priceError ? "OFFLINE" : `${up ? "▲" : "▼"} ${price?.live ? "LIVE" : "INDICATIVE"}`}</Text>
+      <Text numberOfLines={1} style={[styles.tickerLive, { color: up ? colors.success : colors.error }]}>{priceError ? "OFFLINE" : `${up ? "▲" : "▼"} ${price?.live ? "LIVE" : "INDICATIVE"}`}</Text>
     </View>
   );
 }
@@ -49,7 +49,7 @@ export function LogoMark({ size = 36 }: { size?: number }) {
 export function HomeHeader() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { token, vault, user, unreadNotifs } = useApp();
+  const { token, vault, user, unreadNotifs, tenantName } = useApp();
   const g = vault?.user.gold_grams ?? 0;
   const displayName = user?.first_name || user?.name?.split(" ")[0] || "Profile";
 
@@ -62,7 +62,7 @@ export function HomeHeader() {
             {token && user ? (
               <>Hi, <Text style={{ color: colors.brandSecondary }}>{displayName}</Text></>
             ) : (
-              <>Vaultra <Text style={{ color: colors.brandSecondary }}>Gold</Text></>
+              <>{tenantName || "Digital Gold"}</>
             )}
           </Text>
         </View>

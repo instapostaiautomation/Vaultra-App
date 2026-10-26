@@ -172,21 +172,21 @@
     function renderLogin() {
         return `<div class="login-wrap"><div class="login-box">
             ${tenant?.logo_url ? `<img src="${tenant.logo_url}" alt="" style="height:56px;margin-bottom:12px">` : ''}
-            <h2>💎 ${tenant ? tenant.business_name : 'Jeweller Admin'}</h2>
+            <h2>${tenant ? tenant.business_name : 'Jeweller Admin'}</h2>
             <div id="loginError" class="error"></div>
-            <input id="le" class="form-input" placeholder="Email" value="${tenant ? '' : 'sharma@vaultra.in'}">
-            <input id="lp" class="form-input" type="password" placeholder="Password" value="${tenant ? '' : 'jeweller123'}">
+            <input id="le" class="form-input" placeholder="Email">
+            <input id="lp" class="form-input" type="password" placeholder="Password">
             <button class="btn-primary" onclick="handleLogin()">Login</button>
         </div></div>`;
     }
 
     function renderHeader() {
-        return `<div class="header"><h1>💎 ${jeweller?.business_name || 'Jeweller Admin'}</h1><div><span class="info">${jeweller?.owner_name || ''} · ${jeweller?.city || ''}</span> <button class="logout" onclick="logout()">Logout</button></div></div>`;
+        return `<div class="header"><h1>${jeweller?.business_name || 'Jeweller Admin'}</h1><div><span class="info" style="margin-right:12px">${jeweller?.owner_name || ''} · ${jeweller?.city || ''}</span><button class="logout" onclick="logout()">Logout</button></div></div>`;
     }
 
     function renderNav() {
         const tabs = ['dashboard','customers','redemption','transactions','kyc','products','settings'];
-        return `<div class="nav">${tabs.map(t=>`<button class="${currentTab===t?'active':''}" onclick="switchTab('${t}')">${t.charAt(0).toUpperCase()+t.slice(1)}</button>`).join('')}</div>`;
+        return `<div class="nav">${tabs.map(t=>`<button class="${currentTab===t?'active':''}" onclick="switchTab('${t}')">${t==='kyc'?'KYC':t.charAt(0).toUpperCase()+t.slice(1)}</button>`).join('')}</div>`;
     }
 
     function renderContent() {

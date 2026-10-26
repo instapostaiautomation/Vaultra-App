@@ -39,6 +39,7 @@ export function maskPhone(p?: string) {
 
 export const TXN_LABEL: Record<string, string> = {
   buy: "Gold Purchase",
+  buy_silver: "Silver Purchase",
   sell: "Gold Sold",
   sip: "SIP Installment",
   redemption: "Redemption",

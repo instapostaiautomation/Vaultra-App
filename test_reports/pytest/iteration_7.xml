@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="8" time="4.552" timestamp="2026-10-26T19:37:14.390568+00:00" hostname="agent-env-6def458d-b04a-456f-b610-2da8fbbfef87"><testcase classname="tests.test_iteration7_retest.TestLogin" name="test_existing_customer_login" time="0.499" /><testcase classname="tests.test_iteration7_retest.TestBuy" name="test_gold_rupees_floor" time="0.755" /><testcase classname="tests.test_iteration7_retest.TestBuy" name="test_silver_buy_txn_type_and_balance" time="0.718" /><testcase classname="tests.test_iteration7_retest.TestProductsActive" name="test_unscoped_excludes_suspended" time="1.359" /><testcase classname="tests.test_iteration7_retest.TestAdminPanels" name="test_master_panel_not_prefilled" time="0.152"><failure message="AssertionError: ('id=&quot;lu&quot; class=&quot;form-input&quot; placeholder=&quot;Username&quot; value=&quot;admin&quot;', 'id=&quot;lp&quot; class=&quot;form-input&quot; type=&quot;password&quot; placeholder=&quot;Password&quot; value=&quot;admin123&quot;')&#10;assert ('value=&quot;admin&quot;' not in 'id=&quot;lu&quot; cla...alue=&quot;admin&quot;'&#10;  &#10;  'value=&quot;admin&quot;' is contained here:&#10;    id=&quot;lu&quot; class=&quot;form-input&quot; placeholder=&quot;Username&quot; value=&quot;admin&quot;&#10;  ?                                                   +++++++++++++)">tests/test_iteration7_retest.py:100: in test_master_panel_not_prefilled
+    assert 'value="admin"' not in m.group(0) and "admin123" not in p.group(0), (m.group(0), p.group(0))
+E   AssertionError: ('id="lu" class="form-input" placeholder="Username" value="admin"', 'id="lp" class="form-input" type="password" placeholder="Password" value="admin123"')
+E   assert ('value="admin"' not in 'id="lu" cla...alue="admin"'
+E     
+E     'value="admin"' is contained here:
+E       id="lu" class="form-input" placeholder="Username" value="admin"
+E     ?                                                   +++++++++++++)</failure></testcase><testcase classname="tests.test_iteration7_retest.TestAdminPanels" name="test_jeweller_panel_not_prefilled" time="0.150"><failure message="assert ('sharma@vaultra.in' not in '&lt;!DOCTYPE h...&gt;\n&lt;/html&gt;\n'&#10;  &#10;  'sharma@vaultra.in' is contained here:&#10;    &lt;!DOCTYPE html&gt;&#10;    &lt;html lang=&quot;en&quot;&gt;&#10;    &lt;head&gt;&#10;        &lt;meta charset=&quot;UTF-8&quot;&gt;&#10;        &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1.0&quot;&gt;...&#10;  &#10;  ...Full output truncated (343 lines hidden), use '-vv' to show)">tests/test_iteration7_retest.py:104: in test_jeweller_panel_not_prefilled
+    assert "sharma@vaultra.in" not in html and "jeweller123" not in html
+E   assert ('sharma@vaultra.in' not in '&lt;!DOCTYPE h...&gt;\n&lt;/html&gt;\n'
+E     
+E     'sharma@vaultra.in' is contained here:
+E       &lt;!DOCTYPE html&gt;
+E       &lt;html lang="en"&gt;
+E       &lt;head&gt;
+E           &lt;meta charset="UTF-8"&gt;
+E           &lt;meta name="viewport" content="width=device-width, initial-scale=1.0"&gt;...
+E     
+E     ...Full output truncated (343 lines hidden), use '-vv' to show)</failure></testcase><testcase classname="tests.test_iteration7_retest.TestAdminPanels" name="test_master_login" time="0.348" /><testcase classname="tests.test_iteration7_retest.TestAdminPanels" name="test_jeweller_login" time="0.491" /></testsuite></testsuites>

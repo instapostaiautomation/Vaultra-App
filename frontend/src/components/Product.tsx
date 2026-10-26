@@ -80,7 +80,7 @@ export function RedeemSheet({ target, onClose }: { target: Target | null; onClos
       const r = await api("/redeem", { method: "POST", body });
       setDone(r.pickup);
       refresh();
-      toast("success", "Redemption booked", `Pickup OTP ${r.pickup.otp} · ${TENANT_NAME[tenant]}`);
+      toast("success", "Redemption booked", `Pickup OTP ${r.pickup.otp} · ${TENANT_NAME[tenant] || ""}`);
     } catch (e: any) {
       toast("error", "Redemption failed", e.message);
     } finally {
@@ -114,7 +114,7 @@ export function RedeemSheet({ target, onClose }: { target: Target | null; onClos
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.itemName}>{name}</Text>
-              <Text style={styles.body}>In-store pickup · {TENANT_NAME[tenant]}</Text>
+              <Text style={styles.body}>In-store pickup · {TENANT_NAME[tenant] || ""}</Text>
             </View>
           </View>
           <Row label="Gold required" value={grams(need)} />

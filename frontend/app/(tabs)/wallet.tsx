@@ -1,155 +1,290 @@
-import React, { useEffect, useState, useCallback } from "react";
-import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput,
-  ActivityIndicator, RefreshControl, Alert,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { useTheme } from "@/src/theme";
-import { useApp } from "@/src/store/AppContext";
+import { ArrowDownLeft, ArrowUpRight, IndianRupee, Plus, Wallet } from "lucide-react-native";
+import React, { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 import { api } from "@/src/api";
-import { Wallet, ArrowDownLeft, ArrowUpRight, Plus, Minus } from "lucide-react-native";
+import { ScreenHeader } from "@/src/components/Header";
+import { useToast } from "@/src/components/Toast";
+import { Button, Card, Sheet } from "@/src/components/ui";
+import { inr, shortDate } from "@/src/format";
+import { useApp } from "@/src/store/AppContext";
+import { cardShadow, colors, fonts, radius } from "@/src/theme";
 
-function inr(n: number) { return "₹" + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+type WalletTxn = {
+  id: string;
+  type: string;
+  amount: number;
+  description: string;
+  created_at: string;
+};
 
-export default function WalletScreen() {
-  const { colors } = useTheme();
-  const { isLoggedIn, refreshUser } = useApp();
+type WalletData = {
+  balance: number;
+  referral_balance: number;
+  transactions: WalletTxn[];
+};
+
+export default function WalletTab() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [wallet, setWallet] = useState<any>(null);
-  const [walletLoading, setWalletLoading] = useState(true);
+  const toast = useToast();
+  const { token, refresh } = useApp();
+  const [data, setData] = useState<WalletData | null>(null);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [action, setAction] = useState<"none" | "deposit" | "withdraw">("none");
-  const [amount, setAmount] = useState("");
-  const [processing, setProcessing] = useState(false);
+  const [showDeposit, setShowDeposit] = useState(false);
+  const [showWithdraw, setShowWithdraw] = useState(false);
+  const [amt, setAmt] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  const load = useCallback(async () => {
-    if (!isLoggedIn) { setWalletLoading(false); return; }
-    try { const w = await api("/wallet"); setWallet(w); } catch {} finally { setWalletLoading(false); }
-  }, [isLoggedIn]);
-
-  useEffect(() => { load(); }, [load]);
-  const onRefresh = async () => { setRefreshing(true); await Promise.all([load(), refreshUser()]); setRefreshing(false); };
-
-  const submit = async () => {
-    const a = parseFloat(amount);
-    if (!a || a <= 0) return;
-    setProcessing(true);
+  const loadWallet = useCallback(async () => {
     try {
-      await api(`/wallet/${action}`, { method: "POST", body: { amount: a } });
-      setAction("none"); setAmount("");
-      await Promise.all([load(), refreshUser()]);
-    } catch (e: any) { Alert.alert("Error", e.message); } finally { setProcessing(false); }
+      const w = await api<WalletData>("/wallet");
+      setData(w);
+    } catch {}
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (token) loadWallet();
+    else setLoading(false);
+  }, [token, loadWallet]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadWallet();
+    if (token) await refresh();
+    setRefreshing(false);
   };
 
-  if (!isLoggedIn) {
-    return (
-      <View style={[ss.center, { backgroundColor: colors.surface, paddingTop: insets.top }]}>
-        <Wallet size={48} color={colors.brand} />
-        <Text style={[ss.emptyTitle, { color: colors.onSurface }]}>Wallet</Text>
-        <Text style={[ss.emptyText, { color: colors.muted }]}>Login to access your wallet</Text>
-        <TouchableOpacity style={[ss.loginBtn, { backgroundColor: colors.brand }]} onPress={() => router.push("/login")}>
-          <Text style={ss.loginBtnText}>Login / Sign Up</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
+  const deposit = async () => {
+    const v = parseFloat(amt);
+    if (!v || v <= 0) return;
+    setBusy(true);
+    try {
+      await api("/wallet/deposit", { method: "POST", body: { amount: v } });
+      toast("success", "Deposit Successful", `₹${v.toFixed(2)} added to wallet`);
+      await loadWallet();
+      await refresh();
+      setShowDeposit(false);
+      setAmt("");
+    } catch (e: any) {
+      toast("error", "Deposit Failed", e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
 
-  if (walletLoading) {
+  const withdraw = async () => {
+    const v = parseFloat(amt);
+    if (!v || v <= 0) return;
+    setBusy(true);
+    try {
+      await api("/wallet/withdraw", { method: "POST", body: { amount: v } });
+      toast("success", "Withdrawal Initiated", `₹${v.toFixed(2)} will be sent to your bank`);
+      await loadWallet();
+      await refresh();
+      setShowWithdraw(false);
+      setAmt("");
+    } catch (e: any) {
+      toast("error", "Withdrawal Failed", e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!token) {
     return (
-      <View style={[ss.center, { backgroundColor: colors.surface }]}>
-        <ActivityIndicator size="large" color={colors.brand} />
+      <View style={styles.root} testID="wallet-screen">
+        <ScreenHeader title="Wallet" showBack />
+        <View style={styles.center}>
+          <Wallet size={48} color={colors.mutedLight} />
+          <Text style={styles.emptyTitle}>Sign in to use your wallet</Text>
+          <Text style={styles.emptySub}>Deposit, withdraw, and track all your transactions</Text>
+          <Button title="Sign In" onPress={() => router.push("/login")} style={{ marginTop: 16, minWidth: 200 }} />
+        </View>
       </View>
     );
   }
 
   return (
-    <View style={[ss.flex, { backgroundColor: colors.surface }]}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 32 }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brand} />}>
-        <View style={{ paddingTop: insets.top + 12, paddingHorizontal: 16 }}>
-          <Text style={[ss.title, { color: colors.onSurface }]}>Wallet</Text>
-        </View>
-        <View style={[ss.balCard, { backgroundColor: colors.brandTertiary, borderColor: colors.brand }]}>
-          <Text style={[ss.balLabel, { color: colors.muted }]}>Wallet Balance</Text>
-          <Text style={[ss.balAmount, { color: colors.onSurface }]}>{inr(wallet?.balance || 0)}</Text>
-          <Text style={[ss.refLabel, { color: colors.muted }]}>Referral Rewards: {inr(wallet?.referral_balance || 0)}</Text>
-          <View style={ss.actionRow}>
-            <TouchableOpacity style={[ss.actionBtn, { backgroundColor: colors.brand }]} onPress={() => setAction("deposit")}>
-              <Plus size={16} color="#FFF" /><Text style={ss.actionBtnText}>Add Money</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[ss.actionBtn, { backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border }]} onPress={() => setAction("withdraw")}>
-              <Minus size={16} color={colors.onSurface} /><Text style={[ss.actionBtnText, { color: colors.onSurface }]}>Withdraw</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {action !== "none" && (
-          <View style={[ss.inputCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
-            <Text style={[ss.inputLabel, { color: colors.onSurface }]}>{action === "deposit" ? "Add Money" : "Withdraw"}</Text>
-            <TextInput value={amount} onChangeText={setAmount} keyboardType="numeric" placeholder="Enter amount" style={[ss.inputField, { color: colors.onSurface, borderColor: colors.border }]} placeholderTextColor={colors.mutedLight} />
-            <View style={ss.inputActions}>
-              <TouchableOpacity style={[ss.cancelBtn, { borderColor: colors.border }]} onPress={() => { setAction("none"); setAmount(""); }}>
-                <Text style={{ color: colors.muted }}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[ss.submitBtn, { backgroundColor: colors.brand }]} onPress={submit} disabled={processing}>
-                {processing ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={{ color: "#FFF", fontWeight: "700" }}>Confirm</Text>}
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
-        <Text style={[ss.sectionTitle, { color: colors.onSurface }]}>Transaction History</Text>
-        {!wallet?.transactions?.length ? (
-          <Text style={[ss.noData, { color: colors.muted }]}>No wallet transactions yet</Text>
-        ) : (
-          wallet.transactions.map((t: any) => (
-            <View key={t.id} style={[ss.txnRow, { borderColor: colors.divider }]}>
-              <View style={[ss.txnIcon, { backgroundColor: t.type === "deposit" || t.type === "referral" ? "#DCFCE7" : "#FEE2E2" }]}>
-                {t.type === "deposit" || t.type === "referral" ? <ArrowDownLeft size={16} color="#16A34A" /> : <ArrowUpRight size={16} color="#DC2626" />}
+    <View style={styles.root} testID="wallet-screen">
+      <ScreenHeader title="Wallet" showBack />
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24, gap: 16 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brandPrimary} />}
+      >
+        {loading ? (
+          <ActivityIndicator color={colors.brandPrimary} style={{ marginTop: 40 }} />
+        ) : data ? (
+          <>
+            {/* Balance Card */}
+            <View style={styles.balanceCard}>
+              <Text style={styles.balLabel}>Wallet Balance</Text>
+              <Text style={styles.balAmount} testID="wallet-balance">{inr(data.balance)}</Text>
+              <View style={styles.balRow}>
+                <View style={styles.balMini}>
+                  <Text style={styles.balMiniLabel}>Referral Earnings</Text>
+                  <Text style={styles.balMiniVal}>{inr(data.referral_balance)}</Text>
+                </View>
               </View>
-              <View style={ss.txnInfo}>
-                <Text style={[ss.txnType, { color: colors.onSurface }]}>{t.type.charAt(0).toUpperCase() + t.type.slice(1)}</Text>
-                <Text style={[ss.txnDesc, { color: colors.muted }]}>{t.description}</Text>
+              <View style={styles.actions}>
+                <Pressable style={styles.actionBtn} onPress={() => { setAmt(""); setShowDeposit(true); }} testID="wallet-deposit-btn">
+                  <View style={styles.actionIcon}>
+                    <Plus size={18} color={colors.onBrandPrimary} />
+                  </View>
+                  <Text style={styles.actionText}>Deposit</Text>
+                </Pressable>
+                <Pressable style={styles.actionBtn} onPress={() => { setAmt(""); setShowWithdraw(true); }} testID="wallet-withdraw-btn">
+                  <View style={[styles.actionIcon, { backgroundColor: colors.surfaceInverse }]}>
+                    <ArrowUpRight size={18} color={colors.onSurfaceInverse} />
+                  </View>
+                  <Text style={styles.actionText}>Withdraw</Text>
+                </Pressable>
               </View>
-              <Text style={[ss.txnAmt, { color: t.type === "deposit" || t.type === "referral" ? "#16A34A" : "#DC2626" }]}>
-                {t.type === "withdraw" ? "-" : "+"}{inr(t.amount)}
-              </Text>
             </View>
-          ))
-        )}
+
+            {/* Transaction History */}
+            <Text style={styles.txnTitle}>Transaction History</Text>
+            {data.transactions.length === 0 ? (
+              <Card>
+                <Text style={styles.emptySub}>No transactions yet. Deposit money to get started.</Text>
+              </Card>
+            ) : (
+              data.transactions.map((txn) => (
+                <View key={txn.id} style={styles.txnRow} testID={`txn-${txn.id}`}>
+                  <View style={[styles.txnIcon, txn.type === "deposit" || txn.type === "referral" || txn.type === "gift_received" ? styles.txnIconIn : styles.txnIconOut]}>
+                    {txn.type === "deposit" || txn.type === "referral" || txn.type === "gift_received" ? (
+                      <ArrowDownLeft size={16} color={colors.success} />
+                    ) : (
+                      <ArrowUpRight size={16} color={colors.error} />
+                    )}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.txnDesc}>{txn.description}</Text>
+                    <Text style={styles.txnDate}>{shortDate(txn.created_at)}</Text>
+                  </View>
+                  <Text style={[styles.txnAmt, txn.type === "deposit" || txn.type === "referral" || txn.type === "gift_received" ? { color: colors.success } : { color: colors.error }]}>
+                    {txn.type === "deposit" || txn.type === "referral" || txn.type === "gift_received" ? "+" : "-"}{inr(txn.amount)}
+                  </Text>
+                </View>
+              ))
+            )}
+          </>
+        ) : null}
       </ScrollView>
+
+      {/* Deposit Sheet */}
+      <Sheet visible={showDeposit} onClose={() => setShowDeposit(false)} title="Deposit to Wallet" testID="deposit-sheet">
+        <Text style={styles.sheetSub}>Add funds via UPI (Mock)</Text>
+        <View style={styles.amtField}>
+          <IndianRupee size={20} color={colors.brandSecondary} />
+          <TextInput
+            testID="deposit-amount-input"
+            value={amt}
+            onChangeText={(t) => setAmt(t.replace(/[^0-9.]/g, ""))}
+            keyboardType="decimal-pad"
+            placeholder="Enter amount"
+            placeholderTextColor={colors.mutedLight}
+            style={styles.amtInput}
+            autoFocus
+          />
+        </View>
+        <View style={styles.quickAmts}>
+          {[500, 1000, 2000, 5000].map((v) => (
+            <Pressable key={v} onPress={() => setAmt(String(v))} style={styles.quickBtn}>
+              <Text style={styles.quickText}>+₹{v.toLocaleString()}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <Button title="Deposit" size="lg" loading={busy} disabled={!parseFloat(amt)} onPress={deposit} testID="confirm-deposit-button" />
+      </Sheet>
+
+      {/* Withdraw Sheet */}
+      <Sheet visible={showWithdraw} onClose={() => setShowWithdraw(false)} title="Withdraw from Wallet" testID="withdraw-sheet">
+        <Text style={styles.sheetSub}>Withdraw to bank account (Mock)</Text>
+        <Text style={styles.sheetBal}>Available: {inr(data?.balance ?? 0)}</Text>
+        <View style={styles.amtField}>
+          <IndianRupee size={20} color={colors.brandSecondary} />
+          <TextInput
+            testID="withdraw-amount-input"
+            value={amt}
+            onChangeText={(t) => setAmt(t.replace(/[^0-9.]/g, ""))}
+            keyboardType="decimal-pad"
+            placeholder="Enter amount"
+            placeholderTextColor={colors.mutedLight}
+            style={styles.amtInput}
+          />
+        </View>
+        <Button title="Withdraw" size="lg" loading={busy} disabled={!parseFloat(amt)} onPress={withdraw} testID="confirm-withdraw-button" />
+      </Sheet>
     </View>
   );
 }
 
-const ss = StyleSheet.create({
-  flex: { flex: 1 },
-  center: { flex: 1, justifyContent: "center", alignItems: "center", padding: 32 },
-  emptyTitle: { fontSize: 22, fontWeight: "700", marginTop: 16 },
-  emptyText: { fontSize: 14, marginTop: 6, textAlign: "center" },
-  loginBtn: { marginTop: 20, height: 48, paddingHorizontal: 32, borderRadius: 14, justifyContent: "center" },
-  loginBtnText: { color: "#FFF", fontSize: 15, fontWeight: "700" },
-  title: { fontSize: 22, fontWeight: "800", marginBottom: 16 },
-  balCard: { margin: 16, borderRadius: 16, padding: 20, borderWidth: 1 },
-  balLabel: { fontSize: 13 },
-  balAmount: { fontSize: 32, fontWeight: "800", marginTop: 4 },
-  refLabel: { fontSize: 13, marginTop: 8 },
-  actionRow: { flexDirection: "row", gap: 12, marginTop: 16 },
-  actionBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", height: 44, borderRadius: 12, gap: 6 },
-  actionBtnText: { color: "#FFF", fontWeight: "600" },
-  inputCard: { marginHorizontal: 16, borderRadius: 14, padding: 16, borderWidth: 1 },
-  inputLabel: { fontSize: 15, fontWeight: "700", marginBottom: 8 },
-  inputField: { borderWidth: 1, borderRadius: 10, height: 48, paddingHorizontal: 14, fontSize: 18, fontWeight: "600" },
-  inputActions: { flexDirection: "row", gap: 12, marginTop: 12 },
-  cancelBtn: { flex: 1, height: 44, borderRadius: 10, borderWidth: 1, justifyContent: "center", alignItems: "center" },
-  submitBtn: { flex: 1, height: 44, borderRadius: 10, justifyContent: "center", alignItems: "center" },
-  sectionTitle: { fontSize: 17, fontWeight: "700", paddingHorizontal: 16, marginTop: 20, marginBottom: 12 },
-  noData: { paddingHorizontal: 16, fontSize: 13 },
-  txnRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1 },
-  txnIcon: { width: 36, height: 36, borderRadius: 10, justifyContent: "center", alignItems: "center" },
-  txnInfo: { flex: 1, marginLeft: 12 },
-  txnType: { fontSize: 14, fontWeight: "600" },
-  txnDesc: { fontSize: 12, marginTop: 2 },
-  txnAmt: { fontSize: 14, fontWeight: "700" },
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.surfaceSecondary },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 8, padding: 32 },
+  emptyTitle: { fontFamily: fonts.bold, fontSize: 20, color: colors.onSurface },
+  emptySub: { fontFamily: fonts.regular, fontSize: 14, color: colors.muted, textAlign: "center" },
+  balanceCard: {
+    backgroundColor: colors.surfaceInverse,
+    borderRadius: 16,
+    padding: 24,
+    ...cardShadow,
+  },
+  balLabel: { fontFamily: fonts.medium, fontSize: 13, color: colors.mutedLight },
+  balAmount: { fontFamily: fonts.black, fontSize: 36, color: colors.onSurfaceInverse, letterSpacing: -1, marginTop: 4 },
+  balRow: { marginTop: 16, flexDirection: "row", gap: 12 },
+  balMini: { flex: 1, backgroundColor: "rgba(255,255,255,0.08)", borderRadius: 10, padding: 12 },
+  balMiniLabel: { fontFamily: fonts.regular, fontSize: 11, color: colors.mutedLight },
+  balMiniVal: { fontFamily: fonts.bold, fontSize: 16, color: colors.brandPrimary, marginTop: 2 },
+  actions: { flexDirection: "row", gap: 16, marginTop: 20 },
+  actionBtn: { flex: 1, alignItems: "center", gap: 6 },
+  actionIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" },
+  actionText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.onSurfaceInverse },
+  txnTitle: { fontFamily: fonts.bold, fontSize: 18, color: colors.onSurface, marginTop: 8 },
+  txnRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  txnIcon: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  txnIconIn: { backgroundColor: colors.successTint },
+  txnIconOut: { backgroundColor: colors.errorTint },
+  txnDesc: { fontFamily: fonts.medium, fontSize: 14, color: colors.onSurface },
+  txnDate: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted, marginTop: 2 },
+  txnAmt: { fontFamily: fonts.bold, fontSize: 15 },
+  sheetSub: { fontFamily: fonts.regular, fontSize: 14, color: colors.muted, marginBottom: 16 },
+  sheetBal: { fontFamily: fonts.semibold, fontSize: 14, color: colors.success, marginBottom: 12 },
+  amtField: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    height: 56,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    backgroundColor: colors.surface,
+  },
+  amtInput: { flex: 1, fontFamily: fonts.bold, fontSize: 22, color: colors.onSurface },
+  quickAmts: { flexDirection: "row", gap: 8, marginBottom: 20, flexWrap: "wrap" },
+  quickBtn: {
+    paddingHorizontal: 16,
+    height: 36,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.brandPrimary,
+    justifyContent: "center",
+  },
+  quickText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.brandSecondary },
 });

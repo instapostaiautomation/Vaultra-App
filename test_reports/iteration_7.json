@@ -1,0 +1,33 @@
+{
+  "summary": "Iteration 7 RETEST of the iteration_6 issues plus a quick regression. BACKEND: 6 of 8 new pytest pass (test_iteration7_retest.py). FRONTEND (390x844): every requested customer-app item passes. The only item that is NOT FIXED is the admin web panel logins: both forms are still prefilled with credentials. PASSES: (1) Silver Rs1000 bought from the Home BuyWidget at Rs92.39/g. The preview showed 10.8236g and 10.8236g was credited, so preview and credit match with floor to 4 decimals. The passbook row reads 'Silver Purchase +10.8236g' in green. The passbook 'Buy' filter returns 6 rows, both silver and gold. The silver invoice shows Type 'Silver Purchase', 'Silver (999)' and 'Silver value'. (2) The Vault card shows 'Silver in vault: 21.5624g'. Profile shows 'Gold balance 0.6550g' and 'Silver balance 21.5624g'. (3) The Jewellery ticker shows '24K (99.9%) ₹7,291.81/g ▲ INDICATIVE' with no truncation; scrollWidth equals clientWidth for every text. (4) gift-name-input is 52px tall. (5) The silver confirm sheet note reads 'Silver is credited to your vault instantly'. (6) Gold Rs500 previewed 0.0686g and credited 0.0686g. The backend test confirms r4 floor matches the preview for both gold and silver. (7) The 'dropped below' banner showed while change_pct was negative (▼0.12%). The code returns null when change_pct >= 0 (PriceAlert.tsx:16); the positive case could not be forced live. (8) /products with no jeweller_id returns only products of active jewellers. Suspending Patel removed its products from the list; Patel was restored afterwards. (9) Admin logins work in the API and the browser: admin/admin123 and sharma@vaultra.in/jeweller123 both reach the dashboard. FAIL: both admin login forms are still prefilled. Regression: OTP login (Meera) and gold buy both pass. No deprecated Expo packages were found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/admin/master", "issue": "The login form is still prefilled. backend/templates/master_admin.html:148-149 has value=\"admin\" on #lu and value=\"admin123\" on #lp."},
+      {"endpoint": "GET /api/admin/jeweller", "issue": "The login form is still prefilled when no tenant domain is set. backend/templates/jeweller_admin.html:177-178 has value=\"${tenant ? '' : 'sharma@vaultra.in'}\" and 'jeweller123'. On the preview URL, tenant is always null, so the credentials are always shown."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Vault passbook", "issues": ["LOW / possibly transient: in one screenshot taken right after switching to the Buy filter, one row rendered blank (only the 'Completed' badge was visible). Its inner_text was correct ('Gold Purchase +0.0500g'), so this is likely a mid-animation frame. It is worth checking whether the list's entering animation flashes empty rows."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration7_retest.py", "/app/test_reports/pytest/iteration_7.xml"],
+  "action_items": [
+    "MEDIUM: Remove the prefilled credentials from the admin login forms. In backend/templates/master_admin.html:148-149, drop value=\"admin\" and value=\"admin123\". In backend/templates/jeweller_admin.html:177-178, set value=\"\" unconditionally.",
+    "LOW: /app/memory/test_credentials.md lists the web panels at /api/master/login and /api/jeweller/login. Those are POST API routes; the actual panel pages are /api/admin/master and /api/admin/jeweller. Update the doc."
+  ],
+  "critical_code_review_comments": [
+    "server.py is still more than 2000 lines; split it into routers.",
+    "The PriceAlert banner title is still hardcoded to '24K' and rounds the threshold up with Math.ceil(price.buy/5)*5. It is cosmetic only."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration7_retest.py"],
+  "success_rate": {"backend": "75% (6/8; both failures are the admin form prefill)", "frontend": "~95% (all customer-app retest items pass; the admin panel prefill is not fixed)"},
+  "seed_data_creation": "Meera (9834567892) bought +10.8236g silver and +0.0686g gold through the UI. A new TEST customer (94xxxxxxxx) bought Rs2000 gold and Rs1000 silver through the API. Patel was briefly suspended and then restored to active.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -n 0 -p no:cacheprovider and export EXPO_PUBLIC_BACKEND_URL. The login autofill button is login-autofill-otp. To click buttons inside sheets, use locator('[data-testid=X]').last.evaluate('e=>e.click()'). The admin panels are at /api/admin/master (#lu/#lp) and /api/admin/jeweller (#le/#lp); click get_by_role('button', name='Login')."
+}

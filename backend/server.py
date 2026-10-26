@@ -259,7 +259,7 @@ def customer_dict(c: Customer):
     """Serialize customer for API response."""
     grams = c.gold_grams or 0
     return {
-        "id": c.id, "phone": c.phone, "wallet_id": c.wallet_id,
+        "id": c.id, "phone": c.phone, "wallet_id": c.wallet_id, "tenant": c.jeweller_id,
         "first_name": c.first_name, "last_name": c.last_name,
         "name": f"{c.first_name} {c.last_name}".strip() or "Gold Saver",
         "email": c.email, "dob": c.dob, "gender": c.gender,
@@ -295,7 +295,7 @@ def jeweller_dict(j: Jeweller):
 def txn_dict(t: Transaction):
     return {
         "id": t.id, "invoice_no": t.invoice_no, "customer_id": t.customer_id,
-        "jeweller_id": t.jeweller_id, "type": t.type, "metal": t.metal,
+        "jeweller_id": t.jeweller_id, "tenant": t.jeweller_id, "type": t.type, "metal": t.metal,
         "grams": r4(t.grams), "rate": r2(t.rate), "amount": r2(t.amount),
         "gst": r2(t.gst), "total": r2(t.total), "method": t.method,
         "status": t.status, "note": t.note, "extra": t.extra or {},
@@ -313,6 +313,7 @@ class OtpVerify(BaseModel):
     challenge_id: str
     otp: str = Field(pattern=r"^\d{6}$")
     jeweller_id: str = ""
+    tenant: str = ""
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     email: Optional[str] = None
@@ -502,8 +503,8 @@ async def root():
 
 
 @api.get("/price")
-async def get_price(jeweller_id: str = ""):
-    return price_payload(jeweller_id or None)
+async def get_price(jeweller_id: str = "", tenant: str = ""):
+    return price_payload(jeweller_id or tenant or None)
 
 
 @api.get("/config")
@@ -539,9 +540,19 @@ async def list_jewellers_public(db: AsyncSession = Depends(get_db)):
 
 
 # ─── Products (Public) ────────────────────────────────────────────────────────
+CATEGORY_IMAGE = {"necklaces": "heritage-necklace", "bangles": "minimalist-bangle", "rings": "rings",
+                  "chains": "chain", "kadas": "kada", "pendant-sets": "pendant-set", "watches": "watch"}
+
+
+def product_image_key(p) -> str:
+    if "mangalsutra" in (p.name or "").lower() or "tanmaniya" in (p.name or "").lower():
+        return "tanmaniya"
+    return CATEGORY_IMAGE.get(p.category, "necklace")
+
+
 @api.get("/products")
 async def list_products(jeweller_id: str = "", category: str = "", db: AsyncSession = Depends(get_db)):
-    q = select(Product).where(Product.is_active == True)
+    q = select(Product).join(Jeweller, Jeweller.id == Product.jeweller_id).where(Product.is_active == True, Jeweller.status == "active")
     if jeweller_id:
         q = q.where(Product.jeweller_id == jeweller_id)
     if category:
@@ -552,6 +563,7 @@ async def list_products(jeweller_id: str = "", category: str = "", db: AsyncSess
     return [{
         "id": p.id, "name": p.name, "category": p.category, "grams": p.grams,
         "making_charges": p.making_charges, "image_url": p.image_url, "tag": p.tag,
+        "image": product_image_key(p),
         "description": p.description, "jeweller_id": p.jeweller_id,
         "gold_value": r2(p.grams * rates.setdefault(p.jeweller_id, gold_rate(p.jeweller_id)[0])),
         "total_price": r2(p.grams * rates[p.jeweller_id] + p.making_charges),
@@ -569,6 +581,7 @@ async def get_product(product_id: str, db: AsyncSession = Depends(get_db)):
     return {
         "id": p.id, "name": p.name, "category": p.category, "grams": p.grams,
         "making_charges": p.making_charges, "image_url": p.image_url, "tag": p.tag,
+        "image": product_image_key(p),
         "description": p.description, "jeweller_id": p.jeweller_id,
         "gold_value": r2(p.grams * buy), "total_price": r2(p.grams * buy + p.making_charges),
         "live_rate": buy,
@@ -637,7 +650,11 @@ async def otp_verify(body: OtpVerify, db: AsyncSession = Depends(get_db)):
     c.used = True
     await db.flush()
 
-    jeweller_id = body.jeweller_id or c.jeweller_id
+    jeweller_id = body.jeweller_id or body.tenant or c.jeweller_id
+    if jeweller_id != c.jeweller_id:
+        ok = await db.execute(select(Jeweller.id).where(Jeweller.id == jeweller_id, Jeweller.status == "active"))
+        if not ok.scalar_one_or_none():
+            jeweller_id = c.jeweller_id
 
     # Find or create customer
     cust_result = await db.execute(
@@ -650,7 +667,7 @@ async def otp_verify(body: OtpVerify, db: AsyncSession = Depends(get_db)):
         lname = (body.last_name or "").strip()
         customer = Customer(
             id=str(uuid.uuid4()), jeweller_id=jeweller_id, phone=c.phone,
-            first_name=fname or "Gold", last_name=lname or "Saver",
+            first_name=fname or "Gold", last_name=lname,
             email=(body.email or "").strip(), dob=(body.dob or "").strip(),
             gender=(body.gender or "").strip(),
             wallet_id=gen_wallet_id(), referral_code=gen_referral_code(),
@@ -722,8 +739,11 @@ async def kyc_submit(body: KycSubmit, customer: Customer = Depends(get_current_c
 
 # ─── Vault ────────────────────────────────────────────────────────────────────
 @api.get("/vault")
-async def vault(customer: Customer = Depends(get_current_customer)):
+async def vault(customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
     buy, sell = gold_rate(customer.jeweller_id)
+    pk = await db.execute(select(Pickup).where(Pickup.customer_id == customer.id, Pickup.status == "pending").order_by(desc(Pickup.created_at)))
+    pending = [{"id": x.id, "item": x.item, "grams": r4(x.grams), "otp": x.otp, "status": x.status,
+                "tenant": x.jeweller_id, "created_at": x.created_at.isoformat() if x.created_at else ""} for x in pk.scalars().all()]
     cu = customer_dict(customer)
     value = r2(cu["gold_grams"] * sell)
     pnl = r2(value - cu["invested"])
@@ -731,6 +751,7 @@ async def vault(customer: Customer = Depends(get_current_customer)):
     return {
         "user": cu, "buy_rate": buy, "sell_rate": sell,
         "current_value": value, "unrealized_pnl": pnl, "unrealized_pct": pnl_pct,
+        "pending_pickups": pending,
     }
 
 
@@ -742,31 +763,80 @@ async def my_transactions(
 ):
     q = select(Transaction).where(Transaction.customer_id == customer.id)
     if type and type != "all":
-        q = q.where(Transaction.type == type)
+        q = q.where(Transaction.type.in_(["buy", "buy_silver"]) if type == "buy" else Transaction.type == type)
     q = q.order_by(desc(Transaction.created_at)).limit(200)
     result = await db.execute(q)
     return [txn_dict(t) for t in result.scalars().all()]
 
 
 # ─── Quote & Buy ──────────────────────────────────────────────────────────────
+class QuoteBody(BaseModel):
+    tenant: str = ""
+    metal: str = ""
+
+
+async def _quote_jeweller(creds, tenant: str, db: AsyncSession) -> str:
+    if creds:
+        try:
+            p = jwt.decode(creds.credentials, JWT_SECRET, algorithms=["HS256"])
+            if p.get("role") == "customer":
+                c = (await db.execute(select(Customer.jeweller_id).where(Customer.id == p["sub"]))).scalar_one_or_none()
+                if c:
+                    return c
+        except jwt.InvalidTokenError:
+            pass
+    if tenant:
+        j = (await db.execute(select(Jeweller.id).where(Jeweller.id == tenant, Jeweller.status == "active"))).scalar_one_or_none()
+        if j:
+            return j
+    j = (await db.execute(select(Jeweller.id).where(Jeweller.status == "active").order_by(Jeweller.created_at))).scalars().first()
+    if not j:
+        raise HTTPException(404, "No active jeweller")
+    return j
+
+
+@api.post("/quote/silver")
+async def create_silver_quote(body: Optional[QuoteBody] = None, creds: Optional[HTTPAuthorizationCredentials] = Depends(bearer), db: AsyncSession = Depends(get_db)):
+    return await create_quote("silver", body, creds, db)
+
+
 @api.post("/quote")
 async def create_quote(
-    metal: str = "gold",
-    customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)
+    metal: str = "gold", body: Optional[QuoteBody] = None,
+    creds: Optional[HTTPAuthorizationCredentials] = Depends(bearer), db: AsyncSession = Depends(get_db)
 ):
+    if body and body.metal:
+        metal = body.metal
+    jid = await _quote_jeweller(creds, body.tenant if body else "", db)
     if metal == "silver":
-        buy, sell = silver_rate(customer.jeweller_id)
+        buy, sell = silver_rate(jid)
     else:
-        buy, sell = gold_rate(customer.jeweller_id)
+        buy, sell = gold_rate(jid)
     exp = now_utc() + timedelta(seconds=QUOTE_SECONDS)
     q = Quote(
-        id=str(uuid.uuid4()), jeweller_id=customer.jeweller_id,
+        id=str(uuid.uuid4()), jeweller_id=jid,
         metal=metal, buy=buy, sell=sell, expires_at=exp
     )
     db.add(q)
     await db.commit()
     return {"id": q.id, "metal": metal, "buy": buy, "sell": sell,
             "expires_at": exp.isoformat(), "lock_seconds": QUOTE_SECONDS}
+
+
+@api.post("/orders/buy-silver")
+async def buy_silver(body: BuyRequest, customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    return await buy(body, customer, db)
+
+
+@api.get("/orders/{order_id}")
+async def order_status(order_id: str, customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    o = (await db.execute(select(Order).where(Order.id == order_id, Order.customer_id == customer.id))).scalar_one_or_none()
+    if not o:
+        raise HTTPException(404, "Order not found")
+    txns = (await db.execute(select(Transaction).where(Transaction.customer_id == customer.id, Transaction.extra["order_id"].as_string() == o.id))).scalars().first()
+    return {"order": {"id": o.id, "metal": o.metal, "grams": r4(o.grams), "rate": r2(o.rate), "amount": r2(o.amount),
+                      "gst": r2(o.gst), "total": r2(o.total), "status": o.status, "tenant": o.jeweller_id},
+            "transaction": txn_dict(txns) if txns else None}
 
 
 @api.post("/orders/buy")
@@ -777,6 +847,8 @@ async def buy(body: BuyRequest, customer: Customer = Depends(get_current_custome
         raise HTTPException(400, "Price quote not found")
     if q.expires_at <= now_utc():
         raise HTTPException(409, "Price lock expired. Refresh the rate")
+    if q.jeweller_id != customer.jeweller_id:
+        raise HTTPException(400, "Price quote not valid for your store. Refresh the rate")
 
     rate = q.buy
     metal = q.metal or "gold"
@@ -801,7 +873,7 @@ async def buy(body: BuyRequest, customer: Customer = Depends(get_current_custome
     await db.commit()
     return {
         "id": order.id, "metal": metal, "grams": r4(grams), "rate": rate,
-        "amount": r2(amount), "gst": r2(gst), "total": r2(total),
+        "amount": r2(amount), "gst": r2(gst), "total": r2(total), "tenant": customer.jeweller_id,
         "status": "created", "provider": "mock"
     }
 
@@ -896,7 +968,7 @@ async def redeem(body: RedeemRequest, customer: Customer = Depends(get_current_c
         item = f"{body.coin_grams:g}g 24K Gold Coin"
         making = 250
     else:
-        prod_result = await db.execute(select(Product).where(Product.id == body.product_id))
+        prod_result = await db.execute(select(Product).where(Product.id == body.product_id, Product.jeweller_id == customer.jeweller_id))
         p = prod_result.scalar_one_or_none()
         if not p:
             raise HTTPException(404, "Product not found")
@@ -931,7 +1003,7 @@ async def redeem(body: RedeemRequest, customer: Customer = Depends(get_current_c
     await db.commit()
     return {
         "transaction": txn_dict(txn),
-        "pickup": {"id": pickup.id, "item": item, "grams": grams, "otp": otp, "status": "pending"},
+        "pickup": {"id": pickup.id, "item": item, "grams": grams, "otp": otp, "status": "pending", "tenant": customer.jeweller_id},
         "wallet_id": customer.wallet_id,
     }
 
@@ -1045,7 +1117,7 @@ async def send_gift(body: GiftCreate, customer: Customer = Depends(get_current_c
     if not rec:
         rec = Customer(
             id=str(uuid.uuid4()), jeweller_id=customer.jeweller_id, phone=phone,
-            first_name=(body.recipient_name or "Gold").strip(), last_name="Saver",
+            first_name=(body.recipient_name or "Gold").strip(), last_name="",
             wallet_id=gen_wallet_id(), referral_code=gen_referral_code(),
         )
         db.add(rec)
@@ -1071,17 +1143,39 @@ async def send_gift(body: GiftCreate, customer: Customer = Depends(get_current_c
     db.add(t1)
     db.add(t2)
     await db.commit()
-    return {"id": gift.id, "grams": r4(g), "amount": r2(amount), "recipient_phone": phone}
+    sender_name = f"{customer.first_name or ''} {customer.last_name or ''}".strip()
+    return {"id": gift.id, "grams": r4(g), "amount": r2(amount), "recipient_phone": phone,
+            "recipient_name": (body.recipient_name or rec.first_name or "").strip(), "sender_name": sender_name,
+            "sender_phone": customer.phone, "theme": gift.theme, "message": gift.message,
+            "created_at": now_iso()}
+
+
+@api.post("/gifts/mark-seen")
+async def gifts_mark_seen(customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    await db.execute(update(Gift).where(Gift.recipient_id == customer.id, Gift.seen == False).values(seen=True))
+    await db.commit()
+    return {"ok": True}
 
 
 @api.get("/gifts")
 async def list_gifts(customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
     sent = await db.execute(select(Gift).where(Gift.sender_id == customer.id).order_by(desc(Gift.created_at)))
     received = await db.execute(select(Gift).where(Gift.recipient_id == customer.id).order_by(desc(Gift.created_at)))
-    sent_list = [{"id": g.id, "grams": r4(g.grams), "amount": r2(g.amount), "theme": g.theme,
-                  "message": g.message, "created_at": g.created_at.isoformat()} for g in sent.scalars().all()]
-    rec_list = [{"id": g.id, "grams": r4(g.grams), "amount": r2(g.amount), "theme": g.theme,
-                 "message": g.message, "seen": g.seen, "created_at": g.created_at.isoformat()} for g in received.scalars().all()]
+    sent_rows, rec_rows = sent.scalars().all(), received.scalars().all()
+    ids = {g.recipient_id for g in sent_rows} | {g.sender_id for g in rec_rows}
+    people = {}
+    if ids:
+        for c in (await db.execute(select(Customer).where(Customer.id.in_(ids)))).scalars().all():
+            people[c.id] = (f"{c.first_name or ''} {c.last_name or ''}".strip(), c.phone)
+    me = (f"{customer.first_name or ''} {customer.last_name or ''}".strip(), customer.phone)
+
+    def gd(g, sender, recipient):
+        return {"id": g.id, "grams": r4(g.grams), "amount": r2(g.amount), "theme": g.theme,
+                "message": g.message, "seen": g.seen, "created_at": g.created_at.isoformat(),
+                "sender_name": sender[0], "sender_phone": sender[1],
+                "recipient_name": recipient[0], "recipient_phone": recipient[1]}
+    sent_list = [gd(g, me, people.get(g.recipient_id, ("", ""))) for g in sent_rows]
+    rec_list = [gd(g, people.get(g.sender_id, ("", "")), me) for g in rec_rows]
     return {"sent": sent_list, "received": rec_list, "unseen": sum(1 for r in rec_list if not r.get("seen"))}
 
 
@@ -1091,13 +1185,40 @@ async def list_alerts(customer: Customer = Depends(get_current_customer), db: As
     result = await db.execute(
         select(Alert).where(Alert.customer_id == customer.id, Alert.status != "deleted").order_by(desc(Alert.created_at))
     )
-    return [{"id": a.id, "target": r2(a.target), "metal": a.metal, "alert_type": a.alert_type,
-             "buy_amount": r2(a.buy_amount or 0), "status": a.status,
-             "created_at": a.created_at.isoformat()} for a in result.scalars().all()]
+    return [alert_dict(a) for a in result.scalars().all()]
+
+
+def alert_dict(a: Alert):
+    return {"id": a.id, "target": r2(a.target), "metal": a.metal, "alert_type": a.alert_type,
+            "buy_amount": r2(a.buy_amount or 0), "status": a.status, "tenant": a.jeweller_id,
+            "triggered_at": a.triggered_at.isoformat() if a.triggered_at else None,
+            "triggered_price": a.triggered_price,
+            "created_at": a.created_at.isoformat() if a.created_at else ""}
+
+
+@api.post("/alerts/book")
+async def create_book_alert(body: AlertCreateModel, customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    body.alert_type = "book"
+    return await create_alert(body, customer, db)
+
+
+@api.post("/alerts/{alert_id}/trigger")
+async def trigger_alert(alert_id: str, customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    a = (await db.execute(select(Alert).where(Alert.id == alert_id, Alert.customer_id == customer.id))).scalar_one_or_none()
+    if not a:
+        raise HTTPException(404, "Alert not found")
+    buy_now = (silver_rate if a.metal == "silver" else gold_rate)(a.jeweller_id)[0]
+    if a.status == "active" and buy_now <= a.target:
+        a.status, a.triggered_at, a.triggered_price = "triggered", now_utc(), buy_now
+        await db.commit()
+    return alert_dict(a)
 
 
 @api.post("/alerts")
 async def create_alert(body: AlertCreateModel, customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    active = await db.execute(select(func.count()).select_from(Alert).where(Alert.customer_id == customer.id, Alert.status == "active"))
+    if (active.scalar() or 0) >= 5:
+        raise HTTPException(400, "You can have up to 5 active alerts")
     alert = Alert(
         id=str(uuid.uuid4()), customer_id=customer.id, jeweller_id=customer.jeweller_id,
         target=r2(body.target), metal=body.metal, alert_type=body.alert_type,
@@ -1105,8 +1226,8 @@ async def create_alert(body: AlertCreateModel, customer: Customer = Depends(get_
     )
     db.add(alert)
     await db.commit()
-    return {"id": alert.id, "target": r2(alert.target), "metal": alert.metal,
-            "alert_type": alert.alert_type, "status": "active"}
+    await db.refresh(alert)
+    return alert_dict(alert)
 
 
 @api.delete("/alerts/{alert_id}")

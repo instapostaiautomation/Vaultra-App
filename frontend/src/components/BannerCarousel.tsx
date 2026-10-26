@@ -16,7 +16,7 @@ export function BannerCarousel() {
     const id = setInterval(() => {
       setIdx((i) => {
         const n = (i + 1) % BANNERS.length;
-        ref.current?.scrollTo({ x: n * (width + 12), animated: true });
+        ref.current?.scrollTo({ x: n * (width + 16), animated: true });
         return n;
       });
     }, 4500);
@@ -24,7 +24,7 @@ export function BannerCarousel() {
   }, [width]);
 
   const onEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    setIdx(Math.round(e.nativeEvent.contentOffset.x / (width + 12)));
+    setIdx(Math.round(e.nativeEvent.contentOffset.x / (width + 16)));
   };
 
   return (
@@ -33,11 +33,11 @@ export function BannerCarousel() {
         ref={ref}
         horizontal
         pagingEnabled={false}
-        snapToInterval={width + 12}
+        snapToInterval={width + 16}
         decelerationRate="fast"
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={onEnd}
-        contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}
+        contentContainerStyle={{ paddingHorizontal: 16, gap: 16 }}
       >
         {BANNERS.map((b) => (
           <View key={b.id} style={[styles.banner, { width }]} testID={`banner-${b.id}`}>

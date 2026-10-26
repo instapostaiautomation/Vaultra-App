@@ -1,208 +1,237 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { Platform } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { AppState, Platform } from "react-native";
+
 import { api, setToken } from "@/src/api";
+import { storage } from "@/src/utils/storage";
+import { TENANT_NAME } from "@/src/format";
 
-// Default jeweller for demo
-const DEFAULT_JEWELLER_ID = "demo-jeweller-001";
+export const DEFAULT_TENANT = "demo-jeweller-001";
 
-export interface User {
+export type User = {
   id: string;
   phone: string;
-  wallet_id: string;
-  first_name: string;
-  last_name: string;
   name: string;
-  email: string;
-  dob: string;
-  gender: string;
-  jeweller_id: string;
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  dob?: string;
+  gender?: string;
+  tenant: string;
+  kyc_status: "not_submitted" | "pending" | "approved" | "rejected";
   gold_grams: number;
-  silver_grams: number;
+  silver_grams?: number;
   invested: number;
   avg_buy_price: number;
-  kyc_status: string;
-  kyc: Record<string, any>;
-  referral_code: string;
-  referral_balance: number;
-  wallet_balance: number;
-  referred_by: string | null;
+  wallet_balance?: number;
   created_at: string;
-}
+  kyc: any;
+  referral_code?: string;
+  referral_balance?: number;
+  referred_by?: string | null;
+};
 
-export interface JewellerConfig {
+export type SilverPrice = { buy: number; sell: number; change: number; change_pct: number; direction: "up" | "down" };
+
+export type Price = { buy: number; sell: number; change: number; change_pct: number; direction: "up" | "down"; updated_at: string; live?: boolean; source?: string; silver?: SilverPrice };
+
+export type Vault = {
+  user: User;
+  buy_rate: number;
+  sell_rate: number;
+  current_value: number;
+  unrealized_pnl: number;
+  unrealized_pct: number;
+  pending_pickups: any[];
+};
+
+export type PriceAlert = {
   id: string;
-  business_name: string;
-  logo_url: string;
-  primary_color: string;
-  secondary_color: string;
-  min_redemption_grams: number;
-}
+  target: number;
+  tenant: string;
+  status: "active" | "triggered";
+  created_at: string;
+  triggered_at: string | null;
+  triggered_price: number | null;
+};
 
-export interface PriceData {
-  buy: number;
-  sell: number;
-  change: number;
-  change_pct: number;
-  direction: string;
-  purity: string;
-  gst_rate: number;
-  updated_at: string;
-  source: "mt5" | "simulated";
-  live: boolean;
-  silver: {
-    buy: number;
-    sell: number;
-    change: number;
-    change_pct: number;
-    direction: string;
-  };
-}
-
-interface AppState {
+type Ctx = {
+  booting: boolean;
+  token: string | null;
   user: User | null;
-  jewellerId: string;
-  jewellerConfig: JewellerConfig | null;
-  price: PriceData | null;
-  isLoading: boolean;
-  isLoggedIn: boolean;
-  /** true when opened on a jeweller's own custom domain (tenant is fixed) */
+  tenant: string;
+  tenantName: string;
   tenantLocked: boolean;
-  login: (challengeId: string, otp: string, extra?: Record<string, string>) => Promise<void>;
-  requestOtp: (phone: string) => Promise<{ challenge_id: string; demo_otp: string; is_new_user: boolean }>;
-  logout: () => Promise<void>;
-  refreshUser: () => Promise<void>;
-  refreshPrice: () => Promise<void>;
-}
+  price: Price | null;
+  priceError: boolean;
+  vault: Vault | null;
+  alerts: PriceAlert[];
+  unreadNotifs: number;
+  reloadAlerts: () => Promise<void>;
+  reloadNotifs: () => Promise<void>;
+  setTenant: (t: string) => void;
+  signIn: (token: string, user: User) => Promise<void>;
+  signOut: () => Promise<void>;
+  refresh: () => Promise<void>;
+};
 
-const Ctx = createContext<AppState>({} as AppState);
+const AppCtx = createContext<Ctx>(null as any);
+const TOKEN_KEY = "vdg_user_token";
+const TENANT_KEY = "vdg_tenant";
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
+  const [booting, setBooting] = useState(true);
+  const [token, setTok] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
-  const [jewellerId, setJewellerId] = useState(DEFAULT_JEWELLER_ID);
-  const [jewellerConfig, setJewellerConfig] = useState<JewellerConfig | null>(null);
-  const [price, setPrice] = useState<PriceData | null>(null);
-  const [isLoading, setLoading] = useState(true);
+  const [tenant, setTenantState] = useState(DEFAULT_TENANT);
+  const [tenantName, setTenantName] = useState("");
   const [tenantLocked, setTenantLocked] = useState(false);
+  const [price, setPrice] = useState<Price | null>(null);
+  const [priceError, setPriceError] = useState(false);
+  const [vault, setVault] = useState<Vault | null>(null);
+  const [alerts, setAlerts] = useState<PriceAlert[]>([]);
+  const [unreadNotifs, setUnreadNotifs] = useState(0);
+  const inFlight = useRef<Set<string>>(new Set());
+  const tenantRef = useRef(tenant);
+  tenantRef.current = tenant;
 
-  // Load saved session
+  const reloadAlerts = useCallback(async () => {
+    try {
+      setAlerts(await api<PriceAlert[]>("/alerts"));
+    } catch {}
+  }, []);
+
+  const reloadNotifs = useCallback(async () => {
+    try {
+      const r = await api<{ unread_count: number }>("/notifications");
+      setUnreadNotifs(r.unread_count);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (token) { reloadAlerts(); reloadNotifs(); }
+    else { setAlerts([]); setUnreadNotifs(0); }
+  }, [token, reloadAlerts, reloadNotifs]);
+
+  // When the live price crosses below an active target, ask the server to verify & mark it triggered.
+  useEffect(() => {
+    if (!price || !token) return;
+    const hits = alerts.filter((a) => a.status === "active" && a.tenant === tenant && ((a as any).metal === "silver" ? price.silver?.buy ?? Infinity : price.buy) <= a.target && !inFlight.current.has(a.id));
+    if (!hits.length) return;
+    hits.forEach((a) => inFlight.current.add(a.id));
+    Promise.all(hits.map((a) => api(`/alerts/${a.id}/trigger`, { method: "POST" }).catch(() => null))).then(async () => {
+      await reloadAlerts();
+      hits.forEach((a) => inFlight.current.delete(a.id));
+    });
+  }, [price, alerts, token, tenant, reloadAlerts]);
+
+  const refresh = useCallback(async () => {
+    try {
+      const v = await api<Vault>("/vault");
+      setVault(v);
+      setUser(v.user);
+    } catch (e: any) {
+      if (e.status === 401) {
+        setToken("user", null);
+        setTok(null);
+        setUser(null);
+        setVault(null);
+        await storage.secureRemove(TOKEN_KEY);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     (async () => {
+      const [t, tn] = await Promise.all([storage.secureGet(TOKEN_KEY, null), storage.getItem(TENANT_KEY, DEFAULT_TENANT)]);
+      let active = String(tn || DEFAULT_TENANT);
       try {
-        const [tok, jid] = await Promise.all([
-          AsyncStorage.getItem("customer_token"),
-          AsyncStorage.getItem("jeweller_id"),
-        ]);
-        let activeJid = jid || DEFAULT_JEWELLER_ID;
-        let locked = false;
-        // Custom domain → fixed tenant (web only)
-        if (Platform.OS === "web" && typeof window !== "undefined") {
-          try {
-            const t = await api<{ kind: "app" | "admin"; jeweller: JewellerConfig }>(
-              `/tenant/resolve?host=${encodeURIComponent(window.location.hostname)}`, { auth: "none" }
-            );
-            if (t.kind === "admin") {
-              window.location.replace("/api/admin/jeweller");
-              return;
-            }
-            activeJid = t.jeweller.id;
-            locked = true;
-            setTenantLocked(true);
-          } catch {}
-        }
-        setJewellerId(activeJid);
-        if (tok) {
-          setToken("customer", tok);
-          try {
-            const u = await api<User>("/me");
-            if (locked && u.jeweller_id !== activeJid) throw new Error("Different jeweller");
-            setUser(u);
-          } catch {
-            await AsyncStorage.removeItem("customer_token");
-            setToken("customer", null);
-          }
-        }
-        // Load jeweller config
+        const list = await api<{ id: string; business_name: string }[]>("/jewellers/list", { auth: "none" });
+        list.forEach((j) => { TENANT_NAME[j.id] = j.business_name; });
+        if (!list.some((j) => j.id === active)) active = list.some((j) => j.id === DEFAULT_TENANT) ? DEFAULT_TENANT : list[0]?.id || DEFAULT_TENANT;
+      } catch {}
+      // Jeweller's own custom domain → fixed store (web)
+      if (Platform.OS === "web" && typeof window !== "undefined") {
         try {
-          const cfg = await api<JewellerConfig>(`/jeweller/${activeJid}/config`, { auth: "none" });
-          setJewellerConfig(cfg);
+          const r = await api<{ kind: "app" | "admin"; jeweller: { id: string; business_name: string } }>(
+            `/tenant/resolve?host=${encodeURIComponent(window.location.hostname)}`, { auth: "none" });
+          if (r.kind === "admin") { window.location.replace("/api/admin/jeweller"); return; }
+          active = r.jeweller.id;
+          TENANT_NAME[active] = r.jeweller.business_name;
+          setTenantLocked(true);
         } catch {}
-        // Load price
-        try {
-          const p = await api<PriceData>(`/price?jeweller_id=${activeJid}`, { auth: "none" });
-          setPrice(p);
-        } catch {}
-      } finally {
-        setLoading(false);
       }
+      setTenantState(active);
+      setTenantName(TENANT_NAME[active] || "");
+      if (t) {
+        setToken("user", String(t));
+        setTok(String(t));
+      }
+      setBooting(false);
     })();
   }, []);
 
-  // Auto-refresh price
   useEffect(() => {
-    const id = setInterval(async () => {
+    if (token) refresh();
+  }, [token, tenant, refresh]);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
       try {
-        const p = await api<PriceData>(`/price?jeweller_id=${jewellerId}`, { auth: "none" });
-        setPrice(p);
-      } catch {}
-    }, 5000);
-    return () => clearInterval(id);
-  }, [jewellerId]);
-
-  const requestOtp = useCallback(async (phone: string) => {
-    const resp = await api<{ challenge_id: string; demo_otp: string; is_new_user: boolean }>(
-      "/auth/otp/request",
-      { method: "POST", body: { phone, jeweller_id: jewellerId }, auth: "none" }
-    );
-    return resp;
-  }, [jewellerId]);
-
-  const login = useCallback(async (challengeId: string, otp: string, extra?: Record<string, string>) => {
-    const resp = await api<{ access_token: string; user: User }>(
-      "/auth/otp/verify",
-      {
-        method: "POST",
-        body: { challenge_id: challengeId, otp, jeweller_id: jewellerId, ...extra },
-        auth: "none",
+        const p = await api<Price>(`/price?jeweller_id=${tenantRef.current}`, { auth: "none" });
+        if (active) {
+          setPrice(p);
+          setPriceError(false);
+        }
+      } catch {
+        if (active) setPriceError(true);
       }
-    );
-    setToken("customer", resp.access_token);
-    await AsyncStorage.setItem("customer_token", resp.access_token);
-    await AsyncStorage.setItem("jeweller_id", jewellerId);
-    setUser(resp.user);
-  }, [jewellerId]);
+    };
+    load();
+    let id: ReturnType<typeof setInterval> | null = setInterval(load, 3000);
+    const sub = AppState.addEventListener("change", (s) => {
+      if (s === "active" && !id) {
+        load();
+        id = setInterval(load, 3000);
+      } else if (s !== "active" && id) {
+        clearInterval(id);
+        id = null;
+      }
+    });
+    return () => {
+      active = false;
+      if (id) clearInterval(id);
+      sub.remove();
+    };
+  }, [tenant]);
 
-  const logout = useCallback(async () => {
-    setToken("customer", null);
+  const setTenant = (t: string) => {
+    if (tenantLocked) return;
+    setTenantState(t);
+    setTenantName(TENANT_NAME[t] || "");
+    storage.setItem(TENANT_KEY, t);
+  };
+
+  const signIn = async (t: string, u: User) => {
+    setToken("user", t);
+    await storage.secureSet(TOKEN_KEY, t);
+    setUser(u);
+    setTok(t);
+  };
+
+  const signOut = async () => {
+    setToken("user", null);
+    await storage.secureRemove(TOKEN_KEY);
+    setTok(null);
     setUser(null);
-    await AsyncStorage.removeItem("customer_token");
-  }, []);
+    setVault(null);
+  };
 
-  const refreshUser = useCallback(async () => {
-    try {
-      const u = await api<User>("/me");
-      setUser(u);
-    } catch {}
-  }, []);
-
-  const refreshPrice = useCallback(async () => {
-    try {
-      const p = await api<PriceData>(`/price?jeweller_id=${jewellerId}`, { auth: "none" });
-      setPrice(p);
-    } catch {}
-  }, [jewellerId]);
-
-  const value = useMemo(
-    () => ({
-      user, jewellerId, jewellerConfig, price, isLoading,
-      isLoggedIn: !!user, tenantLocked, login, requestOtp, logout, refreshUser, refreshPrice,
-    }),
-    [user, jewellerId, jewellerConfig, price, isLoading, tenantLocked, login, requestOtp, logout, refreshUser, refreshPrice]
+  return (
+    <AppCtx.Provider value={{ booting, token, user, tenant, tenantName, tenantLocked, price, priceError, vault, alerts, unreadNotifs, reloadAlerts, reloadNotifs, setTenant, signIn, signOut, refresh }}>
+      {children}
+    </AppCtx.Provider>
   );
-
-  return React.createElement(Ctx.Provider, { value }, children);
 }
 
-export function useApp() {
-  return useContext(Ctx);
-}
+export const useApp = () => useContext(AppCtx);

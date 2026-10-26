@@ -1,145 +1,190 @@
-import React from "react";
-import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { useTheme } from "@/src/theme";
-import { useApp } from "@/src/store/AppContext";
-import {
-  ArrowLeft, User, Phone, Mail, Calendar, Shield, Moon, Sun,
-  ChevronRight, LogOut, HelpCircle, Gift, Bell, CreditCard,
-} from "lucide-react-native";
+import { ArrowLeft, ArrowRight, BadgeCheck, Gift, HelpCircle, LogOut, Moon, ShieldCheck, Sun, User, Users, Wallet } from "lucide-react-native";
+import React, { useEffect, useState } from "react";
+import { Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-export default function ProfileScreen() {
-  const { colors, scheme, toggle } = useTheme();
-  const { user, isLoggedIn, logout, jewellerConfig } = useApp();
+import { api } from "@/src/api";
+import { LogoMark } from "@/src/components/Header";
+import { useToast } from "@/src/components/Toast";
+import { Button, Card, Row, StatusBadge } from "@/src/components/ui";
+import { grams, inr, maskPhone, shortDate } from "@/src/format";
+import { useApp } from "@/src/store/AppContext";
+import { colors, fonts, radius, useTheme } from "@/src/theme";
+
+export default function Profile() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const toast = useToast();
+  const { user, token, signOut, refresh, tenantName } = useApp();
+  const { scheme, toggle: toggleTheme } = useTheme();
+  const [fullName, setFullName] = useState("");
+  const [aadhaar, setAadhaar] = useState("");
+  const [pan, setPan] = useState("");
+  const [dob, setDob] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  const handleLogout = () => {
-    Alert.alert("Logout", "Are you sure you want to logout?", [
-      { text: "Cancel" },
-      { text: "Logout", style: "destructive", onPress: async () => { await logout(); router.replace("/(tabs)"); } },
-    ]);
+  useEffect(() => {
+    if (user && !fullName) setFullName(user.name);
+  }, [user, fullName]);
+
+  const submitKyc = async () => {
+    setBusy(true);
+    try {
+      await api("/kyc/submit", { method: "POST", body: { full_name: fullName.trim(), aadhaar, pan, dob } });
+      await refresh();
+      toast("success", "KYC submitted", "A store officer will review it shortly");
+    } catch (e: any) {
+      toast("error", "KYC submission failed", e.message);
+    } finally {
+      setBusy(false);
+    }
   };
 
-  if (!isLoggedIn || !user) {
+  const canSubmit = fullName.trim().length > 1 && aadhaar.length === 12 && /^[A-Z]{5}\d{4}[A-Z]$/.test(pan);
+  const kyc = user?.kyc_status ?? "not_submitted";
+
+  if (!token) {
     return (
-      <View style={[ss.center, { backgroundColor: colors.surface, paddingTop: insets.top }]}>
-        <User size={48} color={colors.brand} />
-        <Text style={[ss.emptyTitle, { color: colors.onSurface }]}>Profile</Text>
-        <Text style={[ss.emptyText, { color: colors.muted }]}>Login to view your profile</Text>
-        <TouchableOpacity style={[ss.loginBtn, { backgroundColor: colors.brand }]} onPress={() => router.push("/login")}>
-          <Text style={ss.loginBtnText}>Login / Sign Up</Text>
-        </TouchableOpacity>
+      <View style={styles.root} testID="profile-screen">
+        <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+          <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))} style={styles.back} testID="profile-back-button">
+            <ArrowLeft size={22} color={colors.onSurface} />
+          </Pressable>
+          <Text style={styles.headerTitle}>Account</Text>
+          <View style={{ width: 44 }} />
+        </View>
+        <View style={styles.guestContainer}>
+          <LogoMark size={64} />
+          <Text style={styles.guestTitle}>Welcome to {tenantName || "Digital Gold"}</Text>
+          <Text style={styles.guestSub}>Sign in or create an account to buy, sell and store 24K gold securely.</Text>
+          <Button title="Log in or Sign up" size="lg" onPress={() => router.push("/login")} style={{ alignSelf: "stretch", marginTop: 24 }} testID="profile-signin-button" icon={<User size={18} color={colors.onBrandPrimary} />} />
+          <Text style={styles.guestHint}>By continuing, you agree to our Terms of Use and Privacy Policy</Text>
+        </View>
       </View>
     );
   }
 
   return (
-    <View style={[ss.flex, { backgroundColor: colors.surface }]}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-        <View style={{ paddingTop: insets.top + 12, paddingHorizontal: 16 }}>
-          <TouchableOpacity onPress={() => router.back()} style={ss.backBtn}>
-            <ArrowLeft size={24} color={colors.onSurface} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Profile Header */}
-        <View style={ss.profileHeader}>
-          <View style={[ss.avatar, { backgroundColor: colors.brandTertiary }]}>
-            <Text style={[ss.avatarText, { color: colors.brand }]}>{(user.first_name || "G")[0].toUpperCase()}</Text>
+    <View style={styles.root} testID="profile-screen">
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+        <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))} style={styles.back} testID="profile-back-button">
+          <ArrowLeft size={22} color={colors.onSurface} />
+        </Pressable>
+        <Text style={styles.headerTitle}>Profile</Text>
+        <View style={{ width: 44 }} />
+      </View>
+      <KeyboardAwareScrollView bottomOffset={24} contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24, gap: 16 }} keyboardShouldPersistTaps="handled">
+        <Card>
+          <View style={styles.userRow}>
+            <View style={styles.avatar}>
+              <User size={24} color={colors.onBrandPrimary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.name} testID="profile-name">{user?.name}</Text>
+              <Text style={styles.meta}>{maskPhone(user?.phone)}</Text>
+              {user?.email ? <Text style={styles.meta}>{user.email}</Text> : null}
+            </View>
+            <StatusBadge status={kyc} testID="profile-kyc-status" />
           </View>
-          <Text style={[ss.profileName, { color: colors.onSurface }]}>{user.first_name} {user.last_name}</Text>
-          <Text style={[ss.profilePhone, { color: colors.muted }]}>+91 {user.phone}</Text>
-          <Text style={[ss.walletIdText, { color: colors.brand }]}>Wallet ID: {user.wallet_id}</Text>
-          {jewellerConfig && (
-            <Text style={[ss.shopText, { color: colors.muted }]}>{jewellerConfig.business_name}</Text>
+          <View style={{ marginTop: 12 }}>
+            <Row label="Gold balance" value={grams(user?.gold_grams)} />
+            {(user?.silver_grams ?? 0) > 0 ? <Row label="Silver balance" value={grams(user?.silver_grams)} /> : null}
+            <Row label="Wallet balance" value={inr(user?.wallet_balance ?? 0)} />
+            <Row label="Member since" value={shortDate(user?.created_at)} />
+          </View>
+        </Card>
+
+        {/* Day / Night Theme */}
+        <Card testID="theme-card">
+          <View style={styles.themeRow}>
+            {scheme === "dark" ? <Moon size={20} color={colors.brandSecondary} /> : <Sun size={20} color={colors.brandSecondary} />}
+            <Text style={styles.themeLabel}>Dark Mode</Text>
+            <Switch
+              value={scheme === "dark"}
+              onValueChange={toggleTheme}
+              trackColor={{ false: colors.border, true: colors.brandPrimary }}
+              thumbColor={colors.surface}
+              testID="theme-toggle"
+            />
+          </View>
+        </Card>
+
+        <Card testID="kyc-card">
+          <View style={styles.kycHead}>
+            <BadgeCheck size={20} color={colors.brandSecondary} />
+            <Text style={styles.section}>KYC Verification</Text>
+          </View>
+          {kyc === "approved" ? (
+            <Text style={styles.meta}>Verified. You can sell and redeem gold.</Text>
+          ) : kyc === "pending" ? (
+            <Text style={styles.meta} testID="kyc-pending-text">Under review by store staff.</Text>
+          ) : (
+            <>
+              <Text style={styles.meta}>{kyc === "rejected" ? "Rejected. Please resubmit." : "Required to sell gold and redeem jewellery."}</Text>
+              <Text style={styles.label}>Full name (as on PAN)</Text>
+              <TextInput testID="kyc-name-input" value={fullName} onChangeText={setFullName} style={styles.input} placeholder="Full name" placeholderTextColor={colors.mutedLight} />
+              <Text style={styles.label}>Aadhaar number</Text>
+              <TextInput testID="kyc-aadhaar-input" value={aadhaar} onChangeText={(t) => setAadhaar(t.replace(/\D/g, "").slice(0, 12))} keyboardType="number-pad" style={styles.input} placeholder="12-digit Aadhaar" placeholderTextColor={colors.mutedLight} />
+              <Text style={styles.label}>PAN</Text>
+              <TextInput testID="kyc-pan-input" value={pan} onChangeText={(t) => setPan(t.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10))} autoCapitalize="characters" style={styles.input} placeholder="ABCDE1234F" placeholderTextColor={colors.mutedLight} />
+              <Text style={styles.label}>Date of birth</Text>
+              <TextInput testID="kyc-dob-input" value={dob} onChangeText={setDob} style={styles.input} placeholder="YYYY-MM-DD" placeholderTextColor={colors.mutedLight} />
+              <Button title="Submit KYC" loading={busy} disabled={!canSubmit} onPress={submitKyc} style={{ marginTop: 16 }} testID="kyc-submit-button" icon={<ShieldCheck size={18} color={colors.onBrandPrimary} />} />
+            </>
           )}
+        </Card>
+
+        <View style={styles.links}>
+          <Pressable style={styles.link} onPress={() => router.push("/wallet")} testID="profile-wallet-link">
+            <Wallet size={20} color={colors.brandSecondary} />
+            <Text style={styles.linkText}>Wallet</Text>
+            <ArrowRight size={16} color={colors.muted} />
+          </Pressable>
+          <Pressable style={styles.link} onPress={() => router.push("/referral")} testID="profile-referral-link">
+            <Users size={20} color={colors.brandSecondary} />
+            <Text style={styles.linkText}>Refer & Earn</Text>
+            <ArrowRight size={16} color={colors.muted} />
+          </Pressable>
+          <Pressable style={styles.link} onPress={() => router.push("/gift")} testID="profile-gift-link">
+            <Gift size={20} color={colors.onSurfaceTertiary} />
+            <Text style={styles.linkText}>Gift Gold</Text>
+            <ArrowRight size={16} color={colors.muted} />
+          </Pressable>
+          <Pressable style={[styles.link, { borderBottomWidth: 0 }]} onPress={() => router.push("/faq")} testID="profile-faq-link">
+            <HelpCircle size={20} color={colors.onSurfaceTertiary} />
+            <Text style={styles.linkText}>FAQ & Help</Text>
+            <ArrowRight size={16} color={colors.muted} />
+          </Pressable>
         </View>
 
-        {/* KYC Status */}
-        <View style={[ss.kycCard, {
-          backgroundColor: user.kyc_status === "approved" ? "#DCFCE7" : user.kyc_status === "pending" ? "#FEF3C7" : colors.surfaceSecondary,
-          borderColor: user.kyc_status === "approved" ? "#16A34A" : user.kyc_status === "pending" ? "#D97706" : colors.border,
-        }]}>
-          <Shield size={20} color={user.kyc_status === "approved" ? "#16A34A" : user.kyc_status === "pending" ? "#D97706" : colors.muted} />
-          <View style={{ marginLeft: 12, flex: 1 }}>
-            <Text style={{ fontWeight: "600", color: user.kyc_status === "approved" ? "#16A34A" : user.kyc_status === "pending" ? "#D97706" : colors.onSurface }}>
-              KYC {user.kyc_status === "approved" ? "Verified" : user.kyc_status === "pending" ? "Under Review" : "Not Submitted"}
-            </Text>
-            {user.kyc_status === "not_submitted" && <Text style={{ color: colors.muted, fontSize: 12 }}>Complete KYC to sell gold and access all features</Text>}
-          </View>
-        </View>
-
-        {/* Menu Items */}
-        <View style={ss.menuSection}>
-          <MenuItem icon={<Moon size={20} color={colors.brand} />} label={scheme === "dark" ? "Light Mode" : "Dark Mode"}
-            right={scheme === "dark" ? <Sun size={18} color={colors.brand} /> : <Moon size={18} color={colors.brand} />}
-            onPress={toggle} colors={colors} />
-          <MenuItem icon={<Bell size={20} color={colors.brand} />} label="Notifications" onPress={() => router.push("/notifications")} colors={colors} />
-          <MenuItem icon={<Gift size={20} color={colors.brand} />} label="Refer & Earn" onPress={() => router.push("/referral")} colors={colors} />
-          <MenuItem icon={<CreditCard size={20} color={colors.brand} />} label="Wallet" onPress={() => router.push("/(tabs)/wallet")} colors={colors} />
-          <MenuItem icon={<HelpCircle size={20} color={colors.brand} />} label="FAQ" onPress={() => router.push("/faq")} colors={colors} />
-          <MenuItem icon={<LogOut size={20} color={colors.error} />} label="Logout" onPress={handleLogout} colors={colors} isDestructive />
-        </View>
-
-        {/* Details */}
-        <View style={ss.detailSection}>
-          <Text style={[ss.detailTitle, { color: colors.onSurface }]}>Account Details</Text>
-          <DetailRow icon={<Phone size={16} color={colors.muted} />} label="Phone" value={`+91 ${user.phone}`} colors={colors} />
-          {user.email ? <DetailRow icon={<Mail size={16} color={colors.muted} />} label="Email" value={user.email} colors={colors} /> : null}
-          {user.dob ? <DetailRow icon={<Calendar size={16} color={colors.muted} />} label="DOB" value={user.dob} colors={colors} /> : null}
-          {user.gender ? <DetailRow icon={<User size={16} color={colors.muted} />} label="Gender" value={user.gender} colors={colors} /> : null}
-        </View>
-      </ScrollView>
+        <Button title="Sign Out" variant="outline" icon={<LogOut size={18} color={colors.error} />} textStyle={{ color: colors.error }} onPress={async () => { await signOut(); toast("info", "Signed out"); router.replace("/"); }} testID="profile-signout-button" />
+      </KeyboardAwareScrollView>
     </View>
   );
 }
 
-function MenuItem({ icon, label, onPress, colors, right, isDestructive }: any) {
-  return (
-    <TouchableOpacity style={[ss.menuItem, { borderColor: colors.divider }]} onPress={onPress}>
-      {icon}
-      <Text style={[ss.menuLabel, { color: isDestructive ? colors.error : colors.onSurface }]}>{label}</Text>
-      {right || <ChevronRight size={18} color={colors.muted} />}
-    </TouchableOpacity>
-  );
-}
-
-function DetailRow({ icon, label, value, colors }: any) {
-  return (
-    <View style={[ss.detailRow, { borderColor: colors.divider }]}>
-      {icon}
-      <Text style={[ss.detailLabel, { color: colors.muted }]}>{label}</Text>
-      <Text style={[ss.detailValue, { color: colors.onSurface }]}>{value}</Text>
-    </View>
-  );
-}
-
-const ss = StyleSheet.create({
-  flex: { flex: 1 },
-  center: { flex: 1, justifyContent: "center", alignItems: "center", padding: 32 },
-  emptyTitle: { fontSize: 22, fontWeight: "700", marginTop: 16 },
-  emptyText: { fontSize: 14, marginTop: 6 },
-  loginBtn: { marginTop: 20, height: 48, paddingHorizontal: 32, borderRadius: 14, justifyContent: "center" },
-  loginBtnText: { color: "#FFF", fontSize: 15, fontWeight: "700" },
-  backBtn: { width: 44, height: 44, justifyContent: "center" },
-  profileHeader: { alignItems: "center", paddingVertical: 20 },
-  avatar: { width: 80, height: 80, borderRadius: 40, justifyContent: "center", alignItems: "center" },
-  avatarText: { fontSize: 32, fontWeight: "800" },
-  profileName: { fontSize: 22, fontWeight: "700", marginTop: 12 },
-  profilePhone: { fontSize: 14, marginTop: 4 },
-  walletIdText: { fontSize: 14, fontWeight: "700", marginTop: 6, letterSpacing: 1 },
-  shopText: { fontSize: 13, marginTop: 4 },
-  kycCard: { marginHorizontal: 16, borderRadius: 12, padding: 14, borderWidth: 1, flexDirection: "row", alignItems: "center" },
-  menuSection: { marginTop: 20, paddingHorizontal: 16 },
-  menuItem: { flexDirection: "row", alignItems: "center", paddingVertical: 14, borderBottomWidth: 1, gap: 14 },
-  menuLabel: { flex: 1, fontSize: 15, fontWeight: "500" },
-  detailSection: { marginTop: 24, paddingHorizontal: 16 },
-  detailTitle: { fontSize: 17, fontWeight: "700", marginBottom: 12 },
-  detailRow: { flexDirection: "row", alignItems: "center", paddingVertical: 10, borderBottomWidth: 1, gap: 10 },
-  detailLabel: { fontSize: 13, width: 60 },
-  detailValue: { flex: 1, fontSize: 14, fontWeight: "500" },
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.surfaceSecondary },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 8, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.divider },
+  back: { width: 44, height: 44, justifyContent: "center" },
+  headerTitle: { fontFamily: fonts.bold, fontSize: 17, color: colors.onSurface },
+  guestContainer: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, gap: 8 },
+  guestTitle: { fontFamily: fonts.black, fontSize: 26, letterSpacing: -1, color: colors.onSurface, textAlign: "center", marginTop: 20 },
+  guestSub: { fontFamily: fonts.regular, fontSize: 15, color: colors.muted, textAlign: "center", lineHeight: 22 },
+  guestHint: { fontFamily: fonts.regular, fontSize: 12, color: colors.mutedLight, textAlign: "center", marginTop: 12 },
+  userRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" },
+  name: { fontFamily: fonts.bold, fontSize: 17, color: colors.onSurface },
+  meta: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted, marginTop: 2 },
+  kycHead: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 },
+  section: { fontFamily: fonts.bold, fontSize: 16, color: colors.onSurface },
+  label: { fontFamily: fonts.semibold, fontSize: 12, color: colors.onSurfaceTertiary, marginTop: 12, marginBottom: 6 },
+  input: { height: 48, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14, fontFamily: fonts.medium, fontSize: 15, color: colors.onSurface, backgroundColor: colors.surface },
+  themeRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  themeLabel: { flex: 1, fontFamily: fonts.semibold, fontSize: 15, color: colors.onSurface },
+  links: { backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
+  link: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderBottomWidth: 1, borderBottomColor: colors.divider, minHeight: 56 },
+  linkText: { flex: 1, fontFamily: fonts.semibold, fontSize: 14, color: colors.onSurface },
 });

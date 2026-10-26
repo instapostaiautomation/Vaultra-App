@@ -11,9 +11,9 @@ import { colors, fonts, radius } from "@/src/theme";
 
 // ----- Banner on home when price drops -----
 export function PriceAlertBanner() {
-  const { price } = useApp();
+  const { price, tenantName } = useApp();
   const [hidden, setHidden] = useState(false);
-  if (!price || price.direction !== "down" || hidden) return null;
+  if (!price || (price.change_pct ?? 0) >= 0 || hidden) return null;
   return (
     <View style={styles.banner} testID="price-alert-banner">
       <View style={styles.bannerIcon}>
@@ -21,7 +21,7 @@ export function PriceAlertBanner() {
       </View>
       <View style={{ flex: 1 }}>
         <Text style={styles.bannerTitle}>24K dropped below ₹{(Math.ceil(price.buy / 5) * 5).toLocaleString()}</Text>
-        <Text style={styles.bannerSub}>Now {inr(price.buy)}/g · Vaultra Gold</Text>
+        <Text style={styles.bannerSub}>Now {inr(price.buy)}/g · {tenantName}</Text>
       </View>
       <Pressable onPress={() => setHidden(true)} hitSlop={12}>
         <Text style={{ fontSize: 18, color: colors.muted }}>×</Text>
@@ -32,7 +32,7 @@ export function PriceAlertBanner() {
 
 // ----- Card for managing alerts -----
 export function PriceAlertCard() {
-  const { alerts, reloadAlerts, token, price } = useApp();
+  const { alerts, reloadAlerts, token, price, tenant } = useApp();
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [alertTab, setAlertTab] = useState<"only" | "book">("only");
@@ -53,7 +53,7 @@ export function PriceAlertCard() {
       if (alertTab === "book") {
         const b = parseFloat(buyAmt);
         if (!b || b <= 0) { toast("error", "Enter buy amount"); setBusy(false); return; }
-        await api("/alerts/book", { method: "POST", body: { target: t, metal, buy_amount: b, tenant: "vaultra" } });
+        await api("/alerts/book", { method: "POST", body: { target: t, metal, buy_amount: b, tenant } });
         toast("success", "Book Alert created!", `Will auto-buy ₹${b} of ${metal} when rate ≤ ₹${t}/g`);
       } else {
         await api("/alerts", { method: "POST", body: { target: t } });

@@ -20,7 +20,7 @@ const ICON: Record<string, any> = {
 export function TxnRow({ t, onPress, dark }: { t: any; onPress?: () => void; dark?: boolean }) {
   const Icon = ICON[t.type] || ArrowDownLeft;
   const credit =
-    ["buy", "sip", "counter_sale", "gift_received"].includes(t.type) || (t.type === "reversal" && ["sell", "redemption"].includes(t.original_type));
+    ["buy", "buy_silver", "sip", "counter_sale", "gift_received"].includes(t.type) || (t.type === "reversal" && ["sell", "redemption"].includes(t.original_type));
   const fg = dark ? colors.adminOnSurface : colors.onSurface;
   return (
     <Pressable testID={`txn-row-${t.id}`} onPress={onPress} style={[styles.row, { borderBottomColor: dark ? colors.adminBorder : colors.divider }]}>
