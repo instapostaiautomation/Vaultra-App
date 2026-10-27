@@ -90,3 +90,10 @@ Multi-tenant white-label digital gold platform. Vaultra onboards jewellery shop 
 - Inter fonts restored; header shows jeweller name; demo/AI-looking text and emojis removed; admin login forms no longer prefilled.
 - Silver balance + silver passbook/invoice labels; products scoped to the jeweller; product images by category.
 - Backlog: book alerts auto-buy, MT5 URL connection, legacy test suites cleanup.
+
+## Update — Panels v3 (Oct 2026)
+- Jeweller Shop Panel & Master Console rebuilt: shared design (templates/panel.css, panel.js served at /api/admin/assets/*), left sidebar nav.
+- Shop panel: Dashboard (range 1d/3d/7d/30d/custom, active/inactive customers, gold/silver booked, chart), Commission (flat ₹/g, live rate + calc), Orders (buy/redeem only + View bill), Wallet & Holdings (drawer detail), Customers, KYC, Redemptions, Catalogue, Gifts, Referral, Settings (shop details, app key, links).
+- New APIs: /api/jeweller/v3/* and /api/master/v3/overview. Selling disabled (/api/sell → 403); customer app Wallet tab + Sell removed.
+- MetaApi live feed code (METAAPI_TOKEN, METAAPI_ACCOUNT_ID, METAAPI_REGION) — keys pending from user.
+- PostgreSQL runs via supervisor (/etc/supervisor/conf.d/postgresql.conf). NOTE: Emergent deployment provides MongoDB only — production needs an external PostgreSQL (e.g. AWS RDS) via DATABASE_URL.

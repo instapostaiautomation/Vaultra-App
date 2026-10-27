@@ -35,5 +35,7 @@ async def init_db():
             "ALTER TABLE jewellers ADD COLUMN IF NOT EXISTS gold_sell_discount_pct DOUBLE PRECISION DEFAULT 3",
             "ALTER TABLE jewellers ADD COLUMN IF NOT EXISTS silver_buy_markup_pct DOUBLE PRECISION DEFAULT 0",
             "ALTER TABLE jewellers ADD COLUMN IF NOT EXISTS silver_sell_discount_pct DOUBLE PRECISION DEFAULT 3",
+            "ALTER TABLE jewellers ADD COLUMN IF NOT EXISTS gold_commission_per_g DOUBLE PRECISION DEFAULT 0",
+            "ALTER TABLE jewellers ADD COLUMN IF NOT EXISTS silver_commission_per_g DOUBLE PRECISION DEFAULT 0",
         ):
             await conn.execute(text(stmt))

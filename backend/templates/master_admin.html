@@ -1,323 +1,187 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vaultra Master Admin</title>
-    <style>
-        * { margin:0; padding:0; box-sizing:border-box; font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif; }
-        body { background:#0F172A; color:#F1F5F9; min-height:100vh; }
-        .header { background:#1E293B; padding:16px 24px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #334155; }
-        .header h1 { color:#D4AF37; font-size:20px; }
-        .header .logout { color:#94A3B8; cursor:pointer; padding:8px 16px; border:1px solid #334155; border-radius:8px; background:transparent; }
-        .header .logout:hover { background:#334155; }
-        .nav { background:#1E293B; padding:12px 24px; display:flex; gap:8px; border-bottom:1px solid #334155; flex-wrap:wrap; }
-        .nav button { padding:8px 16px; border-radius:8px; border:1px solid #334155; background:transparent; color:#94A3B8; cursor:pointer; font-size:13px; }
-        .nav button.active { background:#D4AF37; color:#111; border-color:#D4AF37; font-weight:600; }
-        .content { padding:24px; max-width:1200px; margin:0 auto; }
-        .login-wrap { display:flex; justify-content:center; align-items:center; min-height:80vh; }
-        .login-box { background:#1E293B; border:1px solid #334155; border-radius:16px; padding:40px; width:380px; text-align:center; }
-        .login-box h2 { color:#D4AF37; margin-bottom:24px; }
-        .form-input { width:100%; padding:12px 16px; border:1px solid #334155; border-radius:10px; background:#0F172A; color:#F1F5F9; font-size:14px; margin-bottom:12px; }
-        .form-input:focus { outline:none; border-color:#D4AF37; }
-        .btn-primary { width:100%; padding:14px; background:#D4AF37; color:#111; border:none; border-radius:10px; font-weight:700; font-size:15px; cursor:pointer; }
-        .btn-primary:hover { background:#C5A028; }
-        .btn-primary:disabled { opacity:0.5; }
-        .error { color:#EF4444; font-size:13px; margin-bottom:12px; }
-        .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px,1fr)); gap:16px; margin-bottom:24px; }
-        .stat-card { background:#1E293B; border:1px solid #334155; border-radius:14px; padding:20px; }
-        .stat-card .label { color:#94A3B8; font-size:12px; }
-        .stat-card .value { color:#F1F5F9; font-size:28px; font-weight:800; margin-top:4px; }
-        .stat-card .sub { color:#D4AF37; font-size:12px; margin-top:4px; }
-        .pool-bar { background:#334155; height:20px; border-radius:10px; overflow:hidden; margin-top:8px; }
-        .pool-fill { height:100%; background:linear-gradient(90deg,#D4AF37,#F59E0B); border-radius:10px; transition:width 0.5s; }
-        table { width:100%; border-collapse:collapse; margin-top:16px; }
-        th { text-align:left; padding:12px 16px; color:#94A3B8; font-size:12px; font-weight:600; border-bottom:1px solid #334155; text-transform:uppercase; }
-        td { padding:12px 16px; border-bottom:1px solid #1E293B; font-size:13px; }
-        tr:hover td { background:#1E293B; }
-        .badge { display:inline-block; padding:2px 10px; border-radius:8px; font-size:11px; font-weight:600; }
-        .badge-active { background:rgba(22,163,74,0.16); color:#22C55E; }
-        .badge-suspended { background:rgba(220,38,38,0.16); color:#EF4444; }
-        .badge-pending { background:rgba(245,158,11,0.16); color:#FBBF24; }
-        .btn-sm { padding:6px 14px; border-radius:8px; border:1px solid #334155; background:transparent; color:#94A3B8; cursor:pointer; font-size:12px; }
-        .btn-sm:hover { background:#334155; }
-        .btn-gold { background:rgba(212,175,55,0.14); color:#D4AF37; border-color:#D4AF37; }
-        .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-        .form-group { margin-bottom:12px; }
-        .form-group label { display:block; color:#94A3B8; font-size:12px; margin-bottom:4px; }
-        .modal-overlay { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); display:flex; justify-content:center; align-items:center; z-index:100; }
-        .modal { background:#1E293B; border:1px solid #334155; border-radius:16px; padding:32px; max-width:600px; width:90%; max-height:80vh; overflow-y:auto; }
-        .modal h3 { color:#D4AF37; margin-bottom:16px; }
-        .invoice-detail { background:#0F172A; border:1px solid #334155; border-radius:10px; padding:16px; margin-top:12px; }
-        .section-title { font-size:18px; font-weight:700; margin-bottom:16px; color:#F1F5F9; }
-        .empty { text-align:center; padding:40px; color:#64748B; }
-    </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vaultra · Master Console</title>
+<link rel="stylesheet" href="/api/admin/assets/panel.css">
+<script src="/api/admin/assets/panel.js"></script>
 </head>
 <body>
-    <div id="app"></div>
-    <script>
-    const API = '/api';
-    let token = localStorage.getItem('master_token') || '';
-    let currentTab = 'dashboard';
-    let dashboard = null;
-    let jewellers = [];
-    let pools = [];
-    let invoices = [];
-    let transactions = [];
-    let showOnboard = false;
-    let showInvoice = null;
-    let domainFor = null;   // jeweller being edited
-    let domainCheck = null; // DNS check result
-    let rateInfo = null;
+<div id="root"></div>
+<script>
+const api = makeApi('master_token');
+const S = { tab: localStorage.getItem('mp_tab') || 'overview', me: JSON.parse(localStorage.getItem('master_me') || 'null'), price: null,
+  ov: null, r: { range: '30d' }, jewellers: null, rate: null, pools: null, invoices: null, txns: null, tf: { jeweller: '', type: 'all' }, customers: null, cs: '', cj: '' };
+const NAV = [
+  ['Platform', [['overview', 'Overview', 'dashboard'], ['jewellers', 'Jewellers', 'store'], ['rates', 'Live Rates', 'rate']]],
+  ['Operations', [['pool', 'Gold Pool', 'pool'], ['invoices', 'Invoices', 'invoice'], ['transactions', 'Transactions', 'orders'], ['customers', 'Customers', 'customers']]],
+];
+const TITLES = Object.fromEntries(NAV.flatMap(([, i]) => i.map(([k, l]) => [k, l])));
+const loading = '<div class="grid g4"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>';
+const kpi = (label, value, foot, ic, tone = '') => `<div class="card kpi"><div class="icon ${tone}">${icon(ic)}</div><div class="label">${label}</div><div class="value num">${value}</div>${foot ? `<div class="foot">${foot}</div>` : ''}</div>`;
+const emptyRow = (n, t) => `<tr><td colspan="${n}"><div class="empty"><b>${t}</b></div></td></tr>`;
+const jname = (id) => (S.jewellers || []).find((j) => j.id === id)?.business_name || '—';
 
-    async function apiFetch(path, opts = {}) {
-        const h = {'Content-Type':'application/json'};
-        if (token) h['Authorization'] = 'Bearer ' + token;
-        const r = await fetch(API + path, {...opts, headers: h, body: opts.body ? JSON.stringify(opts.body) : undefined});
-        if (!r.ok) { const d = await r.json().catch(()=>({})); throw new Error(d.detail || 'Request failed'); }
-        return r.json();
-    }
+function loginView() {
+  return `<div class="auth"><div class="auth-art">
+      <div class="brand" style="padding:0;border:0"><div class="logo"><div class="mark">V</div><div><div class="name" style="color:#fff">Vaultra</div><div class="sub" style="color:#B9AF95">Master Console</div></div></div></div>
+      <div><h1>Every jeweller. Every gram. <em>One console.</em></h1><p>Onboard partner stores, watch the live market feed and track pooled procurement across the platform.</p></div>
+      <div class="stats"><div><b>Multi-store</b><span>white-label apps</span></div><div><b>10g</b><span>pool procurement</span></div></div></div>
+    <div class="auth-form"><form class="auth-box" onsubmit="doLogin(event)"><h2>Master sign in</h2><p>Platform administrators only</p>
+      <div class="field"><label>Username</label><input class="input" id="lu" required autocomplete="username" placeholder="Username"></div>
+      <div class="field"><label>Password</label><input class="input" id="lp" type="password" required autocomplete="current-password" placeholder="••••••••"></div>
+      <button class="btn primary" id="login-btn">Sign in</button><div class="err" id="lerr"></div></form></div></div>`;
+}
+async function doLogin(e) {
+  e.preventDefault(); const b = $('#login-btn'); b.disabled = true;
+  try { const r = await api('/master/login', { method: 'POST', body: { username: $('#lu').value.trim(), password: $('#lp').value } });
+    localStorage.setItem('master_token', r.access_token); localStorage.setItem('master_me', JSON.stringify(r.admin)); S.me = r.admin; boot();
+  } catch (err) { $('#lerr').textContent = err.message; b.disabled = false; }
+}
+function logout() { localStorage.removeItem('master_token'); localStorage.removeItem('master_me'); S.me = null; render(); }
+function shell(c) {
+  return `<div class="app"><aside class="side" id="side">
+    <div class="brand"><div class="logo"><div class="mark">V</div><div><div class="name">Vaultra</div><div class="sub">Master Console</div></div></div></div>
+    <nav class="nav">${NAV.map(([g, items]) => `<div class="group">${g}</div>${items.map(([k, l, ic]) => `<button class="${S.tab === k ? 'on' : ''}" onclick="go('${k}')" data-tab="${k}">${icon(ic)}<span>${l}</span></button>`).join('')}`).join('')}</nav>
+    <div class="side-foot"><div class="avatar">${esc(initials(S.me?.name || 'Admin'))}</div><div class="who"><b>${esc(S.me?.name || 'Admin')}</b><span>Platform admin</span></div><button class="btn ghost sm" onclick="logout()" id="logout-btn">${icon('logout')}</button></div></aside>
+    <main class="main"><div class="top"><button class="btn ghost sm menu-btn" onclick="$('#side').classList.toggle('open')">${icon('menu')}</button><h1>${TITLES[S.tab]}</h1><div class="spacer"></div>${rateChip(S.price)}</div>
+    <div class="content">${c}</div></main></div>`;
+}
+function render() { if (!localStorage.getItem('master_token')) { $('#root').innerHTML = loginView(); return; } $('#root').innerHTML = shell(VIEWS[S.tab]()); }
+function go(t) { S.tab = t; localStorage.setItem('mp_tab', t); $('#side')?.classList.remove('open'); render(); LOAD[t]?.(); }
+async function safe(fn, tab) { try { await fn(); } catch (e) { if (e.status === 401) return logout(); toast(e.message, true); } if (!tab || S.tab === tab) render(); }
 
-    function inr(n) { return '₹' + (n||0).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+/* overview */
+const rq = (r) => r.range === 'custom' ? `range=custom&start=${r.from || ''}&end=${r.to || ''}` : `range=${r.range}`;
+const loadOv = () => safe(async () => { S.ov = await api('/master/v3/overview?' + rq(S.r)); S.price = S.ov.price; }, 'overview');
+function onRange(k, apply) { if (k === 'custom' && apply) { S.r.from = $('#r_from').value; S.r.to = $('#r_to').value; if (!S.r.from) return toast('Choose a start date', true); }
+  S.r.range = k; if (k !== 'custom' || apply) { S.ov = null; render(); loadOv(); } else render(); }
+function vOverview() {
+  const head = `<div class="page-head"><div><h2>Platform overview</h2><p>Sales and holdings across every partner store.</p></div>${rangeBar(S.r, onRange)}</div>`;
+  const o = S.ov; if (!o) return head + loading; const t = o.totals;
+  return head + `<div class="grid g4">
+    ${kpi('Gross sales', inr0(t.amount), `${t.orders} orders`, 'trend', 'green')}${kpi('Gold booked', g4(t.gold_g), 'in this period', 'coin')}
+    ${kpi('Silver booked', g4(t.silver_g), 'in this period', 'coin', 'gray')}${kpi('Partner stores', `${t.active_jewellers}<small>/${t.jewellers}</small>`, `${t.customers} customers`, 'store', 'blue')}</div>
+    <div class="grid section" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr)">
+      <div class="card"><div class="card-h"><div><h3>Daily sales</h3><p>All stores combined</p></div></div>${barChart(o.series, 'amount', inr0)}<div style="height:16px"></div></div>
+      <div class="card"><div class="card-h"><h3>Market feed</h3>${o.feed.source === 'simulated' ? '<span class="badge amber">Indicative</span>' : '<span class="badge green">Live</span>'}</div><div style="padding:8px 20px 16px">
+        <div class="kv"><span>Gold (${esc(o.feed.gold_symbol)})</span><b class="num">${inr(o.price.base_rate)}/g</b></div><div class="kv"><span>Silver (${esc(o.feed.silver_symbol)})</span><b class="num">${inr(o.price.silver.base_rate)}/g</b></div>
+        <div class="kv"><span>Gold held by customers</span><b class="num">${g4(t.hold_gold_g)}</b></div><div class="kv"><span>Provider</span><b>${o.feed.provider === 'metaapi' ? 'MetaApi · MT5' : o.feed.provider === 'mt5_script' ? 'MT5 bridge' : 'Not connected'}</b></div></div></div></div>
+    <div class="card section"><div class="card-h"><h3>Store performance</h3><button class="btn sm" onclick="go('jewellers')">Manage stores</button></div><div class="table-wrap"><table>
+      <thead><tr><th>Store</th><th>Status</th><th class="r">Customers</th><th class="r">Sales</th><th class="r">Gold booked</th><th class="r">Silver booked</th><th class="r">Redeemed</th><th class="r">Gold held</th></tr></thead><tbody>
+      ${o.jewellers.length ? o.jewellers.map((j) => `<tr><td><b>${esc(j.name)}</b><div class="sub">${esc(j.city || '')}</div></td><td>${statusBadge(j.status)}</td><td class="r num">${j.customers}</td><td class="r num"><b>${inr0(j.amount)}</b></td><td class="r num">${g4(j.gold_g)}</td><td class="r num">${g4(j.silver_g)}</td><td class="r num">${g4(j.redeemed_g)}</td><td class="r num">${g4(j.hold_gold_g)}</td></tr>`).join('') : emptyRow(8, 'No stores yet')}
+      </tbody></table></div></div>`;
+}
 
-    async function login(u, p) {
-        const r = await apiFetch('/master/login', {method:'POST', body:{username:u,password:p}});
-        token = r.access_token;
-        localStorage.setItem('master_token', token);
-        await loadDashboard();
-    }
+/* jewellers */
+const loadJ = () => safe(async () => { S.jewellers = await api('/master/jewellers'); }, 'jewellers');
+function vJewellers() {
+  const head = `<div class="page-head"><div><h2>Jewellers</h2><p>Partner stores running their own branded app.</p></div><button class="btn primary" onclick="onboard()" id="onboard-btn">${icon('plus')} Onboard jeweller</button></div>`;
+  if (!S.jewellers) return head + loading;
+  return head + `<div class="card"><div class="table-wrap"><table><thead><tr><th>Store</th><th>Owner</th><th class="r">Customers</th><th class="r">Gold held</th><th>Commission</th><th>Domains</th><th>Status</th><th></th></tr></thead><tbody>
+    ${S.jewellers.map((j) => `<tr><td><div style="display:flex;gap:10px;align-items:center"><div class="avatar" style="background:${esc(j.primary_color || '#FBF6EA')}22">${esc(initials(j.business_name))}</div><div><b>${esc(j.business_name)}</b><div class="sub">${esc(j.city || '')}</div></div></div></td>
+      <td>${esc(j.owner_name)}<div class="sub">${esc(j.email)}</div></td><td class="r num">${j.customer_count}</td><td class="r num">${g4(j.total_grams)}</td>
+      <td class="num">${inr(j.gold_commission_per_g)}/g gold<div class="sub">${inr(j.silver_commission_per_g)}/g silver</div></td>
+      <td style="font-size:13px">${esc(j.domain || '—')}<div class="sub">${esc(j.admin_domain || '')}</div></td><td>${statusBadge(j.status)}</td>
+      <td class="r" style="white-space:nowrap"><button class="btn sm" onclick="domains('${j.id}')" data-domains="${j.id}">${icon('globe')} Domains</button> <button class="btn sm ${j.status === 'active' ? 'danger' : ''}" onclick="toggleJ('${j.id}')">${j.status === 'active' ? 'Suspend' : 'Activate'}</button></td></tr>`).join('')}
+    </tbody></table></div></div>`;
+}
+async function toggleJ(id) { const j = S.jewellers.find((x) => x.id === id); if (j.status === 'active' && !confirm(`Suspend ${j.business_name}? Their app and panel stop working.`)) return; await safe(async () => { await api(`/master/jewellers/${id}/toggle`, { method: 'POST' }); S.jewellers = await api('/master/jewellers'); toast('Updated'); }, 'jewellers'); }
+function onboard() {
+  const f = (id, l, ph = '', t = 'text', full) => `<div class="field" ${full ? 'style="grid-column:1/-1"' : ''}><label>${l}</label><input class="input" id="${id}" type="${t}" placeholder="${ph}"></div>`;
+  openModal(`<div class="modal-h"><div><h3>Onboard jeweller</h3><p>Creates their store, panel login and a starter catalogue</p></div><button class="x" onclick="closeModal()">×</button></div>
+    <div class="modal-b grid g2">${f('ob_b', 'Business name', 'Sharma Jewellers', 'text', 1)}${f('ob_o', 'Owner name')}${f('ob_p', 'Phone', '10 digits', 'tel')}${f('ob_e', 'Email', 'owner@store.com', 'email')}${f('ob_pw', 'Panel password', 'min 4 characters', 'password')}
+      ${f('ob_c', 'City')}${f('ob_s', 'State')}${f('ob_d', 'App domain (optional)', 'gold.store.in', 'text', 1)}
+      <div class="field"><label>Brand colour</label><input class="input" id="ob_col" type="color" value="#B8892B" style="padding:4px"></div>${f('ob_m', 'Min. redemption (g)', '1', 'number')}</div>
+    <div class="modal-f"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="saveOnboard()" id="ob-save">Create store</button></div>`, true);
+}
+async function saveOnboard() {
+  const v = (id) => $('#' + id).value.trim();
+  try { await api('/master/jewellers', { method: 'POST', body: { business_name: v('ob_b'), owner_name: v('ob_o'), phone: v('ob_p'), email: v('ob_e'), password: $('#ob_pw').value, city: v('ob_c'), state: v('ob_s'), domain: v('ob_d'), primary_color: v('ob_col'), min_redemption_grams: Number(v('ob_m') || 1) } });
+    closeModal(); toast('Store created'); loadJ(); } catch (e) { toast(e.message, true); }
+}
+function domains(id) {
+  const j = S.jewellers.find((x) => x.id === id);
+  openModal(`<div class="modal-h"><div><h3>Custom domains</h3><p>${esc(j.business_name)}</p></div><button class="x" onclick="closeModal()">×</button></div>
+    <div class="modal-b" style="display:flex;flex-direction:column;gap:14px">
+      <div class="field"><label>Customer app domain</label><input class="input" id="d_app" placeholder="gold.store.in" value="${esc(j.domain || '')}"></div>
+      <div class="field"><label>Shop panel domain</label><input class="input" id="d_admin" placeholder="admin.store.in" value="${esc(j.admin_domain || '')}"></div>
+      <div class="note">${icon('globe')}<span>Ask the jeweller to add a <b>CNAME</b> record for each domain pointing to <code>${esc(location.hostname)}</code>, then link the same domains in your hosting settings for HTTPS.</span></div>
+      <div id="dns"></div></div>
+    <div class="modal-f"><button class="btn" onclick="checkDns('${id}')">Check DNS</button><button class="btn primary" onclick="saveDomains('${id}')" id="save-domains">Save</button></div>`);
+}
+async function saveDomains(id) { try { await api(`/master/jewellers/${id}/domains`, { method: 'PUT', body: { domain: $('#d_app').value, admin_domain: $('#d_admin').value } }); toast('Domains saved'); S.jewellers = await api('/master/jewellers'); render(); checkDns(id); } catch (e) { toast(e.message, true); } }
+async function checkDns(id) { try { const c = await api(`/master/jewellers/${id}/domain-check`); const el = $('#dns'); if (!el) return;
+  el.innerHTML = c.domains.length ? `<div class="card">${c.domains.map((d) => `<div class="kv" style="padding:10px 14px"><span>${esc(d.domain)} · ${d.kind}</span><b>${d.points_here ? '<span class="badge green">Connected</span>' : '<span class="badge amber">DNS pending</span>'}</b></div>`).join('')}</div>` : '<div class="note gray">No domains saved yet.</div>';
+} catch (e) { toast(e.message, true); } }
 
-    function logout() {
-        token = ''; localStorage.removeItem('master_token');
-        render();
-    }
+/* rates */
+const loadRate = () => safe(async () => { S.rate = await api('/master/rate'); S.price = S.rate; }, 'rates');
+function vRates() {
+  const head = `<div class="page-head"><div><h2>Live rates</h2><p>Base market rate before each store's commission.</p></div><button class="btn" onclick="loadRate()">Refresh</button></div>`;
+  const r = S.rate; if (!r) return head + loading; const f = r.feed;
+  return head + `<div class="grid g2">
+    <div class="card rate-card"><div class="coin"></div><div style="flex:1"><div class="label"><span class="dot ${r.live ? 'live' : ''}"></span> Gold · ${esc(f.gold_symbol)}</div><div class="value num">${inr(r.base_rate)} <small>/g</small></div></div><div class="chg ${r.change_pct >= 0 ? 'up' : 'down'}">${r.change_pct >= 0 ? '▲' : '▼'} ${Math.abs(r.change_pct)}%</div></div>
+    <div class="card rate-card"><div class="coin silver"></div><div style="flex:1"><div class="label"><span class="dot ${r.live ? 'live' : ''}"></span> Silver · ${esc(f.silver_symbol)}</div><div class="value num">${inr(r.silver.base_rate)} <small>/g</small></div></div><div class="chg ${r.silver.change_pct >= 0 ? 'up' : 'down'}">${r.silver.change_pct >= 0 ? '▲' : '▼'} ${Math.abs(r.silver.change_pct)}%</div></div></div>
+    <div class="card section"><div class="card-h"><h3>Feed status</h3>${r.live ? '<span class="badge green">Live</span>' : '<span class="badge amber">Indicative</span>'}</div><div style="padding:8px 20px 16px">
+      <div class="kv"><span>Provider</span><b>${f.provider === 'metaapi' ? 'MetaApi · MT5 account' : f.provider === 'mt5_script' ? 'MT5 bridge script' : 'Not connected'}</b></div>
+      <div class="kv"><span>Last live tick</span><b>${f.last_live_at ? dt(f.last_live_at) : '—'}</b></div>
+      <div class="kv"><span>Quote units</span><b>Gold per ${f.gold_unit_grams}g · Silver per ${f.silver_unit_grams}g</b></div>
+      ${f.error ? `<div class="kv"><span>Last message</span><b style="color:var(--amber)">${esc(f.error)}</b></div>` : ''}</div></div>`;
+}
 
-    async function loadDashboard() {
-        try { rateInfo = await apiFetch('/master/rate'); } catch {}
-        try { dashboard = await apiFetch('/master/dashboard'); } catch(e) { if(e.message.includes('401')||e.message.includes('Invalid')) { logout(); return; } }
-        render();
-    }
+/* pool & invoices */
+const loadPool = () => safe(async () => { const [d, p] = await Promise.all([api('/master/dashboard'), api('/master/pool')]); S.dash = d; S.pools = p; }, 'pool');
+function vPool() {
+  const head = `<div class="page-head"><div><h2>Gold pool</h2><p>Customer purchases are pooled and procured in bulk once the threshold is reached.</p></div></div>`;
+  if (!S.pools || !S.dash) return head + loading; const p = S.dash.pool;
+  return head + `<div class="card pad"><div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap"><div><div style="font-size:12px;color:var(--mute)">Current pool</div><div style="font-size:30px;font-weight:700" class="num">${g4(p.current_grams)} <span style="font-size:15px;color:var(--mute)">of ${p.threshold}g</span></div></div>
+    <div style="display:flex;gap:8px;align-items:flex-end"><div class="field"><label>Threshold (g)</label><input class="input" id="thr" type="number" step="1" value="${p.threshold}" style="width:120px"></div><button class="btn primary" onclick="saveThr()">Update</button></div></div>
+    <div style="height:10px;background:var(--line2);border-radius:99px;margin-top:18px;overflow:hidden"><div style="height:100%;width:${Math.min(100, p.progress_pct)}%;background:linear-gradient(90deg,var(--gold2),var(--gold))"></div></div><div style="font-size:12px;color:var(--mute);margin-top:6px">${p.progress_pct}% filled</div></div>
+    <div class="card section"><div class="card-h"><h3>Pool history</h3></div><div class="table-wrap"><table><thead><tr><th>Started</th><th class="r">Grams</th><th class="r">Threshold</th><th>Status</th><th>Procured</th></tr></thead><tbody>
+    ${S.pools.length ? S.pools.map((x) => `<tr><td>${dt(x.created_at)}</td><td class="r num">${g4(x.total_grams)}</td><td class="r num">${x.threshold}g</td><td>${statusBadge(x.status === 'accumulating' ? 'pending' : 'completed')}</td><td>${x.triggered_at ? dt(x.triggered_at) : '—'}</td></tr>`).join('') : emptyRow(5, 'No pools yet')}
+    </tbody></table></div></div>`;
+}
+async function saveThr() { try { await api('/master/pool/threshold', { method: 'PUT', body: { threshold: Number($('#thr').value) } }); toast('Threshold updated'); loadPool(); } catch (e) { toast(e.message, true); } }
+const loadInv = () => safe(async () => { S.invoices = await api('/master/bifurcation-invoices'); if (!S.jewellers) S.jewellers = await api('/master/jewellers'); }, 'invoices');
+function vInvoices() {
+  const head = `<div class="page-head"><div><h2>Bifurcation invoices</h2><p>How each procured pool splits across stores and customers.</p></div></div>`;
+  if (!S.invoices) return head + loading;
+  return head + (S.invoices.length ? S.invoices.map((i) => { const det = Array.isArray(i.details) ? i.details : (i.details?.contributions || []);
+    return `<div class="card" style="margin-bottom:16px"><div class="card-h"><div><h3>${g4(i.total_grams)} procured</h3><p>${dt(i.created_at)} · Pool ${esc(String(i.pool_id).slice(0, 8))}</p></div>${statusBadge(i.status === 'generated' ? 'completed' : i.status)}</div>
+    <div class="table-wrap"><table><thead><tr><th>Store</th><th>Customer</th><th class="r">Grams</th><th class="r">Amount</th></tr></thead><tbody>
+    ${det.length ? det.map((d) => `<tr><td>${esc(d.jeweller_name || jname(d.jeweller_id))}</td><td>${esc(d.customer_name || d.customer_id || '')}</td><td class="r num">${g4(d.grams)}</td><td class="r num">${inr(d.amount)}</td></tr>`).join('') : emptyRow(4, 'No line items')}</tbody></table></div></div>`; }).join('')
+    : '<div class="card"><div class="empty"><b>No invoices yet</b>An invoice is generated each time a pool reaches its threshold.</div></div>');
+}
 
-    async function loadJewellers() { try { jewellers = await apiFetch('/master/jewellers'); } catch {} render(); }
-    async function loadPools() { try { pools = await apiFetch('/master/pool'); } catch {} render(); }
-    async function loadInvoices() { try { invoices = await apiFetch('/master/bifurcation-invoices'); } catch {} render(); }
-    async function loadTransactions() { try { transactions = await apiFetch('/master/transactions'); } catch {} render(); }
+/* transactions & customers */
+const loadTx = () => safe(async () => { if (!S.jewellers) S.jewellers = await api('/master/jewellers'); S.txns = await api(`/master/transactions?jeweller_id=${S.tf.jeweller}&type=${S.tf.type}`); }, 'transactions');
+const jSelect = (val, on) => `<select class="select" onchange="${on}"><option value="">All stores</option>${(S.jewellers || []).map((j) => `<option value="${j.id}" ${val === j.id ? 'selected' : ''}>${esc(j.business_name)}</option>`).join('')}</select>`;
+const TL = { buy: 'Gold buy', buy_silver: 'Silver buy', sip: 'SIP', redemption: 'Redemption', gift_sent: 'Gift sent', gift_received: 'Gift received', sell: 'Sell (legacy)', referral_bonus: 'Referral bonus' };
+function vTransactions() {
+  const head = `<div class="page-head"><div><h2>Transactions</h2><p>Latest 200 entries across the platform.</p></div><div class="toolbar">${jSelect(S.tf.jeweller, "S.tf.jeweller=this.value;loadTx()")}
+    <select class="select" onchange="S.tf.type=this.value;loadTx()"><option value="all">All types</option>${['buy', 'buy_silver', 'sip', 'redemption', 'gift_sent'].map((t) => `<option value="${t}" ${S.tf.type === t ? 'selected' : ''}>${TL[t]}</option>`).join('')}</select></div></div>`;
+  if (!S.txns) return head + loading;
+  return head + `<div class="card"><div class="table-wrap"><table><thead><tr><th>When</th><th>Invoice</th><th>Store</th><th>Type</th><th>Metal</th><th class="r">Grams</th><th class="r">Total</th><th>Status</th></tr></thead><tbody>
+    ${S.txns.length ? S.txns.map((t) => `<tr><td>${dt(t.created_at)}</td><td><code>${esc(t.invoice_no)}</code></td><td>${esc(jname(t.jeweller_id))}</td><td>${esc(TL[t.type] || t.type)}</td><td>${metalTag(t.metal === 'silver' || t.type === 'buy_silver' ? 'silver' : 'gold')}</td><td class="r num">${g4(t.grams)}</td><td class="r num"><b>${inr(t.total)}</b></td><td>${statusBadge(t.status)}</td></tr>`).join('') : emptyRow(8, 'No transactions')}
+    </tbody></table></div></div>`;
+}
+let cT;
+const loadC = () => safe(async () => { if (!S.jewellers) S.jewellers = await api('/master/jewellers'); S.customers = await api(`/master/customers?jeweller_id=${S.cj}&search=${encodeURIComponent(S.cs)}`); }, 'customers');
+function vCustomers() {
+  const head = `<div class="page-head"><div><h2>Customers</h2><p>All app users across stores.</p></div><div class="toolbar">${jSelect(S.cj, "S.cj=this.value;loadC()")}<input class="input search" placeholder="Name or phone" value="${esc(S.cs)}" oninput="S.cs=this.value;clearTimeout(cT);cT=setTimeout(loadC,300)"></div></div>`;
+  if (!S.customers) return head + loading;
+  return head + `<div class="card"><div class="table-wrap"><table><thead><tr><th>Customer</th><th>Store</th><th>Wallet ID</th><th class="r">Gold</th><th class="r">Silver</th><th>KYC</th><th>Joined</th></tr></thead><tbody>
+    ${S.customers.length ? S.customers.map((c) => `<tr><td><b>${esc(c.name)}</b><div class="sub">${phoneFmt(c.phone)}</div></td><td>${esc(jname(c.jeweller_id))}</td><td><code>${esc(c.wallet_id)}</code></td><td class="r num">${g4(c.gold_grams)}</td><td class="r num">${g4(c.silver_grams)}</td><td>${statusBadge(c.kyc_status)}</td><td>${dOnly(c.created_at)}</td></tr>`).join('') : emptyRow(7, 'No customers')}
+    </tbody></table></div></div>`;
+}
 
-    async function toggleJeweller(id) {
-        try { await apiFetch(`/master/jewellers/${id}/toggle`, {method:'POST'}); await loadJewellers(); } catch(e) { alert(e.message); }
-    }
-
-    async function onboardJeweller(data) {
-        try { await apiFetch('/master/jewellers', {method:'POST', body:data}); showOnboard = false; await loadJewellers(); } catch(e) { alert(e.message); }
-    }
-
-    function openDomains(id) { domainFor = jewellers.find(j=>j.id===id); domainCheck = null; render(); }
-    async function saveDomains() {
-        try {
-            const r = await apiFetch(`/master/jewellers/${domainFor.id}/domains`, {method:'PUT', body:{
-                domain: document.getElementById('d_app').value, admin_domain: document.getElementById('d_admin').value }});
-            domainFor = {...domainFor, ...r};
-            await loadJewellers();
-            await checkDomains();
-        } catch(e) { alert(e.message); }
-    }
-    async function checkDomains() {
-        try { domainCheck = await apiFetch(`/master/jewellers/${domainFor.id}/domain-check`); } catch(e) { alert(e.message); }
-        render();
-    }
-
-    function switchTab(tab) {
-        currentTab = tab;
-        if (tab==='jewellers') loadJewellers();
-        else if (tab==='pool') { loadPools(); loadInvoices(); }
-        else if (tab==='transactions') loadTransactions();
-        else loadDashboard();
-    }
-
-    function render() {
-        const app = document.getElementById('app');
-        if (!token) { app.innerHTML = renderLogin(); return; }
-        app.innerHTML = renderHeader() + renderNav() + '<div class="content">' + renderContent() + '</div>' + (showOnboard ? renderOnboardModal() : '') + (showInvoice ? renderInvoiceModal() : '') + (domainFor ? renderDomainModal() : '');
-        bindEvents();
-    }
-
-    function renderLogin() {
-        return `<div class="login-wrap"><div class="login-box">
-            <h2>Vaultra Master Admin</h2>
-            <div id="loginError" class="error"></div>
-            <input id="lu" class="form-input" placeholder="Username">
-            <input id="lp" class="form-input" type="password" placeholder="Password">
-            <button class="btn-primary" onclick="handleLogin()">Login</button>
-        </div></div>`;
-    }
-
-    function renderHeader() {
-        return `<div class="header"><h1>Vaultra Master Admin</h1><button class="logout" onclick="logout()">Logout</button></div>`;
-    }
-
-    function renderNav() {
-        const tabs = ['dashboard','jewellers','pool','transactions'];
-        return `<div class="nav">${tabs.map(t=>`<button class="${currentTab===t?'active':''}" onclick="switchTab('${t}')">${t.charAt(0).toUpperCase()+t.slice(1)}</button>`).join('')}</div>`;
-    }
-
-    function renderContent() {
-        if (currentTab==='dashboard') return renderDashboard();
-        if (currentTab==='jewellers') return renderJewellers();
-        if (currentTab==='pool') return renderPool();
-        if (currentTab==='transactions') return renderTransactions();
-        return '';
-    }
-
-    function renderDashboard() {
-        if (!dashboard) return '<div class="empty">Loading...</div>';
-        const d = dashboard;
-        const p = d.pool;
-        return `<div class="stats">
-            <div class="stat-card"><div class="label">Jewellers</div><div class="value">${d.jewellers}</div></div>
-            <div class="stat-card"><div class="label">Customers</div><div class="value">${d.customers}</div></div>
-            <div class="stat-card"><div class="label">Total Gold (g)</div><div class="value">${(d.total_grams||0).toFixed(2)}</div></div>
-            <div class="stat-card"><div class="label">Total Revenue</div><div class="value">${inr(d.total_revenue)}</div></div>
-            <div class="stat-card"><div class="label">Base Gold Rate</div><div class="value">${inr(d.price?.base_rate)}/g</div><div class="sub">Silver: ${inr(d.price?.silver?.base_rate)}/g</div>
-                <div class="sub" id="feed-status" style="color:${rateInfo?.feed?.source==='mt5'?'#22C55E':'#FBBF24'}">${rateInfo?.feed ? (rateInfo.feed.source==='mt5' ? `● Live from MT5 (${rateInfo.feed.gold_symbol} / ${rateInfo.feed.silver_symbol})` : `● Indicative rate — MT5 feed ${rateInfo.feed.configured ? 'unreachable' : 'not connected'}`) : ''}</div>
-                ${rateInfo?.feed?.error ? `<div class="sub" style="color:#94A3B8;font-size:11px">${rateInfo.feed.error}</div>` : ''}</div>
-            <div class="stat-card"><div class="label">Pool Progress</div><div class="value">${(p.current_grams||0).toFixed(2)}g / ${p.threshold}g</div><div class="pool-bar"><div class="pool-fill" style="width:${Math.min(100,p.progress_pct)}%"></div></div><div class="sub">${(p.progress_pct||0).toFixed(1)}% to bulk order</div></div>
-        </div>`;
-    }
-
-    function renderJewellers() {
-        return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><div class="section-title">Jewellers</div><button class="btn-primary" style="width:auto;padding:10px 20px" onclick="showOnboard=true;render()">+ Onboard Jeweller</button></div>
-        <table><tr><th>Business</th><th>Owner</th><th>City</th><th>Customers</th><th>Total Gold</th><th>Domains</th><th>Status</th><th>Action</th></tr>
-        ${jewellers.map(j=>`<tr><td>${j.business_name}</td><td>${j.owner_name}</td><td>${j.city}</td><td>${j.customer_count}</td><td>${(j.total_grams||0).toFixed(2)}g</td>
-        <td style="font-size:12px">${j.domain||'<span style="color:#64748B">—</span>'}${j.admin_domain?`<br><span style="color:#94A3B8">${j.admin_domain}</span>`:''}</td>
-        <td><span class="badge badge-${j.status}">${j.status}</span></td>
-        <td><button class="btn-sm btn-gold" onclick="openDomains('${j.id}')">Domains</button>
-        <button class="btn-sm" onclick="toggleJeweller('${j.id}')">${j.status==='active'?'Suspend':'Activate'}</button></td></tr>`).join('')}
-        </table>`;
-    }
-
-    function renderPool() {
-        return `<div class="section-title">Pool Accumulator</div>
-        <table><tr><th>Pool ID</th><th>Total Grams</th><th>Threshold</th><th>Status</th><th>Triggered</th></tr>
-        ${pools.map(p=>`<tr><td>${p.id.slice(0,8)}...</td><td>${(p.total_grams||0).toFixed(4)}g</td><td>${p.threshold}g</td>
-        <td><span class="badge badge-${p.status==='accumulating'?'active':p.status==='triggered'?'pending':'active'}">${p.status}</span></td>
-        <td>${p.triggered_at ? new Date(p.triggered_at).toLocaleString() : '—'}</td></tr>`).join('')}
-        </table>
-        <div class="section-title" style="margin-top:32px">Bifurcation Invoices</div>
-        ${invoices.length===0?'<div class="empty">No invoices yet. Pool needs to reach threshold.</div>':
-        `<table><tr><th>Invoice ID</th><th>Total Grams</th><th>Status</th><th>Date</th><th>Action</th></tr>
-        ${invoices.map(i=>`<tr><td>${i.id.slice(0,8)}...</td><td>${(i.total_grams||0).toFixed(4)}g</td>
-        <td><span class="badge badge-active">${i.status}</span></td>
-        <td>${new Date(i.created_at).toLocaleString()}</td>
-        <td><button class="btn-sm btn-gold" onclick="showInvoice=${JSON.stringify(i).replace(/"/g,'&quot;')};render()">View</button></td></tr>`).join('')}
-        </table>`}`;
-    }
-
-    function renderTransactions() {
-        return `<div class="section-title">All Transactions</div>
-        <table><tr><th>Invoice</th><th>Type</th><th>Grams</th><th>Amount</th><th>Status</th><th>Date</th></tr>
-        ${transactions.map(t=>`<tr><td>${t.invoice_no}</td><td>${t.type}</td><td>${(t.grams||0).toFixed(4)}g</td>
-        <td>${inr(t.total)}</td><td><span class="badge badge-active">${t.status}</span></td>
-        <td>${new Date(t.created_at).toLocaleDateString()}</td></tr>`).join('')}
-        </table>`;
-    }
-
-    function renderOnboardModal() {
-        return `<div class="modal-overlay" onclick="if(event.target===this){showOnboard=false;render()}"><div class="modal">
-        <h3>Onboard New Jeweller</h3>
-        <div class="form-grid">
-            <div class="form-group"><label>Business Name *</label><input id="ob_biz" class="form-input" placeholder="Sharma Gold & Jewellers"></div>
-            <div class="form-group"><label>Owner Name *</label><input id="ob_owner" class="form-input" placeholder="Rajesh Sharma"></div>
-            <div class="form-group"><label>Phone *</label><input id="ob_phone" class="form-input" placeholder="9999000003"></div>
-            <div class="form-group"><label>Email *</label><input id="ob_email" class="form-input" placeholder="new@vaultra.in"></div>
-            <div class="form-group"><label>Password *</label><input id="ob_pass" class="form-input" type="password" placeholder="jeweller123"></div>
-            <div class="form-group"><label>City</label><input id="ob_city" class="form-input" placeholder="Delhi"></div>
-            <div class="form-group"><label>State</label><input id="ob_state" class="form-input" placeholder="Delhi"></div>
-            <div class="form-group"><label>Pincode</label><input id="ob_pin" class="form-input" placeholder="110001"></div>
-            <div class="form-group"><label>Address</label><input id="ob_addr" class="form-input" placeholder="Shop address"></div>
-            <div class="form-group"><label>PAN</label><input id="ob_pan" class="form-input" placeholder="ABCDE1234F"></div>
-            <div class="form-group"><label>Min Redemption (g)</label><input id="ob_min" class="form-input" type="number" value="1" step="0.1"></div>
-            <div class="form-group"><label>App Domain (optional)</label><input id="ob_domain" class="form-input" placeholder="gold.yourstore.in"></div>
-            <div class="form-group"><label>Primary Color</label><input id="ob_color" class="form-input" type="color" value="#D4AF37"></div>
-        </div>
-        <div style="display:flex;gap:12px;margin-top:16px">
-            <button class="btn-primary" style="flex:1" onclick="handleOnboard()">Create Jeweller</button>
-            <button class="btn-sm" style="flex:0.5" onclick="showOnboard=false;render()">Cancel</button>
-        </div></div></div>`;
-    }
-
-    function renderInvoiceModal() {
-        const i = typeof showInvoice === 'string' ? JSON.parse(showInvoice) : showInvoice;
-        if (!i) return '';
-        return `<div class="modal-overlay" onclick="if(event.target===this){showInvoice=null;render()}"><div class="modal">
-        <h3>Bifurcation Invoice</h3>
-        <div class="invoice-detail">
-            <p><strong>Total Grams:</strong> ${(i.total_grams||0).toFixed(4)}g</p>
-            <p><strong>Status:</strong> ${i.status}</p>
-            <p><strong>Date:</strong> ${new Date(i.created_at).toLocaleString()}</p>
-        </div>
-        <table style="margin-top:16px"><tr><th>Jeweller</th><th>Customer</th><th>Grams</th></tr>
-        ${(i.details||[]).map(d=>`<tr><td>${d.jeweller_name}</td><td>${d.customer_name}</td><td>${(d.grams||0).toFixed(4)}g</td></tr>`).join('')}
-        </table>
-        <button class="btn-sm" style="margin-top:16px" onclick="showInvoice=null;render()">Close</button>
-        </div></div>`;
-    }
-
-    function renderDomainModal() {
-        const j = domainFor, c = domainCheck;
-        const target = c?.cname_target || location.hostname;
-        return `<div class="modal-overlay" onclick="if(event.target===this){domainFor=null;render()}"><div class="modal">
-        <h3>Custom Domains · ${j.business_name}</h3>
-        <div class="form-group"><label>Customer app domain</label><input id="d_app" class="form-input" placeholder="gold.sharmajewellers.in" value="${j.domain||''}"></div>
-        <div class="form-group"><label>Admin panel domain</label><input id="d_admin" class="form-input" placeholder="admin.sharmajewellers.in" value="${j.admin_domain||''}"></div>
-        <div class="invoice-detail" style="font-size:13px;line-height:1.6">
-            <strong style="color:#D4AF37">DNS setup for the jeweller</strong><br>
-            At their domain provider, add a <strong>CNAME</strong> record for each domain pointing to:<br>
-            <code style="color:#F1F5F9">${target}</code><br>
-            Then add the same domains under <em>Custom Domains</em> in your deployment settings so HTTPS is issued.
-        </div>
-        ${c ? `<table style="margin-top:12px"><tr><th>Domain</th><th>Resolves to</th><th>Status</th></tr>
-            ${c.domains.length===0?'<tr><td colspan=3 class="empty">No domains set</td></tr>':c.domains.map(d=>`<tr><td>${d.domain} <span style="color:#64748B">(${d.kind})</span></td><td>${d.resolves_to.join(', ')||'—'}</td>
-            <td><span class="badge ${d.points_here?'badge-active':'badge-pending'}">${d.points_here?'Connected':'DNS pending'}</span></td></tr>`).join('')}</table>` : ''}
-        <div style="display:flex;gap:12px;margin-top:16px">
-            <button id="save-domains" class="btn-primary" style="flex:1" onclick="saveDomains()">Save & Check DNS</button>
-            <button class="btn-sm" onclick="checkDomains()">Re-check</button>
-            <button class="btn-sm" onclick="domainFor=null;render()">Close</button>
-        </div></div></div>`;
-    }
-
-    function bindEvents() {}
-
-    window.handleLogin = async function() {
-        const u = document.getElementById('lu')?.value;
-        const p = document.getElementById('lp')?.value;
-        try { await login(u, p); } catch(e) {
-            const el = document.getElementById('loginError');
-            if (el) el.textContent = e.message;
-        }
-    };
-
-    window.handleOnboard = async function() {
-        const data = {
-            business_name: document.getElementById('ob_biz')?.value || '',
-            owner_name: document.getElementById('ob_owner')?.value || '',
-            phone: document.getElementById('ob_phone')?.value || '',
-            email: document.getElementById('ob_email')?.value || '',
-            password: document.getElementById('ob_pass')?.value || '',
-            city: document.getElementById('ob_city')?.value || '',
-            state: document.getElementById('ob_state')?.value || '',
-            pincode: document.getElementById('ob_pin')?.value || '',
-            address: document.getElementById('ob_addr')?.value || '',
-            pan: document.getElementById('ob_pan')?.value || '',
-            min_redemption_grams: parseFloat(document.getElementById('ob_min')?.value || '1'),
-            primary_color: document.getElementById('ob_color')?.value || '#D4AF37',
-            domain: document.getElementById('ob_domain')?.value || '',
-        };
-        await onboardJeweller(data);
-    };
-
-    // Init
-    if (token) loadDashboard();
-    else render();
-    </script>
+const VIEWS = { overview: vOverview, jewellers: vJewellers, rates: vRates, pool: vPool, invoices: vInvoices, transactions: vTransactions, customers: vCustomers };
+const LOAD = { overview: loadOv, jewellers: loadJ, rates: loadRate, pool: loadPool, invoices: loadInv, transactions: loadTx, customers: loadC };
+function boot() { if (!VIEWS[S.tab]) S.tab = 'overview'; render(); LOAD[S.tab](); if (S.tab !== 'jewellers') api('/master/jewellers').then((j) => { S.jewellers = j; }).catch(() => {}); }
+setInterval(async () => { if (!localStorage.getItem('master_token')) return; try { S.price = await api('/price'); const c = $('#ratechip'); if (c) c.outerHTML = rateChip(S.price); } catch {} }, 5000);
+if (localStorage.getItem('master_token')) boot(); else render();
+</script>
 </body>
 </html>

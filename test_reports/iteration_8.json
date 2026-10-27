@@ -1,0 +1,55 @@
+{
+  "summary": "Iteration 8: tested the redesigned Jeweller panel, Master panel, v3 APIs and customer Expo app (no-sell changes). New pytest suite test_panel_redesign_v3.py has 36 tests and all 36 pass. That covers: dashboard ranges 1d/3d/7d/30d/custom and bad-date 400; commission save reflecting in /api/price (buy = base_rate + commission), validation (gold <= 1000, silver <= 100, no negatives), reset to 0/0; orders buy/redeem only, metal/side/search filters, bill, tenant isolation (Patel cannot read a Sharma bill or holding, gets 404); holdings list and detail; settings; min redemption; gifts/referral/kyc/pickups/products/customers pages; master overview and all endpoints; jeweller token blocked on master; POST /api/sell returns 403; customer buy works. UI checks at 1920 desktop: Jeweller panel login, all 11 tabs render with no JS page errors, dashboard KPIs (#kpi-active/#kpi-inactive/#kpi-gold-booked) change with every range incl. Custom (#r_from + Apply), commission calc updates while typing (75 gives 7292.54 -> 7367.54), save reaches the customer price, 1500 is rejected, reset done. Orders side filter shows only All/Buy/Redeem; View bill modal (opaque white) shows shop, customer, item, metal, grams, rate, amount, charges, GST, total. Wallet & Holdings drawer shows holdings, purchased, redeemed, pickups and activity. Settings app key reveal works and min redemption saves. Redemptions: counter redeem (0.1g Aarav) works; pickup handover rejects a wrong OTP and accepts the right one (Rohan, Patel). KYC approve works. Catalogue add product works; remove product had a bug (fixed, see below). Master panel: overview ranges incl. custom, Jewellers table, onboard modal (opaque), Domains modal, suspend then re-activate Patel (left Active), Live Rates shows 'Indicative/Not connected' (expected), pool threshold saves, Invoices empty state, Transactions store/type filters (no sell type), Customers. Customer app at 390x844: tabs are Home/Vault/Jewellery/SIP; no Wallet tab (/wallet gives Unmatched Route); Vault has no Sell action or filter; buy via UI (Rs 50) works end to end. I fixed 2 bugs: catalogue removed products still listed in the panel, and the Vault 'Gifts' passbook filter always being empty.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/jeweller/products", "issue": "FIXED by testing agent: returned soft-deleted (is_active=False) products, so the panel showed the 'Removed' toast but the product stayed in the Catalogue grid."},
+      {"endpoint": "GET /api/transactions?type=gift", "issue": "FIXED by testing agent: filtered Transaction.type == 'gift', but stored types are gift_sent/gift_received, so the customer app Vault 'Gifts' passbook filter was always empty. It now maps 'gift' to [gift_sent, gift_received]."},
+      {"endpoint": "GET /api/jeweller/v3/dashboard", "issue": "customers.active counts any transaction in range, including failed payments. Should filter status != failed and buy/redeem types only."},
+      {"endpoint": "GET /api/jeweller/v3/holdings and /holdings/{id}", "issue": "invested/purchased totals sum all buy-type txns without excluding status 'failed'."},
+      {"endpoint": "PUT /api/jeweller/v3/commission, POST /api/master/jewellers", "issue": "422 errors surface raw pydantic text in the UI toast ('Input should be less than or equal to 1000', 'String should have at least 2 characters' x4 with no field names). Add client-side validation or friendly messages."},
+      {"endpoint": "POST /api/goals", "issue": "Create response omits 'occasion' (GET list includes it). Inconsistent response shape."},
+      {"endpoint": "seed data", "issue": "Patel customers (Rohan 3.77g, Ananya 3.49g) hold gold with 0 purchase transactions, so Holdings shows Invested Rs 0 and Purchased 0g but an avg buy price of Rs 5,562/g. Seed should create matching buy txns."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Customer app FAQ / Referral share text", "issue": "Still promotes selling: faq.tsx:14 'Can I sell my gold anytime? Yes...', faq.tsx:17 mentions selling, referral.tsx:48 'Buy, sell & save'. This contradicts the no-sell requirement.", "testID": "n/a", "priority": "MEDIUM"},
+      {"component": "PriceCards silver label", "issue": "Silver card shows '24K | 999'. Karat does not apply to silver; should be '999 Fine'. src/components/PriceCards.tsx:41", "testID": "n/a", "priority": "LOW"},
+      {"component": "Jeweller Orders KPIs", "issue": "KPI labels 'Gold sold' / 'Silver sold' (jeweller_admin.html:206-207) conflict with the no-sell wording. Use 'Gold booked' / 'Silver booked' as on the Dashboard.", "testID": "n/a", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Jeweller panel @390px (mobile)", "issues": ["Dashboard has horizontal overflow (scrollWidth 407 > 390)", "Orders toolbar: search input is squeezed beside the selects and its placeholder is truncated; selects wrap unevenly"]},
+      {"screen": "Jeweller/Master panels @1920", "issues": ["Content max-width (~1030px) leaves ~300px of empty space on the right while the top rate chip is right-aligned to the viewport, so the header and content edges do not line up"]},
+      {"screen": "Jeweller Catalogue", "issues": ["Product cards show blank placeholder tiles (image_url is empty for seeded products). Reuse the app's category images so the panel matches the customer app"]},
+      {"screen": "Customer Vault tab", "issues": ["A back arrow is shown on a root tab screen; bottom tab labels sit very close to the bottom edge at 844px"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_panel_redesign_v3.py", "/app/test_reports/pytest/iteration8.xml", "/app/test_reports/pytest/iteration8_all.xml"],
+  "action_items": [
+    "Remove the sell references from the customer app FAQ (faq.tsx:14,17) and the referral share message (referral.tsx:48)",
+    "Rename the 'Gold sold'/'Silver sold' KPIs on the Orders page to 'booked'",
+    "Exclude failed txns from dashboard active-customer count and from holdings invested/purchased sums",
+    "Add friendly client-side validation for commission limits and the onboard form instead of raw pydantic messages",
+    "Fix the silver '24K | 999' label in PriceCards",
+    "Fix mobile overflow on the jeweller dashboard and the orders toolbar layout at <=390px",
+    "Seed Patel customers with buy transactions matching their balances",
+    "Clean up stale legacy tests: test_vaultra_api.py (old /api/admin PIN API, /tenants, sell flow), test_gifts_alerts.py (tenant 'vaultra', alert target 500 now valid), test_goals.py (expects 'occasion' in the POST response)"
+  ],
+  "critical_code_review_comments": [
+    "server.py is 2415 lines and should be split into routers (public/customer/jeweller/master/v3)",
+    "server.py:977-990: the old sell() function body is left as dead code (no decorator) below sell_disabled; remove it",
+    "/api/price payloads still expose 'sell' rates (unused). Consider dropping them so no client re-adds sell",
+    "_range_bounds silently falls back to 1d for unknown range keys; consider a 400",
+    "/api/tenant/resolve returns 404 on the preview host. That is expected, but it logs a console error on every panel load"
+  ],
+  "updated_files": ["/app/backend/server.py (jeweller_products: filter is_active; customer /transactions: 'gift' type group)", "/app/backend/tests/test_panel_redesign_v3.py (new)"],
+  "success_rate": {"backend": "100% (36/36 new v3 tests; legacy suite failures are stale tests, apart from the gift filter bug now fixed)", "frontend": "~95% (all requested flows work; catalogue remove bug fixed; minor copy and design issues)"},
+  "seed_data_creation": "Test buys: Aarav Rs 100 (API) + Rs 50 (UI). Counter redemption 0.1g for Aarav. Approved Diya's KYC (Sharma). Rohan (Patel): 1g coin pickup created and handed over. TEST Ring Iter8 product added then removed; the Heritage 24K Necklace I removed by accident was restored. Commission reset to 0/0; Sharma min redemption restored to 1g; Patel re-activated; pool threshold unchanged (10g). The regression suite added TEST customers/buys to Sharma (orders now ~42).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Panels: /api/admin/jeweller (ids: #le #lp #login-btn, [data-tab], #content) and /api/admin/master (#lu #lp, container is .content with no id). The jeweller pickup API hides the OTP; get it from the customer /api/vault pending_pickups. Run pytest with -n 0 because xdist is enabled by default and breaks order-dependent legacy tests. Env var EXPO_PUBLIC_BACKEND_URL.",
+  "rca_of_issue": "Catalogue remove: DELETE soft-deletes (is_active=False) but GET /jeweller/products had no is_active filter. Gift filter: the frontend sends type=gift and the backend compared it literally against the gift_sent/gift_received types."
+}

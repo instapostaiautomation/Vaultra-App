@@ -9,7 +9,7 @@ import { api } from "@/src/api";
 import { LogoMark } from "@/src/components/Header";
 import { useToast } from "@/src/components/Toast";
 import { Button, Card, Row, StatusBadge } from "@/src/components/ui";
-import { grams, inr, maskPhone, shortDate } from "@/src/format";
+import { grams, maskPhone, shortDate } from "@/src/format";
 import { useApp } from "@/src/store/AppContext";
 import { colors, fonts, radius, useTheme } from "@/src/theme";
 
@@ -91,7 +91,6 @@ export default function Profile() {
           <View style={{ marginTop: 12 }}>
             <Row label="Gold balance" value={grams(user?.gold_grams)} />
             {(user?.silver_grams ?? 0) > 0 ? <Row label="Silver balance" value={grams(user?.silver_grams)} /> : null}
-            <Row label="Wallet balance" value={inr(user?.wallet_balance ?? 0)} />
             <Row label="Member since" value={shortDate(user?.created_at)} />
           </View>
         </Card>
@@ -117,12 +116,12 @@ export default function Profile() {
             <Text style={styles.section}>KYC Verification</Text>
           </View>
           {kyc === "approved" ? (
-            <Text style={styles.meta}>Verified. You can sell and redeem gold.</Text>
+            <Text style={styles.meta}>Verified. You can redeem gold and silver at the store.</Text>
           ) : kyc === "pending" ? (
             <Text style={styles.meta} testID="kyc-pending-text">Under review by store staff.</Text>
           ) : (
             <>
-              <Text style={styles.meta}>{kyc === "rejected" ? "Rejected. Please resubmit." : "Required to sell gold and redeem jewellery."}</Text>
+              <Text style={styles.meta}>{kyc === "rejected" ? "Rejected. Please resubmit." : "Required to redeem coins and jewellery."}</Text>
               <Text style={styles.label}>Full name (as on PAN)</Text>
               <TextInput testID="kyc-name-input" value={fullName} onChangeText={setFullName} style={styles.input} placeholder="Full name" placeholderTextColor={colors.mutedLight} />
               <Text style={styles.label}>Aadhaar number</Text>
@@ -137,11 +136,6 @@ export default function Profile() {
         </Card>
 
         <View style={styles.links}>
-          <Pressable style={styles.link} onPress={() => router.push("/wallet")} testID="profile-wallet-link">
-            <Wallet size={20} color={colors.brandSecondary} />
-            <Text style={styles.linkText}>Wallet</Text>
-            <ArrowRight size={16} color={colors.muted} />
-          </Pressable>
           <Pressable style={styles.link} onPress={() => router.push("/referral")} testID="profile-referral-link">
             <Users size={20} color={colors.brandSecondary} />
             <Text style={styles.linkText}>Refer & Earn</Text>

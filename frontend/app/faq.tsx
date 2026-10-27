@@ -11,10 +11,10 @@ const FAQS = [
   ["What is Vaultra DigiGold?", "A digital way to buy 24K 99.9% pure LBMA-certified gold starting at ₹10. Every gram you buy is backed by physical gold stored in insured, audited vaults."],
   ["Where is my gold stored?", "Your gold is held in BRINK'S-secured vaults under an independent trustee. It is fully insured and audited periodically."],
   ["How is the price calculated?", "We stream a live 24K rate. When you buy, the rate is locked for 5 minutes. 3% GST is added on top of the gold value as per Indian tax law."],
-  ["Can I sell my gold anytime?", "Yes. Once your KYC is approved you can sell any amount at the live sell rate. Money is credited to your bank account within T+1 working day."],
+  ["Can I take my gold as jewellery or coins?", "Yes. Once your KYC is approved you can redeem your balance for coins or jewellery at your store. Making charges, if any, are shown before you confirm."],
   ["How do I redeem physical gold?", "Choose coins or jewellery, confirm redemption and collect at your selected partner store using the 6-digit OTP shown in your vault."],
   ["What is Auto SIP?", "A daily, weekly or monthly UPI AutoPay mandate that automatically buys gold for you. Pause, resume or cancel anytime."],
-  ["Why is KYC required?", "Regulations require Aadhaar & PAN verification for selling or redeeming gold. Store officers review submissions, usually within a few hours."],
+  ["Why is KYC required?", "Regulations require Aadhaar & PAN verification before redeeming gold. Store officers review submissions, usually within a few hours."],
 ];
 
 export default function Faq() {

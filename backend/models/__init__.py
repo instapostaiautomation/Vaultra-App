@@ -41,6 +41,8 @@ class Jeweller(Base):
     gold_sell_discount_pct = Column(Float, default=3.0)
     silver_buy_markup_pct = Column(Float, default=0.0)
     silver_sell_discount_pct = Column(Float, default=3.0)
+    gold_commission_per_g = Column(Float, default=0.0)
+    silver_commission_per_g = Column(Float, default=0.0)
     min_redemption_grams = Column(Float, default=1.0)
     status = Column(String(20), default="active")  # active, suspended, pending
     created_at = Column(DateTime(timezone=True), default=utcnow)

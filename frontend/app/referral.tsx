@@ -45,7 +45,7 @@ export default function ReferralScreen() {
     if (!data) return;
     try {
       await Share.share({
-        message: `Join Vaultra DigiGold and get ₹50 reward! Use my referral code: ${data.referral_code}\n\nBuy, sell & save 24K gold from just ₹10.\nDownload now: https://vaultra.gold/invite/${data.referral_code}`,
+        message: `Join Vaultra DigiGold and get ₹50 reward! Use my referral code: ${data.referral_code}\n\nBuy & save 24K gold from just ₹10.\nDownload now: https://vaultra.gold/invite/${data.referral_code}`,
         title: "Invite to Vaultra DigiGold",
       });
     } catch {}

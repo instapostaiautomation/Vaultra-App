@@ -19,7 +19,6 @@ import { cardShadow, colors, fonts, radius } from "@/src/theme";
 const FILTERS = [
   { id: "all", label: "All" },
   { id: "buy", label: "Buy" },
-  { id: "sell", label: "Sell" },
   { id: "sip", label: "SIP" },
   { id: "redemption", label: "Redemption" },
   { id: "gift", label: "Gifts" },
@@ -35,7 +34,6 @@ export default function VaultScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [coinOpen, setCoinOpen] = useState(false);
   const [redeem, setRedeem] = useState<any>(null);
-  const [sellOpen, setSellOpen] = useState(false);
   const [invoice, setInvoice] = useState<any>(null);
   const bottomChrome = usesNativeTabs ? insets.bottom : 0;
 
@@ -131,7 +129,7 @@ export default function VaultScreen() {
         <View style={styles.actions}>
           {[
             { id: "redeem", label: "Redeem Physical Coins", Icon: Coins, onPress: () => setCoinOpen(true) },
-            { id: "sell", label: "Sell Gold to Bank", Icon: TrendingUp, onPress: () => setSellOpen(true) },
+            { id: "buy", label: "Buy More Gold", Icon: TrendingUp, onPress: () => router.push("/") },
             { id: "invoice", label: "Download Invoice", Icon: Download, onPress: openInvoice },
             { id: "gift", label: "Gift Gold", Icon: Gift, onPress: () => router.push("/gift") },
           ].map(({ id, label, Icon, onPress }) => (
@@ -201,65 +199,8 @@ export default function VaultScreen() {
         </View>
       </Sheet>
       <RedeemSheet target={redeem} onClose={() => setRedeem(null)} />
-      <SellSheet visible={sellOpen} onClose={() => setSellOpen(false)} />
       <InvoiceSheet t={invoice} onClose={() => setInvoice(null)} />
     </View>
-  );
-}
-
-function SellSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const { vault, tenant, refresh } = useApp();
-  const router = useRouter();
-  const toast = useToast();
-  const [g, setG] = useState("");
-  const [busy, setBusy] = useState(false);
-  const bal = vault?.user.gold_grams ?? 0;
-  const rate = vault?.sell_rate ?? 0;
-  const v = parseFloat(g) || 0;
-
-  const sell = async () => {
-    setBusy(true);
-    try {
-      const t = await api("/sell", { method: "POST", body: { grams: v, tenant } });
-      await refresh();
-      toast("success", "Gold sold", `${inr(t.amount)} will be credited to your bank`);
-      setG("");
-      onClose();
-    } catch (e: any) {
-      toast("error", "Sell failed", e.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Sheet visible={visible} onClose={onClose} title="Sell gold to bank" testID="sell-sheet">
-      <Row label="Live sell rate" value={`${inr(rate)}/g`} />
-      <Row label="Available" value={grams(bal)} />
-      <View style={styles.sellInput}>
-        <TextInput
-          testID="sell-grams-input"
-          value={g}
-          onChangeText={(t) => setG(t.replace(/[^0-9.]/g, ""))}
-          keyboardType="decimal-pad"
-          placeholder="0.0000"
-          placeholderTextColor={colors.mutedLight}
-          style={styles.sellField}
-        />
-        <Text style={styles.sellUnit}>g</Text>
-        <Pressable onPress={() => setG(String(bal))} style={styles.maxBtn} testID="sell-max-button">
-          <Text style={styles.maxText}>MAX</Text>
-        </Pressable>
-      </View>
-      <Row label="You receive" value={inr(v * rate)} bold testID="sell-receive-amount" />
-      <View style={{ height: 12 }} />
-      {vault?.user.kyc_status !== "approved" ? (
-        <Button title="Complete KYC to sell" variant="dark" onPress={() => { onClose(); router.push("/profile"); }} testID="sell-kyc-button" />
-      ) : (
-        <Button title="Sell Gold" loading={busy} disabled={v <= 0 || v > bal + 1e-9} onPress={sell} testID="sell-confirm-button" />
-      )}
-      <View style={{ height: 8 }} />
-    </Sheet>
   );
 }
 

@@ -20,7 +20,7 @@ export function PriceCards() {
           <Text style={styles.liveText} testID="gold-rate-source">{liveLabel}</Text>
         </View>
         <Text style={styles.metalName}>
-          Gold <Text style={styles.metalPurity}>24K | 999</Text>
+          Gold <Text style={styles.metalPurity}>999 Fine</Text>
         </Text>
         <Text style={styles.price} testID="gold-price-card">
           {price ? `₹${price.buy.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}{" "}
@@ -38,7 +38,7 @@ export function PriceCards() {
           <Text style={[styles.liveText, { color: "#6B7280" }]}>{liveLabel}</Text>
         </View>
         <Text style={[styles.metalName, { color: "#6B7280" }]}>
-          Silver <Text style={[styles.metalPurity, { color: "#9CA3AF" }]}>24K | 999</Text>
+          Silver <Text style={[styles.metalPurity, { color: "#9CA3AF" }]}>999 Fine</Text>
         </Text>
         <Text style={[styles.price, { color: "#374151" }]} testID="silver-price-card">
           {price?.silver ? `₹${price.silver.buy.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}{" "}
