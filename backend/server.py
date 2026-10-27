@@ -51,13 +51,21 @@ MT5_POLL_SECONDS = 2
 METAAPI_TOKEN = os.environ.get('METAAPI_TOKEN', '').strip()
 METAAPI_ACCOUNT_ID = os.environ.get('METAAPI_ACCOUNT_ID', '').strip()
 METAAPI_REGION = (os.environ.get('METAAPI_REGION') or 'new-york').strip()
+METAAPI_INVALID = ""
+if METAAPI_TOKEN or METAAPI_ACCOUNT_ID:
+    if not re.fullmatch(r"[A-Za-z0-9._\-]{20,}", METAAPI_TOKEN):
+        METAAPI_INVALID = "MetaApi token looks invalid (it should be one long code with no spaces)"
+    elif not re.fullmatch(r"[0-9a-fA-F-]{20,64}", METAAPI_ACCOUNT_ID):
+        METAAPI_INVALID = "MetaApi account ID looks invalid (it should look like 1a2b3c4d-....)"
+    if METAAPI_INVALID:
+        METAAPI_TOKEN = METAAPI_ACCOUNT_ID = ""
 METAAPI_PREV: dict = {}  # symbol -> (prev_close, fetched_at_epoch)
 MT5_STALE_SECONDS = 60
 
 PRICE = {"base": 7285.50, "open": 7285.50, "prev": 7285.50, "anchor": 7285.50, "updated_at": None}
 SILVER_PRICE = {"base": 92.50, "open": 92.50, "prev": 92.50, "anchor": 92.50, "updated_at": None}
 RATE_FEED = {"source": "simulated", "last_live_at": None,
-             "error": "" if (MT5_RATES_URL or METAAPI_TOKEN) else "Live rate feed not configured"}
+             "error": METAAPI_INVALID or ("" if (MT5_RATES_URL or METAAPI_TOKEN) else "Live rate feed not configured")}
 
 DEFAULT_MARGIN = {"gold_buy": 0.0, "gold_sell": 3.0, "silver_buy": 0.0, "silver_sell": 3.0}
 MARGINS: dict = {}  # jeweller_id -> margin dict (percent)
