@@ -6,6 +6,7 @@
 <title>Shop Panel</title>
 <link rel="stylesheet" href="/api/admin/assets/panel.css">
 <script src="/api/admin/assets/panel.js"></script>
+<script src="/api/admin/assets/panel_ext.js"></script>
 </head>
 <body>
 <div id="root"></div>
@@ -19,9 +20,9 @@ const S = {
   comm: { gold: 0, silver: 0, dirty: false },
 };
 const NAV = [
-  ['Overview', [['dashboard', 'Dashboard', 'dashboard'], ['commission', 'Commission', 'commission'], ['orders', 'Orders', 'orders'], ['holdings', 'Wallet & Holdings', 'wallet']]],
-  ['Customers', [['customers', 'Customers', 'customers'], ['kyc', 'KYC', 'kyc'], ['redemptions', 'Redemptions', 'redeem']]],
-  ['Store', [['catalogue', 'Catalogue', 'catalogue'], ['gifts', 'Gifts', 'gifts'], ['referral', 'Referral', 'referral'], ['settings', 'Settings', 'settings']]],
+  ['Overview', [['dashboard', 'Dashboard', 'dashboard'], ['commission', 'Commission', 'commission'], ['orders', 'Orders', 'orders'], ['holdings', 'Wallet & Holdings', 'wallet'], ['sips', 'SIP', 'refresh']]],
+  ['Customers', [['customers', 'Customers', 'customers'], ['kyc', 'KYC', 'kyc'], ['redemptions', 'Redemptions', 'redeem'], ['goals', 'Gold Goals', 'target']]],
+  ['Store', [['catalogue', 'Catalogue', 'catalogue'], ['content', 'App Content', 'image'], ['gifts', 'Gifts', 'gifts'], ['referral', 'Referral', 'referral'], ['settings', 'Settings', 'settings']]],
 ];
 const TITLES = Object.fromEntries(NAV.flatMap(([, items]) => items.map(([k, l]) => [k, l])));
 
@@ -367,7 +368,7 @@ async function saveProduct() {
   try { await api('/jeweller/products', { method: 'POST', body: { name: $('#pn').value, category: $('#pc').value, tag: $('#pt').value, grams: Number($('#pg').value), making_charges: Number($('#pm').value || 0), image_url: $('#pi').value, description: $('#pd').value } });
     closeModal(); toast('Product added'); loadProducts(); } catch (e) { toast(e.message, true); }
 }
-async function delProduct(id) { if (!confirm('Remove this product from the app?')) return; try { await api('/jeweller/products/' + id, { method: 'DELETE' }); toast('Removed'); loadProducts(); } catch (e) { toast(e.message, true); } }
+async function delProduct(id) { if (!confirm('Remove this product from the app?')) return; try { await api('/jeweller/products/' + id, { method: 'DELETE' }); toast('Removed'); loadCat(); } catch (e) { toast(e.message, true); } }
 
 /* ── gifts & referral ─────────────────── */
 async function loadGifts() { try { S.gifts = await api('/jeweller/v3/gifts'); } catch (e) { toast(e.message, true); } if (S.tab === 'gifts') render(); }
@@ -418,8 +419,8 @@ function vSettings() {
 }
 async function saveMin() { try { await api('/jeweller/settings/min-redemption', { method: 'PUT', body: { min_grams: Number($('#minr').value) } }); toast('Saved'); S.me.min_redemption_grams = Number($('#minr').value); loadSettings(); } catch (e) { toast(e.message, true); } }
 
-const VIEWS = { dashboard: vDashboard, commission: () => { syncComm(); return vCommission(); }, orders: vOrders, holdings: vHoldings, customers: vCustomers, kyc: vKyc, redemptions: vRedemptions, catalogue: vCatalogue, gifts: vGifts, referral: vReferral, settings: vSettings };
-const LOAD = { dashboard: loadDash, commission: loadDash, orders: loadOrders, holdings: loadHold, customers: loadCustomers, kyc: loadKyc, redemptions: loadPickups, catalogue: loadProducts, gifts: loadGifts, referral: loadRefs, settings: loadSettings };
+const VIEWS = { dashboard: vDashboard, commission: () => { syncComm(); return vCommission(); }, orders: vOrders, holdings: vHoldings, customers: vCustomers, kyc: vKyc, redemptions: vRedemptions, catalogue: vCatalogue2, content: vContent, sips: vSips, goals: vGoals, gifts: vGifts, referral: vReferral, settings: vSettings };
+const LOAD = { dashboard: loadDash, commission: loadDash, orders: loadOrders, holdings: loadHold, customers: loadCustomers, kyc: loadKyc, redemptions: loadPickups, catalogue: loadCat, content: loadContent, sips: loadSips, goals: loadGoals, gifts: loadGifts, referral: loadRefs, settings: loadSettings };
 
 async function boot() {
   try { if (!S.me) S.me = await api('/jeweller/me'); } catch (e) { localStorage.removeItem('jeweller_token'); render(); return; }

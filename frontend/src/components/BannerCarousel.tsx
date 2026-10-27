@@ -1,16 +1,31 @@
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
-import { NativeScrollEvent, NativeSyntheticEvent, ScrollView, type ScrollViewInstance, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { NativeScrollEvent, NativeSyntheticEvent, Pressable, ScrollView, type ScrollViewInstance, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 
-import { BANNERS, IMAGES } from "@/src/assets";
+import { api } from "@/src/api";
+import { BANNERS as DEFAULT_BANNERS, IMAGES } from "@/src/assets";
+import { useApp } from "@/src/store/AppContext";
 import { colors, fonts, radius } from "@/src/theme";
+
+type Banner = { id: string; image?: string; image_url?: string; eyebrow?: string; title?: string; subtitle?: string; link?: string };
+const LINK_ROUTES: Record<string, string> = { buy: "/", sip: "/sip", jewellery: "/jewellery", gift: "/gift", refer: "/referral" };
+const BASE = process.env.EXPO_PUBLIC_BACKEND_URL || "";
 
 export function BannerCarousel() {
   const { width: winW } = useWindowDimensions();
   const width = Math.min(winW, 720) - 32;
   const ref = useRef<ScrollViewInstance>(null);
   const [idx, setIdx] = useState(0);
+  const { tenant } = useApp();
+  const router = useRouter();
+  const [BANNERS, setBanners] = useState<Banner[]>(DEFAULT_BANNERS);
+  useEffect(() => {
+    api<{ banners: Banner[] }>(`/content?jeweller_id=${tenant}`, { auth: "none" })
+      .then((r) => setBanners(r.banners?.length ? r.banners : DEFAULT_BANNERS))
+      .catch(() => {});
+  }, [tenant]);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -21,7 +36,7 @@ export function BannerCarousel() {
       });
     }, 4500);
     return () => clearInterval(id);
-  }, [width]);
+  }, [width, BANNERS.length]);
 
   const onEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     setIdx(Math.round(e.nativeEvent.contentOffset.x / (width + 16)));
@@ -40,17 +55,19 @@ export function BannerCarousel() {
         contentContainerStyle={{ paddingHorizontal: 16, gap: 16 }}
       >
         {BANNERS.map((b) => (
-          <View key={b.id} style={[styles.banner, { width }]} testID={`banner-${b.id}`}>
-            <Image source={IMAGES[b.image]} style={StyleSheet.absoluteFill} contentFit="cover" transition={250} />
+          <Pressable key={b.id} style={[styles.banner, { width }]} testID={`banner-${b.id}`} disabled={!b.link || !LINK_ROUTES[b.link]} onPress={() => b.link && LINK_ROUTES[b.link] && router.push(LINK_ROUTES[b.link] as any)}>
+            <Image source={b.image_url ? { uri: b.image_url.startsWith("/") ? BASE + b.image_url : b.image_url } : IMAGES[b.image || "banner-1"]} style={StyleSheet.absoluteFill} contentFit="cover" transition={250} />
             <LinearGradient colors={["transparent", "rgba(17,24,39,0.88)"]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0.15 }} end={{ x: 0, y: 1 }} />
             <View style={styles.bannerBody}>
-              <View style={styles.eyebrow}>
-                <Text style={styles.eyebrowText}>{b.eyebrow}</Text>
-              </View>
-              <Text style={styles.title}>{b.title}</Text>
-              <Text style={styles.subtitle}>{b.subtitle}</Text>
+              {b.eyebrow ? (
+                <View style={styles.eyebrow}>
+                  <Text style={styles.eyebrowText}>{b.eyebrow}</Text>
+                </View>
+              ) : null}
+              {b.title ? <Text style={styles.title}>{b.title}</Text> : null}
+              {b.subtitle ? <Text style={styles.subtitle}>{b.subtitle}</Text> : null}
             </View>
-          </View>
+          </Pressable>
         ))}
       </ScrollView>
       <View style={styles.dots}>

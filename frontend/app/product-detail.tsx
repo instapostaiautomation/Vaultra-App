@@ -75,6 +75,9 @@ export default function ProductDetailScreen() {
 
   // Generate multiple image views from the same product image (simulating different angles)
   const productImages = [product.image, product.image, product.image, product.image];
+  const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_URL || "";
+  const uploaded = (product as any).image_url as string | undefined;
+  const imgSrc = (img: string) => (uploaded ? { uri: uploaded.startsWith("/") ? BASE_URL + uploaded : uploaded } : IMAGES[img]);
 
   return (
     <View style={styles.root} testID="product-detail-screen">
@@ -91,7 +94,7 @@ export default function ProductDetailScreen() {
         {/* Image Gallery */}
         <View style={[styles.imageContainer, { height: imgW * 0.85 }]}>
           <Image
-            source={IMAGES[productImages[activeImg]]}
+            source={imgSrc(productImages[activeImg])}
             style={StyleSheet.absoluteFill}
             contentFit="cover"
             transition={300}
@@ -109,7 +112,7 @@ export default function ProductDetailScreen() {
               onPress={() => setActiveImg(i)}
               style={[styles.thumb, activeImg === i && styles.thumbActive]}
             >
-              <Image source={IMAGES[img]} style={{ width: "100%", height: "100%" }} contentFit="cover" />
+              <Image source={imgSrc(img)} style={{ width: "100%", height: "100%" }} contentFit="cover" />
             </Pressable>
           ))}
         </View>

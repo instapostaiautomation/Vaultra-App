@@ -97,3 +97,9 @@ Multi-tenant white-label digital gold platform. Vaultra onboards jewellery shop 
 - New APIs: /api/jeweller/v3/* and /api/master/v3/overview. Selling disabled (/api/sell → 403); customer app Wallet tab + Sell removed.
 - MetaApi live feed code (METAAPI_TOKEN, METAAPI_ACCOUNT_ID, METAAPI_REGION) — keys pending from user.
 - PostgreSQL runs via supervisor (/etc/supervisor/conf.d/postgresql.conf). NOTE: Emergent deployment provides MongoDB only — production needs an external PostgreSQL (e.g. AWS RDS) via DATABASE_URL.
+
+## Update — Panels v4
+- Shop: Catalogue table (images, live rate + commission + making % 9/12/14/18/22/24), App Content (banners with image upload via Emergent Object Storage + live phone preview, FAQ), SIP tab, Gold Goals tab.
+- Master (dark luxury sidebar): Overview hero, Shops, Pricing, Market & Feed, Catalogue, App Content, Orders (+bill), Customers, KYC, Transactions, Settlement, SIP, Referrals, Gifts, Redemptions, Gold Goals, Gold Pool, Invoices, Audit Log.
+- New tables: banners, faqs, uploads, audit_logs; products.making_pct. Customer app banners + FAQ load from /api/content.
+- PostgreSQL self-heals via /app/scripts/ensure_postgres.sh (supervisor program "postgresql").

@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 10 retest of the iteration_9 issues. All 9 listed items pass. Backend: the new suite test_iteration10_retest.py passed 11/11. UI was tested at 1920 for the shop/master panels and 390x844 for the Expo app. (1) HIGH, fixed: a product added in Shop Catalogue > Add product with a photo (red test JPG) shows that uploaded /api/files/{id} image on the Jewellery card, in the product-detail hero and on all 4 thumbnails (naturalWidth 600, not the stock image). It was removed via the UI and is gone from /api/products. (2) A banner with Links to = Start SIP shows 'opens sip' in the list; tapping it in the app home carousel navigates to /sip. A banner with no link is aria-disabled and tapping it does nothing. Both were cleaned up. (3) GET /api/jeweller/v3/content returns platform_banners and platform_faqs. With the shop at 0 banners, a master default banner added via Master > App Content appears in the shop's live preview ('Live in app · 1 banner'). It was cleaned up. (4) POST /api/sips with yearly returns 422; daily, weekly and monthly return 200. (5) Master KYC decide on an approved customer returns 400 and the status is unchanged. (6) Audit Log shows 'Product Added' and 'Product Removed' with the product name and details. (7) The app Jewellery card price is total_price (TEST product at 18%: metal 21,870 + making 3,936 = ₹25,790 shown). (8) Master Shops h2 is 'Shops'; the Gold Goals table has a SHOP column filled with the shop name; the SIP KPI reads '1 instalment paid' (singular). (9) Regression: Catalogue making 12->22% sends PUT 200, the price updates to metal*1.22 and was restored to 12. Master Pricing save at 25 updates the buy rate and was restored to 0. Pricing of 1500 returns 422. No JS page errors and no 4xx in any panel flow. Only minor cosmetic issues found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "DELETE /api/master/v3/{kind}/{id} and DELETE /api/jeweller/v3/banners/{id}", "issue": "Audit target for banner and FAQ removal is the raw UUID (e.g. 'Banner Removed 0229eb12-...') instead of the banner title or question. Product delete correctly uses the name."},
+      {"endpoint": "GET /api/master/v3/sips, GET /api/jeweller/v3/sips", "issue": "Cancelled SIPs are counted in summary.total ('1 paused · 6 total') and listed under 'All', but there is no Cancelled filter. A legacy 'yearly' cancelled SIP (Meera Iyer, created before the validation fix) is still in the DB."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "ProductCard (src/components/Product.tsx:28) and product-detail.tsx:102", "issue": "The tag badge is always rendered, so a product with an empty tag shows an empty yellow pill on the card and the detail hero. Render it only when p.tag is set.", "testID": "product-card-{id}", "priority": "LOW"},
+      {"component": "ProductCard (src/components/Product.tsx:39)", "issue": "The label says 'Gold value' but the number is now total_price (metal + making). Rename it to 'Price' or 'Total price'.", "testID": "product-card-{id}", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration10_retest.py", "/app/test_reports/pytest/pytest_iter10.xml"],
+  "action_items": [
+    "LOW: In Product.tsx and product-detail.tsx, show the tag badge only when tag is non-empty",
+    "LOW: Rename the 'Gold value' label on the Jewellery card to 'Price' (it shows total_price)",
+    "LOW: Audit the banner and FAQ title (not the id) as the target on delete, for both the jeweller and master delete endpoints",
+    "OPTIONAL: Exclude cancelled SIPs from summary.total (or add a Cancelled filter), and remove or migrate the legacy 'yearly' SIP row"
+  ],
+  "critical_code_review_comments": [
+    "product-detail.tsx calculates totalPrice on the client as price.buy*grams + making_charges, while the card uses the backend total_price. The two can differ by a few rupees as the rate ticks (card 25,790 vs detail 25,783 seconds apart). Acceptable, but using product.total_price on first render would be consistent.",
+    "server.py is ~2946 lines; consider splitting it into routers"
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration10_retest.py"],
+  "success_rate": {"backend": "100% (11/11)", "frontend": "100% of retest items (9/9)"},
+  "seed_data_creation": "None persisted. TEST_ products, banners and the platform banner were all removed. The 3 cancelled test SIPs for Aarav (9876543210) were hard-deleted from Postgres. Pricing and making were restored.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Shop panel login: #le/#lp/#login-btn. Master login: #lu/#lp/#login-btn. Tabs use [data-tab=...]. Add product modal: #add-product, #pn, #pg, #pm, #pf, #save-product. Banner form: #bn_e, #bn_t, #bn_s, #bn_l, #bn_f, #add-banner. Master banner form: #mb_*, #m-add-banner. Master pricing inputs: #pg_{jid} and #ps_{jid}. Remove buttons use confirm(); in Python, accept dialogs via asyncio.ensure_future(d.accept()) with asyncio imported. The app banner testID is banner-{id}. test_iteration10_retest.py creates SIPs and cancels them (soft delete), so cancelled rows accumulate; hard-delete them via psql (DATABASE_URL_SYNC in backend/.env) if needed."
+}

@@ -204,6 +204,7 @@ class Product(Base):
     category = Column(String(50), default="")
     grams = Column(Float, default=0.0)
     making_charges = Column(Float, default=0.0)
+    making_pct = Column(Float, default=12.0)
     image_url = Column(String(500), default="")
     tag = Column(String(50), default="")
     description = Column(Text, default="")
@@ -353,3 +354,50 @@ class MasterAdmin(Base):
     password_hash = Column(String(200), nullable=False)
     name = Column(String(200), default="")
     created_at = Column(DateTime(timezone=True), default=utcnow)
+
+
+class Banner(Base):
+    __tablename__ = "banners"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    jeweller_id = Column(String, ForeignKey("jewellers.id"), nullable=True, index=True)  # null = platform-wide
+    title = Column(String(120), default="")
+    subtitle = Column(String(200), default="")
+    eyebrow = Column(String(60), default="")
+    image_url = Column(Text, default="")
+    link = Column(String(60), default="")
+    sort = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+
+class Faq(Base):
+    __tablename__ = "faqs"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    jeweller_id = Column(String, ForeignKey("jewellers.id"), nullable=True, index=True)
+    question = Column(Text, nullable=False)
+    answer = Column(Text, nullable=False)
+    sort = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+
+class Upload(Base):
+    __tablename__ = "uploads"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    owner = Column(String(80), default="")
+    path = Column(Text, nullable=False)
+    content_type = Column(String(80), default="image/jpeg")
+    size = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    actor_type = Column(String(20), default="")
+    actor_id = Column(String, default="")
+    actor_name = Column(String(200), default="")
+    jeweller_id = Column(String, nullable=True, index=True)
+    action = Column(String(80), default="")
+    target = Column(String(200), default="")
+    detail = Column(JSON, default=dict)
+    created_at = Column(DateTime(timezone=True), default=utcnow, index=True)

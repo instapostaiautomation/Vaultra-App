@@ -51,14 +51,18 @@ MT5_POLL_SECONDS = 2
 METAAPI_TOKEN = os.environ.get('METAAPI_TOKEN', '').strip()
 METAAPI_ACCOUNT_ID = os.environ.get('METAAPI_ACCOUNT_ID', '').strip()
 METAAPI_REGION = (os.environ.get('METAAPI_REGION') or 'new-york').strip()
+MT5_LOGIN = os.environ.get('MT5_LOGIN', '').strip()
+MT5_INVESTOR_PASSWORD = os.environ.get('MT5_INVESTOR_PASSWORD', '').strip()
+MT5_SERVER = os.environ.get('MT5_SERVER', '').strip()
+METAAPI_PROVISIONING = "https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai"
 METAAPI_INVALID = ""
-if METAAPI_TOKEN or METAAPI_ACCOUNT_ID:
-    if not re.fullmatch(r"[A-Za-z0-9._\-]{20,}", METAAPI_TOKEN):
-        METAAPI_INVALID = "MetaApi token looks invalid (it should be one long code with no spaces)"
-    elif not re.fullmatch(r"[0-9a-fA-F-]{20,64}", METAAPI_ACCOUNT_ID):
-        METAAPI_INVALID = "MetaApi account ID looks invalid (it should look like 1a2b3c4d-....)"
-    if METAAPI_INVALID:
-        METAAPI_TOKEN = METAAPI_ACCOUNT_ID = ""
+if METAAPI_TOKEN and not re.fullmatch(r"[A-Za-z0-9._\-]{20,}", METAAPI_TOKEN):
+    METAAPI_INVALID = "MetaApi token looks invalid (it should be one long code with no spaces)"
+    METAAPI_TOKEN = ""
+if METAAPI_ACCOUNT_ID and not re.fullmatch(r"[0-9a-fA-F-]{20,64}", METAAPI_ACCOUNT_ID):
+    METAAPI_ACCOUNT_ID = ""  # will auto-provision from MT5 login if available
+# Runtime MetaApi state (account may be created automatically from MT5 login details)
+META = {"account_id": METAAPI_ACCOUNT_ID, "state": "", "connection": "", "ready": False, "checked_at": 0.0}
 METAAPI_PREV: dict = {}  # symbol -> (prev_close, fetched_at_epoch)
 MT5_STALE_SECONDS = 60
 
@@ -159,11 +163,74 @@ async def fetch_mt5(client):
     return _per_gram(data, MT5_GOLD_SYMBOL, MT5_GOLD_UNIT_GRAMS), _per_gram(data, MT5_SILVER_SYMBOL, MT5_SILVER_UNIT_GRAMS)
 
 
+async def _setting(key: str, value: Optional[str] = None):
+    async with AsyncSessionLocal() as db:
+        if value is None:
+            r = await db.execute(text("SELECT value FROM app_settings WHERE key = :k"), {"k": key})
+            return r.scalar_one_or_none()
+        await db.execute(text("INSERT INTO app_settings(key, value) VALUES (:k, :v) ON CONFLICT (key) DO UPDATE SET value = :v"), {"k": key, "v": value})
+        await db.commit()
+
+
+async def ensure_metaapi(client) -> bool:
+    """Make sure a deployed MetaApi account exists. Creates one from MT5 login details if needed."""
+    loop_t = asyncio.get_event_loop().time()
+    if META["ready"] and loop_t - META["checked_at"] < 600:
+        return True
+    if not META["ready"] and loop_t - META["checked_at"] < 20:
+        return False
+    META["checked_at"] = loop_t
+    h = {"auth-token": METAAPI_TOKEN, "Accept": "application/json"}
+    if not META["account_id"]:
+        META["account_id"] = await _setting("metaapi_account_id") or ""
+    if not META["account_id"]:
+        if not (MT5_LOGIN and MT5_INVESTOR_PASSWORD and MT5_SERVER):
+            RATE_FEED["error"] = "Add MT5 login, investor password and server (or a MetaApi account ID)"
+            return False
+        txid = await _setting("metaapi_txid")
+        if not txid:
+            txid = uuid.uuid4().hex
+            await _setting("metaapi_txid", txid)
+        r = await client.post(f"{METAAPI_PROVISIONING}/users/current/accounts", headers=h | {"transaction-id": txid}, json={
+            "name": f"vaultra-rates-{MT5_LOGIN}", "login": MT5_LOGIN, "password": MT5_INVESTOR_PASSWORD,
+            "server": MT5_SERVER, "platform": "mt5", "magic": 0, "region": METAAPI_REGION})
+        if r.status_code == 202:
+            RATE_FEED["error"] = "MetaApi is connecting your MT5 account…"
+            return False
+        if r.status_code >= 400:
+            try:
+                msg = r.json().get("message", "")
+            except Exception:
+                msg = ""
+            RATE_FEED["error"] = f"MetaApi could not add the MT5 account ({r.status_code}). {msg}"[:200]
+            return False
+        META["account_id"] = r.json().get("id", "")
+        await _setting("metaapi_account_id", META["account_id"])
+    r = await client.get(f"{METAAPI_PROVISIONING}/users/current/accounts/{META['account_id']}", headers=h)
+    if r.status_code >= 400:
+        RATE_FEED["error"] = f"MetaApi account not reachable ({r.status_code})"
+        return False
+    a = r.json()
+    META.update(state=a.get("state", ""), connection=a.get("connectionStatus", ""))
+    if META["state"] in ("UNDEPLOYED", "DRAFT"):
+        await client.post(f"{METAAPI_PROVISIONING}/users/current/accounts/{META['account_id']}/deploy", headers=h)
+        RATE_FEED["error"] = "Starting the MT5 connection on MetaApi…"
+        return False
+    if META["state"] != "DEPLOYED" or META["connection"] != "CONNECTED":
+        RATE_FEED["error"] = f"MetaApi account is {META['state'].lower() or 'starting'} / {META['connection'].lower() or 'connecting'}"
+        return False
+    META["ready"] = True
+    return True
+
+
 async def _metaapi_symbol(client, symbol: str, unit: float):
-    base = f"https://mt-client-api-v1.{METAAPI_REGION}.agiliumtrade.ai/users/current/accounts/{METAAPI_ACCOUNT_ID}"
+    base = f"https://mt-client-api-v1.{METAAPI_REGION}.agiliumtrade.ai/users/current/accounts/{META['account_id']}"
     h = {"auth-token": METAAPI_TOKEN, "Accept": "application/json"}
     r = await client.get(f"{base}/symbols/{symbol}/current-price", params={"keepSubscription": "true"}, headers=h)
+    if r.status_code == 404:
+        raise ValueError(f"Symbol {symbol} not found on your MT5 account — check the exact symbol name in MT5 Market Watch")
     if r.status_code >= 400:
+        META["ready"] = r.status_code not in (401, 403, 409)
         raise ValueError(f"MetaApi {symbol}: HTTP {r.status_code}")
     d = r.json()
     bid, ask = d.get("bid") or 0, d.get("ask") or 0
@@ -174,7 +241,7 @@ async def _metaapi_symbol(client, symbol: str, unit: float):
     loop_t = asyncio.get_event_loop().time()
     if prev is None or loop_t - at > 900:
         try:
-            md = f"https://mt-market-data-client-api-v1.{METAAPI_REGION}.agiliumtrade.ai/users/current/accounts/{METAAPI_ACCOUNT_ID}"
+            md = f"https://mt-market-data-client-api-v1.{METAAPI_REGION}.agiliumtrade.ai/users/current/accounts/{META['account_id']}"
             c = await client.get(f"{md}/historical-market-data/symbols/{symbol}/timeframes/1d/candles", params={"limit": 2}, headers=h)
             candles = c.json() if c.status_code < 400 else []
             if isinstance(candles, list) and len(candles) >= 2:
@@ -213,11 +280,13 @@ async def price_loop():
     last_err_log = 0.0
     async with httpx.AsyncClient(timeout=5) as client:
         while True:
-            live_cfg = bool(METAAPI_TOKEN and METAAPI_ACCOUNT_ID) or bool(MT5_RATES_URL)
+            live_cfg = bool(METAAPI_TOKEN) or bool(MT5_RATES_URL)
             await asyncio.sleep(MT5_POLL_SECONDS if live_cfg else 3)
             if live_cfg:
                 try:
-                    if METAAPI_TOKEN and METAAPI_ACCOUNT_ID:
+                    if METAAPI_TOKEN:
+                        if not await ensure_metaapi(client):
+                            raise ValueError(RATE_FEED["error"] or "MetaApi not ready")
                         (g, gp), (s, sp) = await fetch_metaapi(client)
                     else:
                         (g, gp), (s, sp) = await fetch_mt5(client)
@@ -400,7 +469,7 @@ class RedeemRequest(BaseModel):
 
 class SipCreate(BaseModel):
     amount: float = Field(ge=100, le=100000)
-    frequency: str = "monthly"
+    frequency: str = Field("monthly", pattern="^(daily|weekly|monthly)$")
 
 
 class GiftCreate(BaseModel):
@@ -482,6 +551,7 @@ class ProductCreate(BaseModel):
     category: str = ""
     grams: float = Field(gt=0)
     making_charges: float = 0
+    making_pct: float = 12
     image_url: str = ""
     tag: str = ""
     description: str = ""
@@ -594,6 +664,15 @@ async def list_jewellers_public(db: AsyncSession = Depends(get_db)):
 
 
 # ─── Products (Public) ────────────────────────────────────────────────────────
+MAKING_OPTIONS = [9, 12, 14, 18, 22, 24]
+
+
+def product_making(p, rate):
+    metal = (p.grams or 0) * rate
+    pct = p.making_pct if p.making_pct is not None else 12
+    return r2(metal), r2(metal * pct / 100), pct
+
+
 CATEGORY_IMAGE = {"necklaces": "heritage-necklace", "bangles": "minimalist-bangle", "rings": "rings",
                   "chains": "chain", "kadas": "kada", "pendant-sets": "pendant-set", "watches": "watch"}
 
@@ -619,8 +698,11 @@ async def list_products(jeweller_id: str = "", category: str = "", db: AsyncSess
         "making_charges": p.making_charges, "image_url": p.image_url, "tag": p.tag,
         "image": product_image_key(p),
         "description": p.description, "jeweller_id": p.jeweller_id,
-        "gold_value": r2(p.grams * rates.setdefault(p.jeweller_id, gold_rate(p.jeweller_id)[0])),
-        "total_price": r2(p.grams * rates[p.jeweller_id] + p.making_charges),
+        "gold_value": product_making(p, rates.setdefault(p.jeweller_id, gold_rate(p.jeweller_id)[0]))[0],
+        "making_pct": product_making(p, rates[p.jeweller_id])[2],
+        "making_amount": product_making(p, rates[p.jeweller_id])[1],
+        "making_charges": product_making(p, rates[p.jeweller_id])[1],
+        "total_price": r2(sum(product_making(p, rates[p.jeweller_id])[:2])),
         "live_rate": rates[p.jeweller_id],
     } for p in prods]
 
@@ -637,7 +719,8 @@ async def get_product(product_id: str, db: AsyncSession = Depends(get_db)):
         "making_charges": p.making_charges, "image_url": p.image_url, "tag": p.tag,
         "image": product_image_key(p),
         "description": p.description, "jeweller_id": p.jeweller_id,
-        "gold_value": r2(p.grams * buy), "total_price": r2(p.grams * buy + p.making_charges),
+        "gold_value": product_making(p, buy)[0], "making_pct": product_making(p, buy)[2],
+        "making_amount": product_making(p, buy)[1], "total_price": r2(sum(product_making(p, buy)[:2])), "making_charges": product_making(p, buy)[1],
         "live_rate": buy,
         "features": ["24K 99.9% Pure Gold", "BIS Hallmarked", "LBMA Certified",
                       "Insured Delivery", "Lifetime Buyback Guarantee"],
@@ -966,7 +1049,9 @@ async def mock_confirm(order_id: str, body: MockConfirm,
         jeweller_id=customer.jeweller_id, type=txn_type, metal=metal,
         grams=order.grams, rate=order.rate, amount=order.amount,
         gst=order.gst, total=order.total, method=body.method,
-        status="completed", extra={"order_id": order.id, "payment_id": order.payment_id},
+        status="completed", extra={"order_id": order.id, "payment_id": order.payment_id,
+                                   "commission": r2(order.grams * (MARGINS.get(customer.jeweller_id) or {}).get(f"{metal}_comm", 0.0)),
+                                   "base_rate": r2((SILVER_PRICE if metal == "silver" else PRICE)["base"])},
         pool_contribution=True
     )
     db.add(txn)
@@ -1008,7 +1093,8 @@ async def redeem(body: RedeemRequest, customer: Customer = Depends(get_current_c
         p = prod_result.scalar_one_or_none()
         if not p:
             raise HTTPException(404, "Product not found")
-        grams, item, making = p.grams, p.name, p.making_charges
+        grams, item = p.grams, p.name
+        making = product_making(p, gold_rate(customer.jeweller_id)[0])[1]
 
     if grams < min_grams:
         raise HTTPException(400, f"Minimum redemption is {min_grams}g for your jeweller")
@@ -1612,8 +1698,10 @@ async def jeweller_add_product(body: ProductCreate, jeweller: Jeweller = Depends
     p = Product(
         id=str(uuid.uuid4()), jeweller_id=jeweller.id, name=body.name,
         category=body.category, grams=body.grams, making_charges=body.making_charges,
+        making_pct=body.making_pct if body.making_pct in MAKING_OPTIONS else 12,
         image_url=body.image_url, tag=body.tag, description=body.description
     )
+    await audit(db, "jeweller", jeweller, "product.add", body.name, {"grams": body.grams, "making_pct": body.making_pct}, jeweller.id)
     db.add(p)
     await db.commit()
     return {"id": p.id, "name": p.name}
@@ -1626,6 +1714,7 @@ async def jeweller_delete_product(product_id: str, jeweller: Jeweller = Depends(
     if not p:
         raise HTTPException(404, "Product not found")
     p.is_active = False
+    await audit(db, "jeweller", jeweller, "product.delete", p.name, jeweller_id=jeweller.id)
     await db.commit()
     return {"ok": True}
 
@@ -1794,7 +1883,8 @@ async def master_rate(admin: MasterAdmin = Depends(get_master_admin)):
 def rate_feed_status():
     last = RATE_FEED["last_live_at"]
     return {
-        "source": RATE_FEED["source"], "configured": bool(MT5_RATES_URL or (METAAPI_TOKEN and METAAPI_ACCOUNT_ID)),
+        "source": RATE_FEED["source"], "configured": bool(MT5_RATES_URL or METAAPI_TOKEN),
+        "metaapi_state": META["state"], "metaapi_connection": META["connection"],
         "provider": "metaapi" if METAAPI_TOKEN else ("mt5_script" if MT5_RATES_URL else "none"),
         "last_live_at": last.isoformat() if last else None, "error": RATE_FEED["error"],
         "gold_symbol": MT5_GOLD_SYMBOL, "silver_symbol": MT5_SILVER_SYMBOL,
@@ -2267,6 +2357,7 @@ async def jp_commission(body: CommissionUpdate, jeweller: Jeweller = Depends(get
     jeweller.silver_commission_per_g = r2(body.silver_per_g)
     jeweller.gold_buy_markup_pct = 0.0
     jeweller.silver_buy_markup_pct = 0.0
+    await audit(db, "jeweller", jeweller, "commission.update", jeweller.business_name, {"gold": body.gold_per_g, "silver": body.silver_per_g}, jeweller.id)
     await db.commit()
     cache_margins(jeweller)
     return jeweller_dict(jeweller) | {"price": price_payload(jeweller.id)}
@@ -2359,6 +2450,454 @@ async def mp_overview(range: str = "30d", start: str = "", end: str = "",
             "price": price_payload(), "feed": rate_feed_status()}
 
 
+# ═══════════════════ PANELS v4: content, SIPs, master ops ═════════════════════
+import requests as _requests
+from fastapi import UploadFile, File
+from starlette.concurrency import run_in_threadpool
+from fastapi import Response
+from models import Banner, Faq, Upload, AuditLog, Goal, SIP as Sip
+
+STORAGE_URL = ((os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com").rstrip("/") + "/objstore/api/v1/storage"
+STORAGE_APP = "vaultra-digigold"
+_storage_key = {"v": None}
+
+
+def _storage_init():
+    if not _storage_key["v"]:
+        r = _requests.post(f"{STORAGE_URL}/init", json={"emergent_key": os.environ.get("EMERGENT_LLM_KEY")}, timeout=30)
+        r.raise_for_status()
+        _storage_key["v"] = r.json()["storage_key"]
+    return _storage_key["v"]
+
+
+def _storage_put(path, data, ct):
+    for attempt in (0, 1):
+        r = _requests.put(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": _storage_init(), "Content-Type": ct}, data=data, timeout=120)
+        if r.status_code == 503 and attempt == 0:
+            _storage_key["v"] = None
+            continue
+        if r.status_code == 402:
+            raise HTTPException(402, "Image storage is out of credits. Please top up and try again.")
+        r.raise_for_status()
+        return r.json()
+
+
+def _storage_get(path):
+    r = _requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": _storage_init()}, timeout=60)
+    r.raise_for_status()
+    return r.content, r.headers.get("Content-Type", "image/jpeg")
+
+
+async def audit(db, actor_type, actor, action, target="", detail=None, jeweller_id=None):
+    name = getattr(actor, "business_name", None) or getattr(actor, "name", None) or getattr(actor, "username", "")
+    db.add(AuditLog(actor_type=actor_type, actor_id=getattr(actor, "id", ""), actor_name=name or "",
+                    jeweller_id=jeweller_id, action=action, target=str(target)[:200], detail=detail or {}))
+
+
+async def _image_upload(file: UploadFile, owner: str, db):
+    if (file.content_type or "") not in ("image/jpeg", "image/png", "image/webp"):
+        raise HTTPException(400, "Use a JPG, PNG or WEBP image")
+    data = await file.read()
+    if len(data) > 5 * 1024 * 1024:
+        raise HTTPException(400, "Image must be under 5 MB")
+    ext = {"image/png": "png", "image/webp": "webp"}.get(file.content_type, "jpg")
+    path = f"{STORAGE_APP}/uploads/{owner}/{uuid.uuid4().hex}.{ext}"
+    res = await run_in_threadpool(_storage_put, path, data, file.content_type)
+    u = Upload(owner=owner, path=res.get("path", path), content_type=file.content_type, size=len(data))
+    db.add(u)
+    await db.commit()
+    return {"id": u.id, "url": f"/api/files/{u.id}"}
+
+
+@api.get("/files/{file_id}")
+async def get_file(file_id: str, db: AsyncSession = Depends(get_db)):
+    u = (await db.execute(select(Upload).where(Upload.id == file_id))).scalar_one_or_none()
+    if not u:
+        raise HTTPException(404, "Not found")
+    data, ct = await run_in_threadpool(_storage_get, u.path)
+    return Response(content=data, media_type=u.content_type or ct, headers={"Cache-Control": "public, max-age=86400"})
+
+
+@api.post("/jeweller/v3/upload")
+async def jp_upload(file: UploadFile = File(...), jeweller: Jeweller = Depends(get_current_jeweller), db: AsyncSession = Depends(get_db)):
+    return await _image_upload(file, jeweller.id, db)
+
+
+@api.post("/master/v3/upload")
+async def mp_upload(file: UploadFile = File(...), admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    return await _image_upload(file, "platform", db)
+
+
+# ── App content (banners + FAQ) ───────────────────────────────────────────────
+def banner_dict(b):
+    return {"id": b.id, "jeweller_id": b.jeweller_id, "title": b.title, "subtitle": b.subtitle, "eyebrow": b.eyebrow,
+            "image_url": b.image_url, "link": b.link, "sort": b.sort, "is_active": b.is_active,
+            "created_at": b.created_at.isoformat() if b.created_at else ""}
+
+
+def faq_dict(f):
+    return {"id": f.id, "jeweller_id": f.jeweller_id, "question": f.question, "answer": f.answer, "sort": f.sort}
+
+
+@api.get("/content")
+async def app_content(jeweller_id: str = "", tenant: str = "", db: AsyncSession = Depends(get_db)):
+    jid = jeweller_id or tenant
+    async def pick(model, extra=()):
+        own = (await db.execute(select(model).where(model.jeweller_id == jid, *extra).order_by(model.sort, model.created_at))).scalars().all() if jid else []
+        if own:
+            return own
+        return (await db.execute(select(model).where(model.jeweller_id.is_(None), *extra).order_by(model.sort, model.created_at))).scalars().all()
+    return {"banners": [banner_dict(b) for b in await pick(Banner, (Banner.is_active == True,))],
+            "faqs": [faq_dict(f) for f in await pick(Faq)]}
+
+
+class BannerIn(BaseModel):
+    title: str = Field("", max_length=120)
+    subtitle: str = Field("", max_length=200)
+    eyebrow: str = Field("", max_length=60)
+    image_url: str = Field(min_length=1)
+    link: str = ""
+    jeweller_id: Optional[str] = None
+
+
+class FaqIn(BaseModel):
+    question: str = Field(min_length=3, max_length=300)
+    answer: str = Field(min_length=3, max_length=2000)
+    jeweller_id: Optional[str] = None
+
+
+async def _content_list(db, jid):
+    cond_b = Banner.jeweller_id == jid if jid else Banner.jeweller_id.is_(None)
+    cond_f = Faq.jeweller_id == jid if jid else Faq.jeweller_id.is_(None)
+    b = (await db.execute(select(Banner).where(cond_b).order_by(Banner.sort, Banner.created_at))).scalars().all()
+    f = (await db.execute(select(Faq).where(cond_f).order_by(Faq.sort, Faq.created_at))).scalars().all()
+    return {"banners": [banner_dict(x) for x in b], "faqs": [faq_dict(x) for x in f]}
+
+
+async def _banner_add(db, jid, body, actor_type, actor):
+    n = (await db.execute(select(func.count()).select_from(Banner).where(Banner.jeweller_id == jid if jid else Banner.jeweller_id.is_(None)))).scalar() or 0
+    if n >= 8:
+        raise HTTPException(400, "You can have up to 8 banners")
+    b = Banner(jeweller_id=jid, title=body.title.strip(), subtitle=body.subtitle.strip(), eyebrow=body.eyebrow.strip(),
+               image_url=body.image_url, link=body.link, sort=n)
+    db.add(b)
+    await audit(db, actor_type, actor, "banner.add", body.title or "banner", jeweller_id=jid)
+    await db.commit()
+    return banner_dict(b)
+
+
+@api.get("/jeweller/v3/content")
+async def jp_content(jeweller: Jeweller = Depends(get_current_jeweller), db: AsyncSession = Depends(get_db)):
+    own = await _content_list(db, jeweller.id)
+    platform = await _content_list(db, None)
+    return own | {"platform_banners": [b for b in platform["banners"] if b["is_active"]], "platform_faqs": platform["faqs"]}
+
+
+@api.post("/jeweller/v3/banners")
+async def jp_banner_add(body: BannerIn, jeweller: Jeweller = Depends(get_current_jeweller), db: AsyncSession = Depends(get_db)):
+    return await _banner_add(db, jeweller.id, body, "jeweller", jeweller)
+
+
+@api.post("/jeweller/v3/faqs")
+async def jp_faq_add(body: FaqIn, jeweller: Jeweller = Depends(get_current_jeweller), db: AsyncSession = Depends(get_db)):
+    f = Faq(jeweller_id=jeweller.id, question=body.question.strip(), answer=body.answer.strip())
+    db.add(f)
+    await audit(db, "jeweller", jeweller, "faq.add", body.question[:80], jeweller_id=jeweller.id)
+    await db.commit()
+    return faq_dict(f)
+
+
+@api.delete("/jeweller/v3/{kind}/{item_id}")
+async def jp_content_del(kind: str, item_id: str, jeweller: Jeweller = Depends(get_current_jeweller), db: AsyncSession = Depends(get_db)):
+    model = {"banners": Banner, "faqs": Faq}.get(kind)
+    if not model:
+        raise HTTPException(404, "Not found")
+    x = (await db.execute(select(model).where(model.id == item_id, model.jeweller_id == jeweller.id))).scalar_one_or_none()
+    if not x:
+        raise HTTPException(404, "Not found")
+    await db.delete(x)
+    await audit(db, "jeweller", jeweller, f"{kind[:-1]}.delete", item_id, jeweller_id=jeweller.id)
+    await db.commit()
+    return {"ok": True}
+
+
+@api.get("/master/v3/content")
+async def mp_content(jeweller_id: str = "", admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    return await _content_list(db, jeweller_id or None)
+
+
+@api.post("/master/v3/banners")
+async def mp_banner_add(body: BannerIn, admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    return await _banner_add(db, body.jeweller_id or None, body, "master", admin)
+
+
+@api.post("/master/v3/faqs")
+async def mp_faq_add(body: FaqIn, admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    f = Faq(jeweller_id=body.jeweller_id or None, question=body.question.strip(), answer=body.answer.strip())
+    db.add(f)
+    await audit(db, "master", admin, "faq.add", body.question[:80], jeweller_id=body.jeweller_id)
+    await db.commit()
+    return faq_dict(f)
+
+
+@api.delete("/master/v3/{kind}/{item_id}")
+async def mp_content_del(kind: str, item_id: str, admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    model = {"banners": Banner, "faqs": Faq, "products": Product}.get(kind)
+    if not model:
+        raise HTTPException(404, "Not found")
+    x = (await db.execute(select(model).where(model.id == item_id))).scalar_one_or_none()
+    if not x:
+        raise HTTPException(404, "Not found")
+    if model is Product:
+        x.is_active = False
+    else:
+        await db.delete(x)
+    await audit(db, "master", admin, f"{kind[:-1]}.delete", item_id)
+    await db.commit()
+    return {"ok": True}
+
+
+# ── Catalogue (making %) ──────────────────────────────────────────────────────
+async def _catalogue(db, jid=None):
+    q = select(Product, Jeweller.business_name).join(Jeweller, Jeweller.id == Product.jeweller_id).where(Product.is_active == True)
+    if jid:
+        q = q.where(Product.jeweller_id == jid)
+    out = []
+    for p, shop in (await db.execute(q.order_by(Product.category, Product.created_at))).all():
+        live = PRICE["base"]
+        rate = gold_rate(p.jeweller_id)[0]
+        metal, making, pct = product_making(p, rate)
+        out.append({"id": p.id, "name": p.name, "category": p.category, "grams": r4(p.grams), "tag": p.tag,
+                    "sku": "VLT-" + p.category[:3].upper() + "-" + p.id[:4].upper(), "shop": shop, "jeweller_id": p.jeweller_id,
+                    "image_url": p.image_url or f"/api/admin/assets/img-{product_image_key(p)}.jpg",
+                    "live_rate": r2(live), "commission_per_g": r2(rate - live), "buy_rate": rate,
+                    "metal_value": metal, "making_pct": pct, "making_amount": making, "total_price": r2(metal + making)})
+    return out
+
+
+class MakingIn(BaseModel):
+    making_pct: float
+
+
+@api.get("/jeweller/v3/catalogue")
+async def jp_catalogue(jeweller: Jeweller = Depends(get_current_jeweller), db: AsyncSession = Depends(get_db)):
+    return {"options": MAKING_OPTIONS, "products": await _catalogue(db, jeweller.id)}
+
+
+@api.put("/jeweller/v3/products/{pid}/making")
+async def jp_making(pid: str, body: MakingIn, jeweller: Jeweller = Depends(get_current_jeweller), db: AsyncSession = Depends(get_db)):
+    if body.making_pct not in MAKING_OPTIONS:
+        raise HTTPException(400, "Choose one of " + ", ".join(f"{x}%" for x in MAKING_OPTIONS))
+    p = (await db.execute(select(Product).where(Product.id == pid, Product.jeweller_id == jeweller.id))).scalar_one_or_none()
+    if not p:
+        raise HTTPException(404, "Product not found")
+    p.making_pct = body.making_pct
+    await audit(db, "jeweller", jeweller, "product.making", p.name, {"making_pct": body.making_pct}, jeweller.id)
+    await db.commit()
+    return {"ok": True}
+
+
+@api.get("/master/v3/catalogue")
+async def mp_catalogue(jeweller_id: str = "", admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    return {"options": MAKING_OPTIONS, "products": await _catalogue(db, jeweller_id or None)}
+
+
+# ── SIPs & Goals (shared by both panels) ─────────────────────────────────────
+async def _sips(db, jid=None, status="all", search=""):
+    q = select(Sip, Customer).join(Customer, Customer.id == Sip.customer_id)
+    if jid:
+        q = q.where(Sip.jeweller_id == jid)
+    if status != "all":
+        q = q.where(Sip.status == status)
+    if search:
+        q = q.where(or_(Customer.phone.contains(search), Customer.first_name.ilike(f"%{search}%"), Customer.last_name.ilike(f"%{search}%")))
+    rows = (await db.execute(q.order_by(desc(Sip.created_at)))).all()
+    sip_col = text("(transactions.extra ->> 'sip_id')")
+    paid = {r[0]: r[1:] for r in (await db.execute(select(
+        sip_col, func.sum(Transaction.total), func.max(Transaction.created_at)).where(
+        Transaction.type == "sip", Transaction.status != "failed").group_by(sip_col))).all()}
+    shops = {j.id: j.business_name for j in (await db.execute(select(Jeweller))).scalars().all()}
+    out = []
+    for sp, c in rows:
+        tot, last = paid.get(sp.id, (0, None))
+        monthly = sp.amount * {"daily": 30, "weekly": 4.33, "monthly": 1}.get(sp.frequency, 1)
+        out.append({"id": sp.id, "customer_id": c.id, "customer": _cname(c), "phone": c.phone, "wallet_id": c.wallet_id,
+                    "shop": shops.get(sp.jeweller_id, ""), "amount": r2(sp.amount), "frequency": sp.frequency, "status": sp.status,
+                    "installments": sp.installments or 0, "grams": r4(sp.grams_accumulated or 0), "invested": r2(tot or 0),
+                    "monthly_value": r2(monthly), "last_paid": last.isoformat() if last else None,
+                    "next_run": sp.next_run.isoformat() if sp.next_run else None,
+                    "created_at": sp.created_at.isoformat() if sp.created_at else ""})
+    act = [x for x in out if x["status"] == "active"]
+    return {"summary": {"total": len(out), "active": len(act), "paused": sum(1 for x in out if x["status"] == "paused"),
+                        "monthly_value": r2(sum(x["monthly_value"] for x in act)), "grams": r4(sum(x["grams"] for x in out)),
+                        "invested": r2(sum(x["invested"] for x in out)), "installments": sum(x["installments"] for x in out),
+                        "by_frequency": {f: sum(1 for x in act if x["frequency"] == f) for f in ("daily", "weekly", "monthly")}},
+            "sips": out}
+
+
+@api.get("/jeweller/v3/sips")
+async def jp_sips(status: str = "all", search: str = "", jeweller: Jeweller = Depends(get_current_jeweller), db: AsyncSession = Depends(get_db)):
+    return await _sips(db, jeweller.id, status, search)
+
+
+@api.get("/master/v3/sips")
+async def mp_sips(jeweller_id: str = "", status: str = "all", search: str = "", admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    return await _sips(db, jeweller_id or None, status, search)
+
+
+async def _goals(db, jid=None):
+    q = select(Goal, Customer).join(Customer, Customer.id == Goal.customer_id)
+    shop_names = {j.id: j.business_name for j in (await db.execute(select(Jeweller))).scalars().all()}
+    if jid:
+        q = q.where(Customer.jeweller_id == jid)
+    out = []
+    for g, c in (await db.execute(q.order_by(desc(Goal.created_at)))).all():
+        have = max(0.0, (c.gold_grams or 0) - (g.start_grams or 0))
+        pct = min(100.0, have / g.target_grams * 100) if g.target_grams else 0
+        out.append({"id": g.id, "customer": _cname(c), "phone": c.phone, "shop": shop_names.get(c.jeweller_id, ""), "name": g.name, "occasion": g.occasion,
+                    "target_grams": r4(g.target_grams), "saved_grams": r4(have), "progress": round(pct, 1),
+                    "deadline": g.deadline.isoformat() if g.deadline else None, "created_at": g.created_at.isoformat() if g.created_at else ""})
+    return out
+
+
+@api.get("/jeweller/v3/goals")
+async def jp_goals(jeweller: Jeweller = Depends(get_current_jeweller), db: AsyncSession = Depends(get_db)):
+    return await _goals(db, jeweller.id)
+
+
+@api.get("/master/v3/goals")
+async def mp_goals(jeweller_id: str = "", admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    return await _goals(db, jeweller_id or None)
+
+
+# ── Master: platform-wide lists ──────────────────────────────────────────────
+@api.get("/master/v3/orders")
+async def mp_orders(jeweller_id: str = "", side: str = "all", search: str = "", admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    types = BUY_TYPES if side == "buy" else (["redemption"] if side == "redeem" else ORDER_TYPES)
+    q = select(Transaction, Customer, Jeweller.business_name).join(Customer, Customer.id == Transaction.customer_id).join(
+        Jeweller, Jeweller.id == Transaction.jeweller_id).where(Transaction.type.in_(types))
+    if jeweller_id:
+        q = q.where(Transaction.jeweller_id == jeweller_id)
+    if search:
+        q = q.where(or_(Customer.phone.contains(search), Customer.first_name.ilike(f"%{search}%"), Transaction.invoice_no.ilike(f"%{search}%")))
+    return [_order_row(t, c) | {"shop": shop, "jeweller_id": t.jeweller_id} for t, c, shop in (await db.execute(q.order_by(desc(Transaction.created_at)).limit(500))).all()]
+
+
+@api.get("/master/v3/orders/{txn_id}/bill")
+async def mp_bill(txn_id: str, admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    t = (await db.execute(select(Transaction).where(Transaction.id == txn_id))).scalar_one_or_none()
+    if not t:
+        raise HTTPException(404, "Order not found")
+    j = (await db.execute(select(Jeweller).where(Jeweller.id == t.jeweller_id))).scalar_one()
+    return await jp_bill(txn_id, j, db)
+
+
+@api.get("/master/v3/kyc")
+async def mp_kyc(status: str = "pending", admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    q = select(Customer, Jeweller.business_name).join(Jeweller, Jeweller.id == Customer.jeweller_id)
+    if status != "all":
+        q = q.where(Customer.kyc_status == status)
+    return [customer_dict(c) | {"shop": shop} for c, shop in (await db.execute(q.order_by(desc(Customer.created_at)).limit(300))).all()]
+
+
+@api.post("/master/v3/kyc/{cid}/decide")
+async def mp_kyc_decide(cid: str, approve: bool, admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    c = (await db.execute(select(Customer).where(Customer.id == cid))).scalar_one_or_none()
+    if not c:
+        raise HTTPException(404, "Customer not found")
+    if c.kyc_status != "pending":
+        raise HTTPException(400, "KYC has not been submitted or is already decided")
+    c.kyc_status = "approved" if approve else "rejected"
+    await audit(db, "master", admin, "kyc." + c.kyc_status, _cname(c), jeweller_id=c.jeweller_id)
+    await db.commit()
+    return customer_dict(c)
+
+
+@api.get("/master/v3/gifts")
+async def mp_gifts(admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    out = []
+    for j in (await db.execute(select(Jeweller))).scalars().all():
+        out += [g | {"shop": j.business_name} for g in await jp_gifts(j, db)]
+    return sorted(out, key=lambda g: g["created_at"], reverse=True)
+
+
+@api.get("/master/v3/referrals")
+async def mp_refs(admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    out = []
+    for j in (await db.execute(select(Jeweller))).scalars().all():
+        out += [r | {"shop": j.business_name} for r in (await jp_referrals(j, db))["referrals"]]
+    return sorted(out, key=lambda r: r["joined"], reverse=True)
+
+
+@api.get("/master/v3/redemptions")
+async def mp_redemptions(status: str = "all", admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    q = select(Pickup, Customer, Jeweller.business_name).join(Customer, Customer.id == Pickup.customer_id).join(Jeweller, Jeweller.id == Pickup.jeweller_id)
+    if status != "all":
+        q = q.where(Pickup.status == status)
+    return [{"id": p.id, "shop": shop, "customer": _cname(c), "phone": c.phone, "item": p.item, "grams": r4(p.grams),
+             "making_charges": r2(p.making_charges or 0), "status": p.status, "created_at": p.created_at.isoformat() if p.created_at else "",
+             "collected_at": p.collected_at.isoformat() if p.collected_at else None}
+            for p, c, shop in (await db.execute(q.order_by(desc(Pickup.created_at)).limit(300))).all()]
+
+
+@api.get("/master/v3/settlement")
+async def mp_settlement(range: str = "30d", start: str = "", end: str = "", admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    s_, e_ = _range_bounds(range, start, end)
+    rows = (await db.execute(select(Transaction).where(Transaction.type.in_(BUY_TYPES), Transaction.status == "completed",
+                                                       Transaction.created_at >= s_, Transaction.created_at < e_))).scalars().all()
+    shops = {j.id: {"id": j.id, "shop": j.business_name, "orders": 0, "collected": 0.0, "gst": 0.0, "metal_cost": 0.0,
+                    "commission": 0.0, "gold_g": 0.0, "silver_g": 0.0} for j in (await db.execute(select(Jeweller))).scalars().all()}
+    for t in rows:
+        x = shops.get(t.jeweller_id)
+        if not x:
+            continue
+        comm = (t.extra or {}).get("commission") or 0
+        x["orders"] += 1
+        x["collected"] += t.total or 0
+        x["gst"] += t.gst or 0
+        x["commission"] += comm
+        x["metal_cost"] += (t.amount or 0) - comm
+        x[f"{_txn_metal(t)}_g"] += t.grams or 0
+    out = []
+    for x in shops.values():
+        for k in ("collected", "gst", "metal_cost", "commission"):
+            x[k] = r2(x[k])
+        x["gold_g"], x["silver_g"] = r4(x["gold_g"]), r4(x["silver_g"])
+        x["payable"] = x["commission"]
+        out.append(x)
+    return {"range": {"from": s_.isoformat(), "to": e_.isoformat()}, "shops": sorted(out, key=lambda r: -r["collected"]),
+            "totals": {k: r2(sum(x[k] for x in out)) for k in ("collected", "gst", "metal_cost", "commission")}}
+
+
+@api.get("/master/v3/pricing")
+async def mp_pricing(admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    out = []
+    for j in (await db.execute(select(Jeweller).order_by(Jeweller.created_at))).scalars().all():
+        out.append({"id": j.id, "shop": j.business_name, "status": j.status, "gold_commission_per_g": j.gold_commission_per_g or 0,
+                    "silver_commission_per_g": j.silver_commission_per_g or 0, "gold_buy": gold_rate(j.id)[0], "silver_buy": silver_rate(j.id)[0]})
+    return {"price": price_payload(), "shops": out}
+
+
+@api.put("/master/v3/pricing/{jid}")
+async def mp_pricing_set(jid: str, body: CommissionUpdate, admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    j = (await db.execute(select(Jeweller).where(Jeweller.id == jid))).scalar_one_or_none()
+    if not j:
+        raise HTTPException(404, "Shop not found")
+    j.gold_commission_per_g, j.silver_commission_per_g = r2(body.gold_per_g), r2(body.silver_per_g)
+    j.gold_buy_markup_pct = j.silver_buy_markup_pct = 0.0
+    await audit(db, "master", admin, "pricing.update", j.business_name, {"gold": body.gold_per_g, "silver": body.silver_per_g}, j.id)
+    await db.commit()
+    cache_margins(j)
+    return {"ok": True}
+
+
+@api.get("/master/v3/audit")
+async def mp_audit(admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    rows = (await db.execute(select(AuditLog).order_by(desc(AuditLog.created_at)).limit(300))).scalars().all()
+    return [{"id": a.id, "actor_type": a.actor_type, "actor": a.actor_name, "action": a.action, "target": a.target,
+             "detail": a.detail or {}, "created_at": a.created_at.isoformat() if a.created_at else ""} for a in rows]
+
+
 @app.get("/api/admin/master")
 async def master_panel():
     return FileResponse(TEMPLATES / "master_admin.html", media_type="text/html")
@@ -2372,7 +2911,14 @@ async def jeweller_panel():
 PANEL_ASSETS = {
     "panel.css": (TEMPLATES / "panel.css", "text/css"),
     "panel.js": (TEMPLATES / "panel.js", "application/javascript"),
+    "panel_ext.js": (TEMPLATES / "panel_ext.js", "application/javascript"),
+    "master_ext.js": (TEMPLATES / "master_ext.js", "application/javascript"),
     **{f"Inter-{w}.ttf": (ROOT_DIR.parent / "frontend" / "assets" / "fonts" / f"Inter-{w}.ttf", "font/ttf") for w in (400, 500, 600, 700)},
+    **{f"img-{k}.jpg": (ROOT_DIR.parent / "frontend" / "assets" / "dg" / v, "image/jpeg") for k, v in {
+        "banner-1": "banner-12.jpg", "banner-2": "banner-11.jpg", "heritage-necklace": "heritage-necklace-24k.jpg",
+        "minimalist-bangle": "minimalist-bangle.jpg", "rings": "categories/rings.jpg", "bangles": "categories/bangles.jpg",
+        "necklace": "categories/necklace.jpg", "chain": "categories/chain.jpg", "kada": "categories/kada.jpg",
+        "pendant-set": "categories/pendant-set.jpg", "watch": "categories/watch.jpg", "tanmaniya": "categories/tanmaniya.jpg"}.items()},
 }
 
 

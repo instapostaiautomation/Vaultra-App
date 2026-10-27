@@ -1,0 +1,59 @@
+{
+  "summary": "Iteration 9: tested Shop Catalogue (images, making %), uploads, App Content (banners + FAQ with live preview, synced to the customer app), the Shop SIP and Gold Goals tabs, all 19 Master tabs, tenant isolation, and a regression pass on earlier tabs. Backend: the new suite test_iteration9_catalogue_content_master.py passed 28/28, and the earlier test_panel_redesign_v3.py passed 36/36. UI checks were done at 1920 for the panels and 390x844 for the Expo app. Shop panel: 14 tabs, no JS page errors. Catalogue: all 8 thumbs load with 200 image/jpeg. Rate/g shows live + commission. The [data-making] select has 9/12/14/18/22/24; changing 12 to 24 sends PUT 200 and the price becomes metal*1.24 (66,715 -> 73,863). Invalid values (10/0/30/-5) return 400. Patel changing a Sharma product returns 404. The Add product modal (making % + photo upload) works: the uploaded image is served from /api/files/{id}, then the product was removed. App Content: #preview shows the 2 default banners and 2 dots when there are none, and draft preview updates while typing. Adding a banner with an uploaded image puts it in the list and in GET /api/content, and the customer app home carousel shows it with the image rendered. Adding an FAQ shows it on the app /faq screen. Deleting both via the UI returns content to empty (cleaned up). SIP tab: the KPIs, frequency bars, All/Active/Paused filters and search all work with seeded SIPs. Gold Goals lists a goal. Master: 19 tabs with a dark sidebar, all render with no JS errors and no 4xx. Pricing: saving 65/2 makes /api/price buy = base + 65 (silver +2), 1500 is rejected with a validation toast, and it was reset to 0. KYC approve and reject work. The Orders Bill modal works. Audit shows pricing.update, kyc.*, banner.*, faq.*, product.making and commission.update. A jeweller token gets 403 on /api/master/v3/*. Regression: Dashboard, Commission, Orders + View bill, Wallet & Holdings, Customers, KYC, Redemptions, Gifts, Referral and Settings all render. Issues found: product-detail ignores the uploaded image_url; banner link is not wired in the app; the shop preview ignores platform default banners; SIP frequency is not validated. No deprecated Expo packages detected.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/sips", "issue": "SipCreate.frequency is not validated: 'yearly' was accepted (200) and shows as 'Yearly' in both panels' SIP tabs; monthly_value falls back to 1x. Restrict it to Literal['daily','weekly','monthly']. Reference: server.py:470-472"},
+      {"endpoint": "POST /api/master/v3/kyc/{cid}/decide", "issue": "No check that kyc_status is 'pending' or that KYC was submitted, so the master can approve a customer who never submitted KYC via the API (the UI only shows buttons for pending). Reference: server.py:2798-2806"},
+      {"endpoint": "POST /api/jeweller/products, DELETE /api/jeweller/products/{id}", "issue": "Product add and remove are not written to the audit log. Only product.making is audited, so the master Audit Log misses catalogue additions and removals."},
+      {"endpoint": "GET /api/files/{id}", "issue": "Errors from object storage (_storage_get raise_for_status) are not handled and would return a raw 500. _image_upload reads the whole file before the 5 MB check. Minor."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "app/product-detail.tsx", "issue": "The product detail gallery always uses IMAGES[product.image] (category image) and ignores product.image_url. Products with an uploaded photo show the photo on the Jewellery card but a stock rings.jpg on the detail screen. Verified with an uploaded red image: the card shows red, the detail shows rings.jpg. Reference: app/product-detail.tsx:77,94,112", "testID": "product-detail-screen", "priority": "HIGH"}
+    ],
+    "integration_issues": [
+      {"flow": "Banner 'Links to' (buy/sip/jewellery/gift/refer)", "issue": "The link is saved by the panel and returned by /api/content, but BannerCarousel.tsx has no onPress, and its Banner type has no link field, so tapping a banner in the app does nothing. Reference: src/components/BannerCarousel.tsx:11,55", "affected_testIDs": ["hero-banner-carousel", "banner-{id}"]},
+      {"flow": "Shop App Content preview vs platform defaults", "issue": "When the master adds platform default banners (jeweller_id=null), /api/content?jeweller_id=<shop> returns them to the app, but /api/jeweller/v3/content returns [] and the shop preview still says 'App is showing the 2 default banners'. Verified via API, and the test banner was deleted afterwards. The preview should fall back to the platform banners the way /api/content does.", "affected_testIDs": ["#preview"]},
+      {"flow": "Customer Jewellery card price", "issue": "The card shows 'Gold value' = grams*live buy (no making), while the catalogue/total_price includes making %. The detail screen shows the correct Total Price (gold + making). Consider showing total_price on the card so it matches the shop catalogue price.", "affected_testIDs": ["product-card-{id}"]}
+    ],
+    "design_issues": [
+      {"screen": "Master panel", "issues": ["The nav item says 'Shops' but the page h2 says 'Jewellers'", "Audit Log action names are rendered as 'Faq.Delete', 'Kyc.Rejected', 'Pricing.Update' (title-cased raw keys). Use friendly labels.", "Gold Goals in the master panel calls goalsTable(list, false), so there is no Shop column, and _goals does not return shop. Cross-shop goals cannot be told apart. Reference: master_ext.js:115"]},
+      {"screen": "Shop SIP", "issues": ["'1 instalments paid' should be singular", "Cancelled SIPs are listed under 'All' but there is no Cancelled filter"]},
+      {"screen": "Customer FAQ", "issues": ["Adding a single shop FAQ replaces all 7 built-in FAQs. Confirm this is intended, or merge the shop FAQs with the defaults."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration9_catalogue_content_master.py",
+    "/app/backend/tests/test_panel_redesign_v3.py",
+    "/app/backend/tests/seed_sip_goal_iter9.py",
+    "/app/backend/tests/seed_kyc_iter9.py",
+    "/app/test_reports/pytest/pytest_iter9.xml"
+  ],
+  "action_items": [
+    "HIGH: In app/product-detail.tsx, use product.image_url (prefix EXPO_PUBLIC_BACKEND_URL when it starts with '/') for the gallery and thumbnails, falling back to IMAGES[product.image]",
+    "Wire banner.link in BannerCarousel.tsx with onPress to router.push for buy/sip/jewellery/gift/refer, and add 'link' to the Banner type",
+    "Make /api/jeweller/v3/content (or the shop preview) fall back to the platform banners and FAQs when the shop has none, to match /api/content",
+    "Validate SipCreate.frequency as Literal['daily','weekly','monthly']",
+    "In master KYC decide, require kyc_status == 'pending'",
+    "Audit product add and remove; show friendly action labels in the Audit Log; add a Shop column to master Gold Goals (return the shop name from _goals)",
+    "Optional: show total_price (incl. making) on the Jewellery card"
+  ],
+  "critical_code_review_comments": [
+    "BannerCarousel: the setInterval scroll index is not reset when the BANNERS length changes (idx could exceed the length briefly). Minor.",
+    "The generic DELETE /api/jeweller/v3/{kind}/{item_id} and /api/master/v3/{kind}/{item_id} catch-all routes could shadow future DELETE routes under /v3. Prefer explicit paths.",
+    "/api/content and /api/files are public (no auth). This is fine for banner images, but anyone with an id can read uploaded files."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration9_catalogue_content_master.py (new)",
+    "/app/backend/tests/seed_sip_goal_iter9.py (new)",
+    "/app/backend/tests/seed_kyc_iter9.py (new)"
+  ],
+  "success_rate": {"backend": "100% (64/64 pytest)", "frontend": "~92% (all requested flows work; product-detail image bug and the non-functional banner link)"},
+  "seed_data_creation": "For Meera Iyer (9834567892, Sharma): 3 SIPs (monthly Rs500 active with 1 run -> Rs515 SIP transaction; weekly Rs200 paused; 'yearly' Rs300 cancelled, created to prove the validation gap) and goal TEST_Wedding. Under Patel: customers 9000000901 'TEST Approve' (KYC approved) and 9000000902 'TEST Reject' (KYC rejected). Cleaned up: all test banners/FAQs (shop + platform), the TEST_UI Ring and TEST_Red Ring products (soft-deleted), Sharma commission reset to 0/0, making % restored to 12% for all products. Diya and Ananya are still pending KYC.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Panel logins use #le/#lp/#login-btn (shop) and #lu/#lp/#login-btn (master); tabs use [data-tab=...]. delContent uses confirm(), so auto-accept dialogs. Uploaded images can take ~1-3 s to load from object storage. Customer OTP verify body is {challenge_id, otp: demo_otp, tenant, first_name}. Rates are simulated/indicative (expected). /api/tenant/resolve 404 on the preview host is expected."
+}

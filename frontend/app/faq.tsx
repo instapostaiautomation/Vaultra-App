@@ -1,13 +1,15 @@
 import { useRouter } from "expo-router";
 import { ArrowLeft, ChevronDown } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { api } from "@/src/api";
+import { useApp } from "@/src/store/AppContext";
 import { colors, fonts, radius } from "@/src/theme";
 
-const FAQS = [
+const DEFAULT_FAQS = [
   ["What is Vaultra DigiGold?", "A digital way to buy 24K 99.9% pure LBMA-certified gold starting at ₹10. Every gram you buy is backed by physical gold stored in insured, audited vaults."],
   ["Where is my gold stored?", "Your gold is held in BRINK'S-secured vaults under an independent trustee. It is fully insured and audited periodically."],
   ["How is the price calculated?", "We stream a live 24K rate. When you buy, the rate is locked for 5 minutes. 3% GST is added on top of the gold value as per Indian tax law."],
@@ -18,6 +20,13 @@ const FAQS = [
 ];
 
 export default function Faq() {
+  const { tenant } = useApp();
+  const [FAQS, setFaqs] = useState<string[][]>(DEFAULT_FAQS);
+  useEffect(() => {
+    api<{ faqs: { question: string; answer: string }[] }>(`/content?jeweller_id=${tenant}`, { auth: "none" })
+      .then((r) => { if (r.faqs?.length) setFaqs(r.faqs.map((f) => [f.question, f.answer])); })
+      .catch(() => {});
+  }, [tenant]);
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [open, setOpen] = useState<number | null>(0);

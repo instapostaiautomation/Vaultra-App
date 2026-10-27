@@ -12,7 +12,7 @@ import { grams, inr, TENANT_NAME } from "@/src/format";
 import { useApp } from "@/src/store/AppContext";
 import { cardShadow, colors, fonts, radius } from "@/src/theme";
 
-export type Product = { id: string; name: string; category: string; grams: number; making_charges: number; image: string; tag: string };
+export type Product = { id: string; name: string; category: string; grams: number; making_charges: number; image: string; tag: string; image_url?: string; total_price?: number; making_pct?: number };
 
 export function ProductCard({ p, width, onRedeem }: { p: Product; width: number; onRedeem: (p: Product) => void }) {
   const { price } = useApp();
@@ -24,7 +24,7 @@ export function ProductCard({ p, width, onRedeem }: { p: Product; width: number;
       onPress={() => router.push({ pathname: "/product-detail", params: { id: p.id } })}
     >
       <View style={styles.imgWrap}>
-        <Image source={IMAGES[p.image]} style={{ width: "100%", height: "100%" }} contentFit="cover" transition={200} />
+        <Image source={p.image_url ? { uri: p.image_url.startsWith("/") ? (process.env.EXPO_PUBLIC_BACKEND_URL || "") + p.image_url : p.image_url } : IMAGES[p.image]} style={{ width: "100%", height: "100%" }} contentFit="cover" transition={200} />
         <View style={styles.tag}>
           <Text style={styles.tagText}>{p.tag}</Text>
         </View>
@@ -34,12 +34,12 @@ export function ProductCard({ p, width, onRedeem }: { p: Product; width: number;
           {p.name}
         </Text>
         <Text style={styles.meta} numberOfLines={1}>
-          {p.grams}g · 24K · MC {inr(p.making_charges, 0)}
+          {p.grams}g · 24K · Making {p.making_pct ?? 12}%
         </Text>
         <View style={styles.valueRow}>
           <Text style={styles.valueLabel}>Gold value</Text>
           <Text style={styles.value} numberOfLines={1}>
-            {price ? inr(p.grams * price.buy, 0) : "—"}
+            {p.total_price ? inr(p.total_price, 0) : price ? inr(p.grams * price.buy, 0) : "—"}
           </Text>
         </View>
         <View style={styles.cta}>

@@ -6,16 +6,22 @@
 <title>Vaultra · Master Console</title>
 <link rel="stylesheet" href="/api/admin/assets/panel.css">
 <script src="/api/admin/assets/panel.js"></script>
+<script src="/api/admin/assets/panel_ext.js"></script>
 </head>
-<body>
+<body class="lux">
 <div id="root"></div>
 <script>
 const api = makeApi('master_token');
 const S = { tab: localStorage.getItem('mp_tab') || 'overview', me: JSON.parse(localStorage.getItem('master_me') || 'null'), price: null,
   ov: null, r: { range: '30d' }, jewellers: null, rate: null, pools: null, invoices: null, txns: null, tf: { jeweller: '', type: 'all' }, customers: null, cs: '', cj: '' };
+</script>
+<script src="/api/admin/assets/master_ext.js"></script>
+<script>
 const NAV = [
-  ['Platform', [['overview', 'Overview', 'dashboard'], ['jewellers', 'Jewellers', 'store'], ['rates', 'Live Rates', 'rate']]],
-  ['Operations', [['pool', 'Gold Pool', 'pool'], ['invoices', 'Invoices', 'invoice'], ['transactions', 'Transactions', 'orders'], ['customers', 'Customers', 'customers']]],
+  ['Platform', [['overview', 'Overview', 'dashboard'], ['jewellers', 'Shops', 'store'], ['pricing', 'Pricing', 'commission'], ['rates', 'Market & Feed', 'rate'], ['catalogue', 'Catalogue', 'catalogue'], ['content', 'App Content', 'image']]],
+  ['Business', [['orders', 'Orders', 'orders'], ['customers', 'Customers', 'customers'], ['kyc', 'KYC', 'kyc'], ['transactions', 'Transactions', 'invoice'], ['settlement', 'Settlement', 'wallet']]],
+  ['Engagement', [['sips', 'SIP', 'refresh'], ['referrals', 'Referrals', 'referral'], ['gifts', 'Gifts', 'gifts'], ['redemptions', 'Redemptions', 'redeem'], ['goals', 'Gold Goals', 'target']]],
+  ['Treasury', [['pool', 'Gold Pool', 'pool'], ['invoices', 'Invoices', 'invoice'], ['audit', 'Audit Log', 'log']]],
 ];
 const TITLES = Object.fromEntries(NAV.flatMap(([, i]) => i.map(([k, l]) => [k, l])));
 const loading = '<div class="grid g4"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>';
@@ -60,7 +66,8 @@ function onRange(k, apply) { if (k === 'custom' && apply) { S.r.from = $('#r_fro
 function vOverview() {
   const head = `<div class="page-head"><div><h2>Platform overview</h2><p>Sales and holdings across every partner store.</p></div>${rangeBar(S.r, onRange)}</div>`;
   const o = S.ov; if (!o) return head + loading; const t = o.totals;
-  return head + `<div class="grid g4">
+  return `<div class="hero"><div><h2>Good ${new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, ${esc((S.me?.name || 'Admin').split(' ')[0])}</h2><p>Platform performance across ${t.jewellers} shops.</p></div>
+    <div style="display:flex;gap:36px;flex-wrap:wrap"><div><div class="hv num">${inr0(t.amount)}</div><div class="hl">Gross sales</div></div><div><div class="hv num">${g4(t.hold_gold_g)}</div><div class="hl">Gold in vaults</div></div><div><div class="hv num">${t.customers}</div><div class="hl">Customers</div></div></div></div>` + head + `<div class="grid g4">
     ${kpi('Gross sales', inr0(t.amount), `${t.orders} orders`, 'trend', 'green')}${kpi('Gold booked', g4(t.gold_g), 'in this period', 'coin')}
     ${kpi('Silver booked', g4(t.silver_g), 'in this period', 'coin', 'gray')}${kpi('Partner stores', `${t.active_jewellers}<small>/${t.jewellers}</small>`, `${t.customers} customers`, 'store', 'blue')}</div>
     <div class="grid section" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr)">
@@ -77,7 +84,7 @@ function vOverview() {
 /* jewellers */
 const loadJ = () => safe(async () => { S.jewellers = await api('/master/jewellers'); }, 'jewellers');
 function vJewellers() {
-  const head = `<div class="page-head"><div><h2>Jewellers</h2><p>Partner stores running their own branded app.</p></div><button class="btn primary" onclick="onboard()" id="onboard-btn">${icon('plus')} Onboard jeweller</button></div>`;
+  const head = `<div class="page-head"><div><h2>Shops</h2><p>Partner jewellers running their own branded app.</p></div><button class="btn primary" onclick="onboard()" id="onboard-btn">${icon('plus')} Onboard shop</button></div>`;
   if (!S.jewellers) return head + loading;
   return head + `<div class="card"><div class="table-wrap"><table><thead><tr><th>Store</th><th>Owner</th><th class="r">Customers</th><th class="r">Gold held</th><th>Commission</th><th>Domains</th><th>Status</th><th></th></tr></thead><tbody>
     ${S.jewellers.map((j) => `<tr><td><div style="display:flex;gap:10px;align-items:center"><div class="avatar" style="background:${esc(j.primary_color || '#FBF6EA')}22">${esc(initials(j.business_name))}</div><div><b>${esc(j.business_name)}</b><div class="sub">${esc(j.city || '')}</div></div></div></td>
@@ -177,8 +184,8 @@ function vCustomers() {
     </tbody></table></div></div>`;
 }
 
-const VIEWS = { overview: vOverview, jewellers: vJewellers, rates: vRates, pool: vPool, invoices: vInvoices, transactions: vTransactions, customers: vCustomers };
-const LOAD = { overview: loadOv, jewellers: loadJ, rates: loadRate, pool: loadPool, invoices: loadInv, transactions: loadTx, customers: loadC };
+const VIEWS = { overview: vOverview, jewellers: vJewellers, rates: vRates, pool: vPool, invoices: vInvoices, transactions: vTransactions, customers: vCustomers, pricing: vPricing, catalogue: vMCatalogue, content: vMContent, orders: vMOrders, kyc: vMKyc, settlement: vSettlement, sips: vMSips, referrals: vMRefs, gifts: vMGifts, redemptions: vMRed, goals: vMGoals, audit: vAudit };
+const LOAD = { overview: loadOv, jewellers: loadJ, rates: loadRate, pool: loadPool, invoices: loadInv, transactions: loadTx, customers: loadC, pricing: loadPricing, catalogue: loadMCat, content: loadMContent, orders: loadMOrders, kyc: loadMKyc, settlement: loadSettle, sips: loadMSips, referrals: loadMRefs, gifts: loadMGifts, redemptions: loadMRed, goals: loadMGoals, audit: loadAudit };
 function boot() { if (!VIEWS[S.tab]) S.tab = 'overview'; render(); LOAD[S.tab](); if (S.tab !== 'jewellers') api('/master/jewellers').then((j) => { S.jewellers = j; }).catch(() => {}); }
 setInterval(async () => { if (!localStorage.getItem('master_token')) return; try { S.price = await api('/price'); const c = $('#ratechip'); if (c) c.outerHTML = rateChip(S.price); } catch {} }, 5000);
 if (localStorage.getItem('master_token')) boot(); else render();
