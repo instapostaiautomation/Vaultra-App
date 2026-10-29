@@ -10,12 +10,12 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.brandSecondary,
-        tabBarInactiveTintColor: colors.muted,
-        tabBarLabelStyle: { fontFamily: fonts.semibold, fontSize: 11 },
+        tabBarActiveTintColor: colors.brandDeep,
+        tabBarInactiveTintColor: colors.mutedLight,
+        tabBarLabelStyle: { fontFamily: fonts.semibold, fontSize: 11, letterSpacing: 0.2 },
         tabBarStyle: {
           backgroundColor: colors.surface,
-          borderTopColor: colors.divider,
+          borderTopColor: colors.goldHairline,
           display: usesNativeTabs ? "flex" : undefined,
         },
       }}
@@ -23,7 +23,7 @@ export default function TabLayout() {
       <Tabs.Screen name="index" options={{ title: "Home", tabBarIcon: ({ color }) => <Home size={22} color={color} /> }} />
       <Tabs.Screen name="vault" options={{ title: "Vault", tabBarIcon: ({ color }) => <Vault size={22} color={color} /> }} />
       <Tabs.Screen name="jewellery" options={{ title: "Jewellery", tabBarIcon: ({ color }) => <Gem size={22} color={color} /> }} />
-      <Tabs.Screen name="sip" options={{ title: "SIP", tabBarIcon: ({ color }) => <RefreshCw size={22} color={color === colors.brandSecondary ? colors.brandSecondary : color} /> }} />
+      <Tabs.Screen name="sip" options={{ title: "SIP", tabBarIcon: ({ color }) => <RefreshCw size={22} color={color} /> }} />
     </Tabs>
   );
 }

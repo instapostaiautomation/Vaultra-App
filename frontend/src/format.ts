@@ -49,6 +49,8 @@ export const TXN_LABEL: Record<string, string> = {
   gift_received: "Gift Received",
 };
 
+export const TENANT_PHONE: Record<string, string> = {};
+
 export const TENANT_NAME: Record<string, string> = {
   all: "All Stores",
   vaultra: "Vaultra Gold Bullion",

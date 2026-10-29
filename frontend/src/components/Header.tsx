@@ -1,10 +1,12 @@
 import { useRouter } from "expo-router";
-import { ArrowLeft, Bell, Coins, User } from "lucide-react-native";
-import React, { useEffect } from "react";
+import { LinearGradient } from "expo-linear-gradient";
+import { ArrowLeft, Bell, Coins, Menu, User } from "lucide-react-native";
+import React, { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming, Easing } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { SideMenu } from "@/src/components/SideMenu";
 import { grams, inr } from "@/src/format";
 import { useApp } from "@/src/store/AppContext";
 import { colors, fonts, radius } from "@/src/theme";
@@ -40,9 +42,9 @@ export function LiveTicker({ testID = "live-gold-ticker" }: { testID?: string })
 
 export function LogoMark({ size = 36 }: { size?: number }) {
   return (
-    <View style={[styles.logoMark, { width: size, height: size, borderRadius: size * 0.3 }]}>
-      <Coins size={size * 0.55} color={colors.onBrandPrimary} strokeWidth={2.2} />
-    </View>
+    <LinearGradient colors={[colors.goldSheen, colors.brandPrimary, colors.brandDeep]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.logoMark, { width: size, height: size, borderRadius: size * 0.3 }]}>
+      <Coins size={size * 0.52} color={colors.onBrandPrimary} strokeWidth={2.2} />
+    </LinearGradient>
   );
 }
 
@@ -50,17 +52,22 @@ export function HomeHeader() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { token, vault, user, unreadNotifs, tenantName } = useApp();
+  const [menu, setMenu] = useState(false);
   const g = vault?.user.gold_grams ?? 0;
   const displayName = user?.first_name || user?.name?.split(" ")[0] || "Profile";
 
   return (
     <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
       <View style={styles.headRow}>
-        <LogoMark />
+        <Pressable onPress={() => setMenu(true)} style={styles.menuBtn} hitSlop={6} testID="header-menu-button">
+          <Menu size={22} color={colors.onSurface} strokeWidth={1.9} />
+        </Pressable>
+        <LogoMark size={34} />
         <View style={{ flex: 1 }}>
-          <Text style={styles.brand} numberOfLines={1}>
+          {token && user ? <Text style={styles.eyebrow} numberOfLines={1}>{tenantName || "Digital Gold"}</Text> : null}
+          <Text style={styles.brand} numberOfLines={2}>
             {token && user ? (
-              <>Hi, <Text style={{ color: colors.brandSecondary }}>{displayName}</Text></>
+              <>Hi, <Text style={{ color: colors.brandDeep }}>{displayName}</Text></>
             ) : (
               <>{tenantName || "Digital Gold"}</>
             )}
@@ -95,11 +102,14 @@ export function HomeHeader() {
       </View>
       <View style={styles.pillsRow}>
         <LiveTicker />
-        <Pressable testID="vault-balance-pill" onPress={() => router.push("/vault")} style={styles.balancePill}>
-          <Text style={styles.balanceGrams}>{grams(g)}</Text>
-          <Text style={styles.balanceInr}>≈ {inr(vault?.current_value ?? 0)}</Text>
-        </Pressable>
+        {token ? (
+          <Pressable testID="vault-balance-pill" onPress={() => router.push("/vault")} style={styles.balancePill}>
+            <Text style={styles.balanceGrams}>{grams(g)}</Text>
+            <Text style={styles.balanceInr}>≈ {inr(vault?.current_value ?? 0)}</Text>
+          </Pressable>
+        ) : null}
       </View>
+      <SideMenu visible={menu} onClose={() => setMenu(false)} />
     </View>
   );
 }
@@ -126,10 +136,12 @@ export function ScreenHeader({ title, subtitle, right, showBack = false }: { tit
 }
 
 const styles = StyleSheet.create({
-  header: { backgroundColor: colors.surface, paddingHorizontal: 16, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.divider },
+  header: { backgroundColor: colors.surface, paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.goldHairline },
   headRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  logoMark: { backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" },
-  brand: { fontFamily: fonts.black, fontSize: 18, letterSpacing: -0.6, color: colors.onSurface },
+  menuBtn: { width: 40, height: 44, alignItems: "flex-start", justifyContent: "center" },
+  logoMark: { alignItems: "center", justifyContent: "center" },
+  eyebrow: { fontFamily: fonts.semibold, fontSize: 10, letterSpacing: 1.2, color: colors.brandDeep, textTransform: "uppercase" },
+  brand: { fontFamily: fonts.bold, fontSize: 16, lineHeight: 20, letterSpacing: -0.3, color: colors.onSurface },
   profileBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -166,7 +178,9 @@ const styles = StyleSheet.create({
     height: 36,
     paddingHorizontal: 12,
     borderRadius: radius.pill,
-    backgroundColor: colors.surfaceTertiary,
+    backgroundColor: colors.brandTertiary,
+    borderWidth: 1,
+    borderColor: colors.goldHairline,
     overflow: "hidden",
   },
   tickerLabel: { fontFamily: fonts.medium, fontSize: 11, color: colors.muted },
@@ -176,13 +190,13 @@ const styles = StyleSheet.create({
     height: 36,
     paddingHorizontal: 12,
     borderRadius: radius.pill,
-    backgroundColor: colors.brandTertiary,
+    backgroundColor: colors.surfaceInverse,
     borderWidth: 1,
-    borderColor: "#F0E2B0",
+    borderColor: colors.goldHairline,
     justifyContent: "center",
   },
-  balanceGrams: { fontFamily: fonts.bold, fontSize: 12, color: colors.onBrandTertiary, letterSpacing: -0.2 },
-  balanceInr: { fontFamily: fonts.medium, fontSize: 10, color: colors.onBrandTertiary },
+  balanceGrams: { fontFamily: fonts.bold, fontSize: 12, color: colors.brandPrimary, letterSpacing: -0.2 },
+  balanceInr: { fontFamily: fonts.medium, fontSize: 10, color: colors.goldSheen },
   screenTitle: { fontFamily: fonts.black, fontSize: 26, letterSpacing: -0.8, color: colors.onSurface },
   screenSub: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted, marginTop: 2 },
   backBtn: { width: 44, height: 44, justifyContent: "center", alignItems: "center" },

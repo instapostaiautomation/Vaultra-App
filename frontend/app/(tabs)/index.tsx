@@ -1,13 +1,12 @@
-import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { ArrowRight, Gift, HelpCircle, Users } from "lucide-react-native";
+import { ArrowRight, CircleDot, Crown, Diamond, Disc3, Gem, Gift, HelpCircle, Link2, Users, Watch } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api } from "@/src/api";
-import { CATEGORIES, IMAGES } from "@/src/assets";
+import { CATEGORIES } from "@/src/assets";
 import { BannerCarousel } from "@/src/components/BannerCarousel";
 import { BuyWidget } from "@/src/components/BuyWidget";
 import { HomeHeader } from "@/src/components/Header";
@@ -18,6 +17,13 @@ import { Product, ProductCard, RedeemSheet } from "@/src/components/Product";
 import { usesNativeTabs } from "@/src/navigation";
 import { useApp } from "@/src/store/AppContext";
 import { colors, fonts } from "@/src/theme";
+
+const CAT_ICONS: Record<string, any> = { CircleDot, Disc3, Gem, Link2, Crown, Diamond, Watch };
+
+function CatIcon({ name }: { name: string }) {
+  const Icon = CAT_ICONS[name] || Gem;
+  return <Icon size={26} color={colors.brandDeep} strokeWidth={1.6} />;
+}
 
 export default function Home() {
   const insets = useSafeAreaInsets();
@@ -88,7 +94,7 @@ export default function Home() {
               style={styles.cat}
             >
               <View style={styles.catImg}>
-                <Image source={IMAGES[c.image]} style={StyleSheet.absoluteFill} contentFit="cover" />
+                <CatIcon name={c.icon} />
               </View>
               <Text style={styles.catLabel} numberOfLines={1}>
                 {c.label}
@@ -146,18 +152,20 @@ export default function Home() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceSecondary },
-  sectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, marginTop: 32, marginBottom: 12 },
-  sectionTitle: { fontFamily: fonts.black, fontSize: 20, letterSpacing: -0.6, color: colors.onSurface },
+  sectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, marginTop: 32, marginBottom: 14 },
+  sectionTitle: { fontFamily: fonts.bold, fontSize: 20, letterSpacing: -0.4, color: colors.onSurface },
   seeAll: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 44 },
-  seeAllText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.brandSecondary },
-  cat: { alignItems: "center", width: 80 },
-  catImg: { width: 68, height: 68, borderRadius: 34, overflow: "hidden", borderWidth: 2, borderColor: colors.brandPrimary, backgroundColor: colors.surfaceTertiary },
-  catLabel: { fontFamily: fonts.medium, fontSize: 12, color: colors.onSurface, marginTop: 6 },
+  seeAllText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.brandDeep },
+  cat: { alignItems: "center", width: 76 },
+  catImg: { width: 64, height: 64, borderRadius: 18, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.goldHairline, backgroundColor: colors.brandTertiary },
+  catLabel: { fontFamily: fonts.medium, fontSize: 12, color: colors.onSurface, marginTop: 8 },
   sipPromo: {
     marginHorizontal: 16,
-    marginTop: 12,
+    marginTop: 16,
     backgroundColor: colors.surfaceInverse,
-    borderRadius: 14,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.goldHairline,
     padding: 20,
     flexDirection: "row",
     alignItems: "center",

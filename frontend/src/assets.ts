@@ -14,13 +14,13 @@ export const IMAGES: Record<string, any> = {
 };
 
 export const CATEGORIES = [
-  { id: "rings", label: "Rings", image: "rings" },
-  { id: "bangles", label: "Bangles", image: "bangles" },
-  { id: "necklaces", label: "Necklaces", image: "necklace" },
-  { id: "chains", label: "Chains", image: "chain" },
-  { id: "kadas", label: "Kadas", image: "kada" },
-  { id: "pendant-sets", label: "Pendant Sets", image: "pendant-set" },
-  { id: "watches", label: "Watches", image: "watch" },
+  { id: "rings", label: "Rings", image: "rings", icon: "CircleDot" },
+  { id: "bangles", label: "Bangles", image: "bangles", icon: "Disc3" },
+  { id: "necklaces", label: "Necklaces", image: "necklace", icon: "Gem" },
+  { id: "chains", label: "Chains", image: "chain", icon: "Link2" },
+  { id: "kadas", label: "Kadas", image: "kada", icon: "Crown" },
+  { id: "pendant-sets", label: "Pendant Sets", image: "pendant-set", icon: "Diamond" },
+  { id: "watches", label: "Watches", image: "watch", icon: "Watch" },
 ];
 
 export const BANNERS = [

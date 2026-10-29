@@ -56,9 +56,17 @@ export function BannerCarousel() {
       >
         {BANNERS.map((b) => (
           <Pressable key={b.id} style={[styles.banner, { width }]} testID={`banner-${b.id}`} disabled={!b.link || !LINK_ROUTES[b.link]} onPress={() => b.link && LINK_ROUTES[b.link] && router.push(LINK_ROUTES[b.link] as any)}>
-            <Image source={b.image_url ? { uri: b.image_url.startsWith("/") ? BASE + b.image_url : b.image_url } : IMAGES[b.image || "banner-1"]} style={StyleSheet.absoluteFill} contentFit="cover" transition={250} />
-            <LinearGradient colors={["transparent", "rgba(17,24,39,0.88)"]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0.15 }} end={{ x: 0, y: 1 }} />
-            <View style={styles.bannerBody}>
+            {(() => {
+              const src = b.image_url ? { uri: b.image_url.startsWith("/") ? BASE + b.image_url : b.image_url } : IMAGES[b.image || "banner-1"];
+              return (
+                <>
+                  <Image source={src} style={StyleSheet.absoluteFill} contentFit="cover" blurRadius={18} />
+                  <Image source={src} style={StyleSheet.absoluteFill} contentFit="contain" transition={250} />
+                </>
+              );
+            })()}
+            {b.image_url ? null : <LinearGradient colors={["transparent", "rgba(17,24,39,0.88)"]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0.15 }} end={{ x: 0, y: 1 }} />}
+            <View style={[styles.bannerBody, b.image_url ? { display: "none" } : null]}>
               {b.eyebrow ? (
                 <View style={styles.eyebrow}>
                   <Text style={styles.eyebrowText}>{b.eyebrow}</Text>
@@ -81,11 +89,11 @@ export function BannerCarousel() {
 
 const styles = StyleSheet.create({
   banner: {
-    height: 200,
-    borderRadius: radius.md,
+    aspectRatio: 2.2,
+    borderRadius: 18,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.goldHairline,
     backgroundColor: colors.surfaceInverse,
   },
   bannerBody: { position: "absolute", left: 16, right: 16, bottom: 16 },

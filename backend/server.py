@@ -123,7 +123,7 @@ def price_payload(jid: Optional[str] = None):
     return {
         "purity": "24K (99.9%)", "buy": buy, "sell": sell,
         "change": change, "change_pct": r2(change / PRICE["open"] * 100) if PRICE["open"] else 0,
-        "direction": "up" if PRICE["base"] >= PRICE["prev"] else "down",
+        "direction": "up" if PRICE["base"] >= PRICE["open"] else "down",
         "gst_rate": GST_RATE, "updated_at": PRICE["updated_at"] or now_iso(),
         "source": RATE_FEED["source"], "live": live,
         "base_rate": r2(PRICE["base"]),
@@ -131,7 +131,7 @@ def price_payload(jid: Optional[str] = None):
             "buy": silver_buy, "sell": silver_sell,
             "change": silver_change,
             "change_pct": r2(silver_change / SILVER_PRICE["open"] * 100) if SILVER_PRICE["open"] else 0,
-            "direction": "up" if SILVER_PRICE["base"] >= SILVER_PRICE["prev"] else "down",
+            "direction": "up" if SILVER_PRICE["base"] >= SILVER_PRICE["open"] else "down",
             "base_rate": r2(SILVER_PRICE["base"]),
         },
     }
@@ -663,7 +663,7 @@ async def jeweller_config(jeweller_id: str, db: AsyncSession = Depends(get_db)):
 async def list_jewellers_public(db: AsyncSession = Depends(get_db)):
     """Public list of active jewellers for app selection."""
     result = await db.execute(select(Jeweller).where(Jeweller.status == "active").order_by(Jeweller.business_name))
-    return [{"id": j.id, "business_name": j.business_name, "city": j.city, "logo_url": j.logo_url} for j in result.scalars().all()]
+    return [{"id": j.id, "business_name": j.business_name, "city": j.city, "logo_url": j.logo_url, "support_phone": j.phone} for j in result.scalars().all()]
 
 
 # ─── Products (Public) ────────────────────────────────────────────────────────
@@ -1692,7 +1692,7 @@ async def jeweller_products(jeweller: Jeweller = Depends(get_current_jeweller), 
         "id": p.id, "name": p.name, "category": p.category, "grams": p.grams,
         "making_charges": p.making_charges, "image_url": p.image_url, "tag": p.tag,
         "description": p.description, "is_active": p.is_active,
-        "gold_value": r2(p.grams * buy), "total_price": r2(p.grams * buy + p.making_charges),
+        "gold_value": r2(p.grams * buy), "total_price": r2(sum(product_making(p, buy)[:2])),
     } for p in result.scalars().all()]
 
 

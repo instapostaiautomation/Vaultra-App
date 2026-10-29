@@ -24,7 +24,7 @@ export function ProductCard({ p, width, onRedeem }: { p: Product; width: number;
       onPress={() => router.push({ pathname: "/product-detail", params: { id: p.id } })}
     >
       <View style={styles.imgWrap}>
-        <Image source={p.image_url ? { uri: p.image_url.startsWith("/") ? (process.env.EXPO_PUBLIC_BACKEND_URL || "") + p.image_url : p.image_url } : IMAGES[p.image]} style={{ width: "100%", height: "100%" }} contentFit="cover" transition={200} />
+        <Image source={p.image_url ? { uri: p.image_url.startsWith("/") ? (process.env.EXPO_PUBLIC_BACKEND_URL || "") + p.image_url : p.image_url } : IMAGES[p.image]} style={{ width: "100%", height: "100%" }} contentFit="contain" transition={200} />
         {p.tag ? (
           <View style={styles.tag}>
             <Text style={styles.tagText}>{p.tag}</Text>
@@ -141,10 +141,10 @@ export function RedeemSheet({ target, onClose }: { target: Target | null; onClos
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, overflow: "hidden", ...cardShadow },
-  imgWrap: { width: "100%", height: 140, backgroundColor: colors.surfaceTertiary, overflow: "hidden" },
-  tag: { position: "absolute", top: 8, left: 8, backgroundColor: colors.surface, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 3 },
-  tagText: { fontFamily: fonts.bold, fontSize: 10, color: colors.onBrandTertiary, letterSpacing: 0.4 },
+  card: { backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.goldHairline, overflow: "hidden", ...cardShadow },
+  imgWrap: { width: "100%", aspectRatio: 1, padding: 8, backgroundColor: colors.brandTertiary, overflow: "hidden" },
+  tag: { position: "absolute", top: 8, left: 8, backgroundColor: colors.surfaceInverse, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 3 },
+  tagText: { fontFamily: fonts.bold, fontSize: 10, color: colors.brandPrimary, letterSpacing: 0.6 },
   body2: { padding: 12, flex: 1 },
   name: { fontFamily: fonts.bold, fontSize: 14, lineHeight: 18, height: 36, color: colors.onSurface, letterSpacing: -0.3 },
   meta: { fontFamily: fonts.regular, fontSize: 11, lineHeight: 16, color: colors.muted, marginTop: 6 },

@@ -110,3 +110,8 @@ Multi-tenant white-label digital gold platform. Vaultra onboards jewellery shop 
 - Seed is idempotent (skips if master admin exists). init_db only creates/adds, never deletes.
 - Backup: /app/scripts/backup_db.sh -> /app/backups (keeps last 14). Run before every migration.
 - LIVE RATES: hosted MT5 JSON feed via MT5_RATES_URL + MT5_API_KEY (takes priority over MetaApi). Verified live: GOLDDEC per 10g, SILVERDEC per kg -> per gram. httpx logs silenced (key in URL). Order booking API (/order, /positions, /close_order) available on same host, not yet integrated.
+
+## Customer app luxe redesign (Jun 2026, iteration 12)
+- Left-top side drawer (src/components/SideMenu.tsx): profile block, Vault & Redeem, Catalogue, SIP, Gift, Refer, Notifications*, KYC*, FAQ, Logout*; footer jeweller support_phone (from /jewellers/list = jeweller.phone) + Powered by.
+- Wallet pill only when signed in. Category tiles = lucide icons. Product/detail images contentFit contain on cream. Banners: blurred backdrop + contain; uploaded banners show no text overlay.
+- Dark luxe price cards; price alert banner only for user's triggered alerts; price direction vs open; jeweller product total uses making %.

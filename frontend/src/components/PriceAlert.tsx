@@ -11,19 +11,21 @@ import { colors, fonts, radius } from "@/src/theme";
 
 // ----- Banner on home when price drops -----
 export function PriceAlertBanner() {
-  const { price, tenantName } = useApp();
+  const { price, tenantName, token, alerts, tenant } = useApp();
   const [hidden, setHidden] = useState(false);
-  if (!price || (price.change_pct ?? 0) >= 0 || hidden) return null;
+  const hit = alerts.find((a) => a.status === "triggered" && a.tenant === tenant);
+  if (!token || !hit || !price || hidden) return null;
+  const silver = (hit as any).metal === "silver";
   return (
     <View style={styles.banner} testID="price-alert-banner">
       <View style={styles.bannerIcon}>
         <TrendingDown size={22} color={colors.success} />
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={styles.bannerTitle}>24K dropped below ₹{(Math.ceil(price.buy / 5) * 5).toLocaleString()}</Text>
-        <Text style={styles.bannerSub}>Now {inr(price.buy)}/g · {tenantName}</Text>
+        <Text style={styles.bannerTitle}>{silver ? "Silver" : "24K"} dropped below {inr(hit.target, 0)}</Text>
+        <Text style={styles.bannerSub}>Now {inr(silver ? price.silver?.buy ?? 0 : price.buy)}/g · {tenantName}</Text>
       </View>
-      <Pressable onPress={() => setHidden(true)} hitSlop={12}>
+      <Pressable onPress={() => setHidden(true)} hitSlop={12} testID="price-alert-banner-close">
         <Text style={{ fontSize: 18, color: colors.muted }}>×</Text>
       </Pressable>
     </View>

@@ -63,6 +63,10 @@ const light = {
   giftThanksAccent: "#86EFAC",
   giftCongrats: "#111827",
   giftCongratsAccent: "#D4AF37",
+  inkSoft: "#1F2937",
+  goldSheen: "#F3E3A6",
+  goldHairline: "rgba(212,175,55,0.35)",
+  silverTone: "#E5E7EB",
 };
 
 const dark: typeof light = {
@@ -123,6 +127,10 @@ const dark: typeof light = {
   giftThanksAccent: "#86EFAC",
   giftCongrats: "#0F172A",
   giftCongratsAccent: "#D4AF37",
+  inkSoft: "#1F2937",
+  goldSheen: "#F3E3A6",
+  goldHairline: "rgba(212,175,55,0.35)",
+  silverTone: "#E5E7EB",
 };
 
 export type ThemeColors = typeof light;

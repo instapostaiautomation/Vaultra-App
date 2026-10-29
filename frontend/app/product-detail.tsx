@@ -38,7 +38,6 @@ export default function ProductDetailScreen() {
   const { width } = useWindowDimensions();
   const [product, setProduct] = useState<ProductDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeImg, setActiveImg] = useState(0);
   const [target, setTarget] = useState<any>(null);
 
   useEffect(() => {
@@ -71,10 +70,10 @@ export default function ProductDetailScreen() {
 
   const imgW = Math.min(width, 600);
   const goldValue = price ? product.grams * price.buy : product.gold_value;
-  const totalPrice = goldValue + product.making_charges;
+  const pct = (product as any).making_pct as number | undefined;
+  const making = pct != null ? goldValue * pct / 100 : product.making_charges;
+  const totalPrice = goldValue + making;
 
-  // Generate multiple image views from the same product image (simulating different angles)
-  const productImages = [product.image, product.image, product.image, product.image];
   const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_URL || "";
   const uploaded = (product as any).image_url as string | undefined;
   const imgSrc = (img: string) => (uploaded ? { uri: uploaded.startsWith("/") ? BASE_URL + uploaded : uploaded } : IMAGES[img]);
@@ -92,11 +91,11 @@ export default function ProductDetailScreen() {
 
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 100 }} showsVerticalScrollIndicator={false}>
         {/* Image Gallery */}
-        <View style={[styles.imageContainer, { height: imgW * 0.85 }]}>
+        <View style={[styles.imageContainer, { height: imgW * 0.9 }]}>
           <Image
-            source={imgSrc(productImages[activeImg])}
-            style={StyleSheet.absoluteFill}
-            contentFit="cover"
+            source={imgSrc(product.image)}
+            style={{ position: "absolute", top: 16, left: 16, right: 16, bottom: 16 }}
+            contentFit="contain"
             transition={300}
           />
           {product.tag ? (
@@ -104,19 +103,6 @@ export default function ProductDetailScreen() {
               <Text style={styles.tagText}>{product.tag}</Text>
             </View>
           ) : null}
-        </View>
-
-        {/* Image Thumbnails */}
-        <View style={styles.thumbRow}>
-          {productImages.map((img, i) => (
-            <Pressable
-              key={i}
-              onPress={() => setActiveImg(i)}
-              style={[styles.thumb, activeImg === i && styles.thumbActive]}
-            >
-              <Image source={imgSrc(img)} style={{ width: "100%", height: "100%" }} contentFit="cover" />
-            </Pressable>
-          ))}
         </View>
 
         {/* Product Info */}
@@ -144,8 +130,8 @@ export default function ProductDetailScreen() {
               <Text style={styles.priceValue}>{inr(goldValue, 0)}</Text>
             </View>
             <View style={styles.priceRow}>
-              <Text style={styles.priceLabel}>Making Charges</Text>
-              <Text style={styles.priceValue}>{inr(product.making_charges, 0)}</Text>
+              <Text style={styles.priceLabel}>Making Charges{pct != null ? ` (${pct}%)` : ""}</Text>
+              <Text style={styles.priceValue}>{inr(making, 0)}</Text>
             </View>
             <View style={styles.divider} />
             <View style={styles.priceRow}>
@@ -230,7 +216,7 @@ const styles = StyleSheet.create({
   headerTitle: { flex: 1, fontFamily: fonts.bold, fontSize: 17, color: colors.onSurface, textAlign: "center" },
   imageContainer: {
     width: "100%",
-    backgroundColor: colors.surfaceTertiary,
+    backgroundColor: colors.brandTertiary,
     overflow: "hidden",
   },
   tagBadge: {
@@ -243,25 +229,6 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   tagText: { fontFamily: fonts.bold, fontSize: 11, color: colors.onBrandPrimary, letterSpacing: 0.5 },
-  thumbRow: {
-    flexDirection: "row",
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  thumb: {
-    width: 64,
-    height: 64,
-    borderRadius: 10,
-    overflow: "hidden",
-    borderWidth: 2,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceTertiary,
-  },
-  thumbActive: {
-    borderColor: colors.brandPrimary,
-    borderWidth: 2.5,
-  },
   info: { paddingHorizontal: 16 },
   productName: { fontFamily: fonts.black, fontSize: 24, letterSpacing: -0.8, color: colors.onSurface, marginBottom: 8 },
   categoryRow: { flexDirection: "row", gap: 8, marginBottom: 16 },

@@ -1,0 +1,47 @@
+{
+  "summary": "Iteration 12: tested the luxe customer-app redesign at 390x844 (plus a 375x667 check) and ran a quick backend regression (11/11 pass). Everything requested works: logged-out home has no vault-balance-pill; header-menu-button sits top-left; live MT5 ticker and gold/silver price cards render. Side drawer opens and closes via backdrop and the X button. Logged-out it shows Welcome/Sign in (-> /login); vault, redeem, jewellery, sip, gift, refer and faq all route correctly. Footer shows +91 99990 00001 and 'Powered by Sharma Gold & Jewellers'. After mock-OTP login: pill visible (0.2875g), drawer shows AS / Aarav Sharma / phone, plus notifs, kyc (Verified for Aarav, 'In review' for pending Diya) and logout. Logout hides the pill and the state survives reload. Category tiles use icons only (no img); category-rings opens /jewellery?category=rings filtered to 1 item. Catalogue and product detail images use object-fit contain on a cream square with no cropping. Detail making row shows 'Making Charges (12%)' and gold 101,832 + making 12,220 = total 114,052. Banner is 16:9 (1.778) with contain over a blurred cover layer. Regression passes: BuyWidget buy of Rs500 -> confirm -> success, pill 0.2875 -> 0.3222g; vault portfolio/passbook; coin redeem sheet with correct balance; SIP, profile/KYC, gift, referral code, notifications, FAQ. No page errors. Only minor issues found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/price", "issue": "'direction' compares the current tick with the previous tick, but 'change'/'change_pct' compare with the open price, so they can disagree. Observed: silver change -1.98 / -1.02% with direction 'up'. The frontend uses change_pct so users don't see it, but the API is inconsistent."},
+      {"endpoint": "GET /api/price (after backend reload)", "issue": "Flaky: uvicorn --reload watches /app/backend/tests, so editing a test file restarted the backend. For a few seconds after the restart, /api/price did not return source=mt5/live=true, and the first test run failed. It passed on retry. Customers would see the fallback rate briefly after any backend restart."},
+      {"endpoint": "GET /api/jeweller/products", "issue": "total_price uses p.grams*buy + the fixed p.making_charges, while the customer /api/products uses making_pct. The jeweller panel price can therefore differ from what customers see (server.py:1695)."},
+      {"endpoint": "POST /api/auth/otp/verify", "issue": "Only the exact demo_otp is accepted (a wrong code returns 401). test_credentials.md and the review request say 'any 6-digit code works', which is wrong. Fix the docs; the behaviour itself is correct."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "product-detail thumbnails", "issue": "imgSrc(img) ignores the img argument when product.image_url exists, so all 4 thumbnails show the same uploaded image and tapping them does nothing visible. Thumbnails also have no testID. Reference: /app/frontend/app/product-detail.tsx:82,113-119", "testID": "product-detail-screen", "priority": "LOW"},
+      {"component": "SideMenu phone", "issue": "The spec asks for a masked phone, but maskPhone() only formats it (+91 98765 43210), so the full number shows in the drawer. Reference: /app/frontend/src/format.ts:35", "testID": "side-menu-profile", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Home header (logged out, 390px)", "issues": ["The brand name is cut off as 'Sharma Gold & J…'. adjustsFontSizeToFit does nothing on web and Android. Consider a smaller font or two lines (Header.tsx:68)."]},
+      {"screen": "Home banner carousel", "issues": ["Banner images are 1187x400 (about 2.97:1) inside a 16:9 frame. With contain, about 40% of the height is blurred filler, and the eyebrow/title/gradient overlay covers the lower part of the image, including the image's own text (e.g. 'SAVE 20%' collides with the 'LBMA CERTIFIED' pill). Several different banner titles use the same 'Flash Sale Friday' image. Either match the frame to the image ratio (~3:1) or move the text below the image."]},
+      {"screen": "Home PriceAlertBanner", "issues": ["Whenever change_pct < 0 it shows a made-up '24K dropped below ₹X' (buy price rounded up to the next ₹5) to every user, including logged-out users with no alert set. Its close '×' has no testID or 44px target (PriceAlert.tsx:16-27)."]},
+      {"screen": "Side drawer", "issues": ["'Redeem & Pickup' goes to /vault, the same place as 'My Vault'. Consider opening the coin-redeem sheet directly.", "On a 375x667 screen the item list scrolls behind the fixed footer (Help & FAQs and Logout need a scroll). It works, but the last item could get bottom padding or a fade."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration12_customer_ui.py", "/app/test_reports/pytest/iteration12.xml"],
+  "action_items": [
+    "LOW: product-detail.tsx: make the thumbnails use the product's own image list (or hide them when there is only one image) and add testIDs.",
+    "LOW: Header brand name is cut off at 390px when logged out; reduce the font size or allow two lines.",
+    "LOW: BannerCarousel: match the frame ratio to the uploaded banners (~3:1) or move the title below the image, so overlay text doesn't collide with text baked into the image.",
+    "LOW: PriceAlertBanner: show it only for real triggered alerts, or for logged-in users; add a testID and a 44px close target.",
+    "LOW: /api/price 'direction' should match the sign of 'change'; /api/jeweller/products total_price should use making_pct.",
+    "LOW: Update test_credentials.md: the OTP must be the returned demo_otp, not any 6-digit code.",
+    "OPTIONAL: SideMenu 'Redeem & Pickup' could open the coin-redeem sheet; actually mask the phone if required."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 2951 lines; split it into routers (auth, orders, products, jeweller, master).",
+    "product-detail back button calls router.back() with no canGoBack fallback; a deep link straight to /product-detail has nowhere to go back to (ScreenHeader already handles this).",
+    "SideMenu uses setTimeout(router.push, 10) after onClose; it works on web, but on native the Modal may still be closing. Consider pushing after the Modal's onDismiss."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration12_customer_ui.py (new)"],
+  "success_rate": {"backend": "100% (11/11; price-live test flaky once after backend auto-reload)", "frontend": "100% of requested flows pass; minor design issues only"},
+  "seed_data_creation": "Bought Rs100 (pytest) + Rs500 (UI) of gold with mock payment for 9876543210 (Aarav); vault now ~0.32g+.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Customer drawer testIDs: header-menu-button, side-menu, side-menu-{profile,vault,redeem,jewellery,sip,gift,refer,faq,notifs,kyc,logout,contact,close,backdrop}. Login: login-phone-input -> login-send-otp-button -> login-autofill-otp -> login-verify-button. The OTP must equal demo_otp. Buy: buy-input -> buy-proceed-button -> confirm-buy-button -> buy-done-button. The mock-confirm API needs body {method, success:true}; orders/buy needs {quote_id, mode, value} with quote_id from POST /api/quote. The backend auto-reloads when files in backend/tests change, so wait about 6s before running price tests. The browser tool sometimes fails to launch (SIGSEGV); just retry."
+}

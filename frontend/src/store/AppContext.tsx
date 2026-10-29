@@ -3,7 +3,7 @@ import { AppState, Platform } from "react-native";
 
 import { api, setToken } from "@/src/api";
 import { storage } from "@/src/utils/storage";
-import { TENANT_NAME } from "@/src/format";
+import { TENANT_NAME, TENANT_PHONE } from "@/src/format";
 
 export const DEFAULT_TENANT = "demo-jeweller-001";
 
@@ -60,6 +60,7 @@ type Ctx = {
   user: User | null;
   tenant: string;
   tenantName: string;
+  tenantPhone: string;
   tenantLocked: boolean;
   price: Price | null;
   priceError: boolean;
@@ -145,8 +146,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const [t, tn] = await Promise.all([storage.secureGet(TOKEN_KEY, null), storage.getItem(TENANT_KEY, DEFAULT_TENANT)]);
       let active = String(tn || DEFAULT_TENANT);
       try {
-        const list = await api<{ id: string; business_name: string }[]>("/jewellers/list", { auth: "none" });
-        list.forEach((j) => { TENANT_NAME[j.id] = j.business_name; });
+        const list = await api<{ id: string; business_name: string; support_phone?: string }[]>("/jewellers/list", { auth: "none" });
+        list.forEach((j) => { TENANT_NAME[j.id] = j.business_name; TENANT_PHONE[j.id] = j.support_phone || ""; });
         if (!list.some((j) => j.id === active)) active = list.some((j) => j.id === DEFAULT_TENANT) ? DEFAULT_TENANT : list[0]?.id || DEFAULT_TENANT;
       } catch {}
       // Jeweller's own custom domain → fixed store (web)
@@ -228,7 +229,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AppCtx.Provider value={{ booting, token, user, tenant, tenantName, tenantLocked, price, priceError, vault, alerts, unreadNotifs, reloadAlerts, reloadNotifs, setTenant, signIn, signOut, refresh }}>
+    <AppCtx.Provider value={{ booting, token, user, tenant, tenantName, tenantPhone: TENANT_PHONE[tenant] || "", tenantLocked, price, priceError, vault, alerts, unreadNotifs, reloadAlerts, reloadNotifs, setTenant, signIn, signOut, refresh }}>
       {children}
     </AppCtx.Provider>
   );
