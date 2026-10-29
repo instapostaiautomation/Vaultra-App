@@ -83,10 +83,11 @@ const metalTag = (m) => `<span class="metal ${m === 'silver' ? 'silver' : ''}"><
 function rateChip(price) {
   if (!price) return '';
   const live = price.live;
+  const nodata = price.has_live === false;
   return `<div class="ratechip" id="ratechip"><span class="dot ${live ? 'live' : ''}"></span>
-    <span>Gold <b class="num">${inr(price.base_rate)}</b>/g</span><span class="sep"></span>
-    <span>Silver <b class="num">${inr(price.silver?.base_rate)}</b>/g</span>
-    <span class="sep"></span><span style="color:var(--mute)">${live ? 'Live' : 'Indicative'}</span></div>`;
+    <span>Gold <b class="num">${nodata ? '—' : inr(price.base_rate)}</b>/g</span><span class="sep"></span>
+    <span>Silver <b class="num">${nodata ? '—' : inr(price.silver?.base_rate)}</b>/g</span>
+    <span class="sep"></span><span style="color:${price.offline ? 'var(--red)' : 'var(--mute)'}">${live ? 'Live' : price.offline ? 'Feed down' : 'Indicative'}</span></div>`;
 }
 
 function barChart(series, valueKey, fmt) {
@@ -136,3 +137,5 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeMod
 function copyText(t) {
   navigator.clipboard?.writeText(t).then(() => toast('Copied'), () => toast('Copy failed', true));
 }
+// Rate value or "—" when no real live rate exists (feed down since start)
+function rv(price, v) { return price && price.has_live === false ? '—' : inr(v); }

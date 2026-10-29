@@ -33,7 +33,7 @@ export function LiveTicker({ testID = "live-gold-ticker" }: { testID?: string })
       <PulseDot color={priceError || price?.offline ? colors.error : colors.success} />
       <Text style={styles.tickerLabel} numberOfLines={1}>24K</Text>
       <Text style={styles.tickerPrice} numberOfLines={1} testID="live-gold-price">
-        {price ? `${inr(price.buy)}/g` : "—"}
+        {price && price.has_live !== false ? `${inr(price.buy)}/g` : "—"}
       </Text>
       <Text numberOfLines={1} style={[styles.tickerLive, { color: priceError || price?.offline ? colors.error : up ? colors.success : colors.error }]}>{priceError ? "NO NETWORK" : price?.offline ? "PAUSED" : `${up ? "▲" : "▼"} ${price?.live ? "LIVE" : "INDICATIVE"}`}</Text>
     </View>
@@ -51,7 +51,7 @@ export function LogoMark({ size = 36 }: { size?: number }) {
 export function HomeHeader() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { token, vault, user, unreadNotifs, tenantName } = useApp();
+  const { token, vault, user, unreadNotifs, tenantName, price } = useApp();
   const [menu, setMenu] = useState(false);
   const g = vault?.user.gold_grams ?? 0;
   const displayName = user?.first_name || user?.name?.split(" ")[0] || "Profile";
@@ -105,7 +105,7 @@ export function HomeHeader() {
         {token ? (
           <Pressable testID="vault-balance-pill" onPress={() => router.push("/vault")} style={styles.balancePill}>
             <Text style={styles.balanceGrams}>{grams(g)}</Text>
-            <Text style={styles.balanceInr}>≈ {inr(vault?.current_value ?? 0)}</Text>
+            <Text style={styles.balanceInr}>{price?.has_live === false ? "Rates paused" : `≈ ${inr(vault?.current_value ?? 0)}`}</Text>
           </Pressable>
         ) : null}
       </View>

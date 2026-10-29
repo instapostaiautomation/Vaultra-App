@@ -1,0 +1,47 @@
+{
+  "summary": "I retested iteration 15. All HIGH items now pass. The Master Admin red banner #feed-down-alert shows at the same moment the screen draws: 0.01s after login (about 0.8s from the click), 0.02s when the page opens straight on Pricing, and right away on all 19 tabs. The banner text is friendly ('Feed link not found (Cloudflare 530)…') and shows no URL or host. The Market & Feed rate cards show '—', the badge is a red 'Feed down', and the last message is friendly red text. The Overview Market feed card and the rate chip show '—'. On the customer app: the buy widget shows '—/g' and 'Waiting for live rates', and the buy button reads 'Rates paused', is disabled and does not open the pay sheet. The price cards say 'RATES PAUSED' and 'Resumes when feed is back', the ticker says '— PAUSED', and the vault pill says 'Rates paused'. Shop Admin 'Needs attention' shows 'Feed down · rates paused'. Both dashboards load and every tab renders with 0 JS errors. Backend: right after `supervisorctl restart backend` (and after restarting postgresql and backend together), /api/price returns offline=true and has_live=false at once, and /api/quote returns 503. PostgreSQL runs with -D /app/pgdata. Data survived the restart (6 customers, 14 transactions, 3 OTP rows before and after), and the log says 'Database already seeded' with no new seeding. Several screens still show values based on the demo rate (₹7,285.5): the Master Pricing tab, the Shop Commission tab, the Needs-attention title, the customer Vault screen, Jewellery prices and the buy widget breakdown. No expo/react-native issues were found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "startup RATE_FEED.error", "issue": "For about 2s after each backend start, feed.error is 'MetaApi token looks invalid…' (from METAAPI_INVALID, server.py:61/73) even though provider=mt5_script. The banner shows that confusing reason until the first MT5 poll replaces it with the DNS error. The cause is that METAAPI_TOKEN in backend/.env is a placeholder ('meta trade …'). Fix: when MT5_RATES_URL is set, start error as '' or 'Connecting to MT5 feed…'."},
+      {"endpoint": "/api/master/v3/pricing, /api/jeweller/v3/dashboard, /api/vault, products", "issue": "These still return values based on the demo rate (₹7,285.5 base, buy rates, current_value, product prices) when has_live=false. The frontend has to mask them; returning null would be safer."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Master Pricing tab (master_ext.js:13-17)", "issue": "The 'Live gold' and 'Live silver' cards show ₹7,285.5 and ₹92.5, and each shop's Gold/Silver buy rate column shows the demo price while the feed is down. Should show '—'.", "testID": "n/a (web panel)", "priority": "MEDIUM"},
+      {"component": "Shop Admin Needs attention row (jeweller_admin.html:125)", "issue": "The subtitle correctly says 'Feed down · rates paused', but the title still says 'Gold buy rate ₹7,285.5/g'. Should show '—/g' when has_live=false.", "testID": "n/a", "priority": "MEDIUM"},
+      {"component": "Shop Admin Commission tab", "issue": "Shows 'Live gold rate ₹7,285.5 /g ▲ 0%', 'Live silver rate ₹92.5' and 'Customer buy rate ₹7,285.5/g' during the feed outage.", "testID": "n/a", "priority": "MEDIUM"},
+      {"component": "BuyWidget breakdown (BuyWidget.tsx:153-158)", "issue": "When has_live=false with the default ₹2000, it shows 'Base Price (0.0000g) ₹2,000.00 / GST ₹60.00 / Total Payable ₹2,060.00'. Zero grams for ₹2,060 is contradictory. Hide or blank the breakdown and 'You get' when rate=0. The header label 'LAST 24K BUY RATE' is also wrong when there is no last rate.", "testID": "buy-widget", "priority": "MEDIUM"},
+      {"component": "Customer Vault screen (/vault)", "issue": "Shows '₹9,336.13 current value' and 'Unrealized P&L -1.72%', both based on the demo rate. The header pill was fixed, but the vault screen valuation was not.", "testID": "vault screen", "priority": "MEDIUM"},
+      {"component": "Jewellery tab product prices", "issue": "Product prices (e.g. Tanmaniya Mangalsutra ₹57,934) are based on the demo rate while the ticker says PAUSED.", "testID": "jewellery list", "priority": "LOW"},
+      {"component": "Master Market & Feed / Shop Commission rate cards", "issue": "The change chip shows a green '▲ 0%' when has_live=false. Hide it or show '—'.", "testID": "n/a", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration16_feed_down_retest.py", "/app/backend/tests/poll_feed.py", "/app/test_reports/pytest/iteration16.xml"],
+  "action_items": [
+    "Master Pricing tab (master_ext.js vPricing): use '—' for Live gold/silver and the shop buy-rate columns when p.price.has_live===false.",
+    "jeweller_admin.html:125 Needs attention title: show '—/g' instead of inr(d.price.buy) when has_live===false. Do the same for the Commission tab rate cards and the 'Customer buy rate' preview.",
+    "BuyWidget.tsx: when rate===0 (has_live false), hide the breakdown (or show '—'), blank 'You get', and change 'LAST 24K BUY RATE' to '24K BUY RATE'.",
+    "Vault screen: when has_live===false, show 'Rates paused' instead of the current value and P&L (server /api/vault current_value uses the demo price).",
+    "Jewellery/catalogue prices: show 'Price paused' or '—' when has_live===false.",
+    "server.py:73: don't show METAAPI_INVALID as the feed error when MT5_RATES_URL is the active provider. Otherwise the banner briefly says 'MetaApi token looks invalid' after every restart.",
+    "Cleanup: master_admin.html:204 has an unreachable duplicate 'return' (copied feed-alert markup) inside feedReason()."
+  ],
+  "critical_code_review_comments": [
+    "master_admin.html feedReason(): dead code after the first return (line 204).",
+    "feedReason maps a DNS 'Name or service not known' error to 'Cloudflare 530'. The wording is friendly but technically wrong; something like 'Feed link not reachable' would be more accurate.",
+    "server.py is 2,985 lines. It should be split into routers (auth, price feed, master, jeweller, customer).",
+    "The has_live masking is done screen by screen in the frontend. A shared helper (e.g. rateText(price)), or the backend returning null rates when has_live=false, would stop these leaks from coming back."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration16_feed_down_retest.py", "/app/backend/tests/poll_feed.py"],
+  "success_rate": {"backend": "100% (15/15 iteration-16 tests; iteration-15 test_master_rate_feed failed only because it ran within 2s of an auto-reload and caught the MetaApi startup error, then passed in polling)", "frontend": "100% of the requested retest items pass; 7 extra spots still show the demo price (MEDIUM/LOW)"},
+  "seed_data_creation": "None. No DB data was deleted. /app/pgdata is untouched.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "The feed is intentionally DOWN (the MT5_RATES_URL trycloudflare host gives a DNS error). Do not fix the tunnel. Writing files under /app/backend triggers a uvicorn auto-reload, and for about 2s after any start feed.error='MetaApi token looks invalid'. Master login: #lu/#lp/#login-btn. Jeweller login: #le/#lp/#login-btn. Switch tabs with page.evaluate(\"go('tab')\"). Customer login testIDs: login-phone-input, login-send-otp-button, login-demo-otp, login-otp-input, login-verify-button. DB is postgres vaultra_db; the password is in DATABASE_URL_SYNC in backend/.env. Use tests/poll_feed.py N gap to check feed state.",
+  "rca_of_issue": "The remaining demo-price leaks come from screens that render inr(price.buy/base_rate) or values computed on the server from PRICE['base'] without checking has_live. The startup MetaApi error message happens because RATE_FEED.error starts as METAAPI_INVALID whenever METAAPI_TOKEN is a placeholder, even when the MT5 bridge is the provider."
+}

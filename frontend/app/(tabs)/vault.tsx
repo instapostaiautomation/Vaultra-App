@@ -28,7 +28,7 @@ export default function VaultScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const toast = useToast();
-  const { token, vault, refresh, tenant } = useApp();
+  const { token, vault, refresh, tenant, price } = useApp();
   const [filter, setFilter] = useState("all");
   const [txns, setTxns] = useState<any[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -68,6 +68,7 @@ export default function VaultScreen() {
 
   const u = vault?.user;
   const up = (vault?.unrealized_pnl ?? 0) >= 0;
+  const noRate = price?.has_live === false;
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -102,7 +103,7 @@ export default function VaultScreen() {
             {grams(u?.gold_grams)}
           </Text>
           <Text style={styles.pValue} testID="portfolio-value">
-            {inr(vault?.current_value)} <Text style={styles.pValueSub}>current value</Text>
+            {noRate ? "Rates paused" : inr(vault?.current_value)} <Text style={styles.pValueSub}>{noRate ? "value shown when live rates return" : "current value"}</Text>
           </Text>
           {(u?.silver_grams ?? 0) > 0 ? (
             <Text style={styles.pValueSub} testID="portfolio-silver">Silver in vault: {grams(u?.silver_grams)}</Text>
@@ -118,9 +119,8 @@ export default function VaultScreen() {
             </View>
             <View style={{ flex: 1, alignItems: "flex-end" }}>
               <Text style={styles.pStatLabel}>Unrealized P&L</Text>
-              <Text style={[styles.pStatValue, { color: up ? "#4ADE80" : "#F87171" }]} testID="portfolio-pnl">
-                {up ? "+" : ""}
-                {vault?.unrealized_pct ?? 0}%
+              <Text style={[styles.pStatValue, { color: noRate ? colors.mutedLight : up ? "#4ADE80" : "#F87171" }]} testID="portfolio-pnl">
+                {noRate ? "—" : `${up ? "+" : ""}${vault?.unrealized_pct ?? 0}%`}
               </Text>
             </View>
           </View>

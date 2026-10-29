@@ -1,0 +1,46 @@
+{
+  "summary": "Feed-down alert tested with the MT5 feed DOWN (Cloudflare 530, as expected). Backend: GET /api/price returns has_live=false, offline=true, source=offline; GET /api/master/rate includes feed.configured=true, feed.error (530, key redacted as ***), last_live_at=null; /api/quote returns 503. 7 new tests: 6 passed, 1 skipped because the OTP rate limit was hit. Master Admin (1366x800): the red #feed-down-alert banner shows the friendly 530 reason, with no mozilla URL and no 'Last live rate at' line. The 'Check feed' button opens Market & Feed. The rate chip shows 'Gold —/g Silver —/g Feed down', and the Overview Market feed card shows a red 'Feed Down' badge. The banner is present on 17 of the 19 tabs right after navigation. BUG: on Overview and Pricing the banner is missing for up to 5s after the tab loads, until the next poll. Shop Admin chip works ('—' and 'Feed down'). Customer app (390x844): header ticker and price cards show '—'. The PAUSED notice shows, the 'Rates paused' button is disabled and no error toast appears. BUG: the BuyWidget shows '₹0.00/g' instead of '—'. A few other screens still show the demo price (details below).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "startup / RATE_FEED init (server.py:72 & ~2972)", "issue": "If no last_live_rates setting has been saved, RATE_FEED.source starts as 'simulated' even when MT5_RATES_URL is set. It only changes to 'offline' after the first failed poll (about 2s poll plus up to 5s httpx timeout). In that window after every restart or hot reload, /api/price returns has_live=true, offline=false with the demo ₹7,285.5. require_live_rates() also lets /api/quote lock a quote at the demo price. Seen in testing: right after a reload, the tests briefly got has_live=true. Fix: in startup, set RATE_FEED['source']='offline' whenever MT5_RATES_URL or METAAPI_TOKEN is set, whether or not a saved rate exists."},
+      {"endpoint": "GET /api/master/v3/overview, /api/master/v3/pricing", "issue": "'price' has no 'feed' key ('feed' is a separate key next to it, or missing on pricing). The frontend copies only price into S.price, so feedAlert() gets no feed data and shows nothing."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Master Admin feed alert on Overview and Pricing tabs", "issue": "loadOv sets S.price = S.ov.price (master_admin.html:64) and loadPricing sets S.price = S.pricing.price (master_ext.js:8). Neither has .feed, so feedAlert() returns ''. The banner is missing on the first load after login and every time you open Overview or Pricing, until the 5s poll brings it back. Fix: S.price = {...S.ov.price, feed: S.ov.feed}. For Pricing, add the feed to the pricing API, or keep the existing S.price.feed.", "testID": "#feed-down-alert", "priority": "HIGH"},
+      {"component": "Customer BuyWidget rate", "issue": "Shows '₹0.00/g' instead of '—' when has_live=false. liveRate=0 and inr(0) is rendered (BuyWidget.tsx:31,98). The subtitle 'Showing last live rate' is also wrong because no live rate exists. The breakdown shows 'Base Price (0.0000g) ₹2,000 / Total ₹2,060', which is confusing.", "testID": "buy-rate", "priority": "HIGH"},
+      {"component": "Master Admin Market & Feed tab", "issue": "The Live rates cards show the demo ₹7,285.5 and ₹92.5 when has_live=false. The Feed status badge shows amber 'Indicative' instead of red 'Feed down' (master_admin.html:135 only checks r.live). 'Last message' shows the raw error, including the trycloudflare host and the mozilla URL; it should reuse the friendly reason from feedAlert.", "testID": "rates tab", "priority": "MEDIUM"},
+      {"component": "Master Admin Overview 'Market feed' card", "issue": "The badge correctly shows 'Feed Down', but the Gold and Silver rows still show the demo ₹7,285.5/g and ₹92.5/g. They should show '—' when has_live=false.", "testID": "overview market feed card", "priority": "MEDIUM"},
+      {"component": "Shop Admin dashboard 'Needs attention'", "issue": "Shows 'Gold buy rate ₹7,285.5/g · Live ₹7,285.5 + your commission' with demo data labelled 'Live' while the feed is down.", "testID": "jeweller dashboard", "priority": "LOW"},
+      {"component": "Customer PriceCards label", "issue": "Says 'INDICATIVE RATE' with '▲ 0.00% since yesterday' while the feed is down. It should say 'Feed down' or 'Paused' and hide the change.", "testID": "gold-rate-source", "priority": "LOW"},
+      {"component": "Customer header vault-balance-pill", "issue": "Shows '≈ ₹15,342.33', which is the value at the demo sell rate, while has_live=false. It should show '—' or hide the ₹ value.", "testID": "vault-balance-pill", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration15_feed_down_alert.py", "/app/test_reports/pytest/pytest_iter15.xml"],
+  "action_items": [
+    "master_admin.html:64 loadOv -> S.price = { ...S.ov.price, feed: S.ov.feed }. master_ext.js:8 loadPricing -> keep feed, e.g. S.price = { ...S.pricing.price, feed: S.pricing.feed || S.price?.feed }. This keeps the banner on screen right away on the Overview and Pricing tabs.",
+    "BuyWidget: when has_live===false, render '—' for buy-rate and the pay sheet rate, hide 'Showing last live rate', and hide or blank the price breakdown.",
+    "Market & Feed tab: use '—' for the rate cards when has_live=false, show a red 'Feed down' badge when r.offline, and show the friendly error text instead of the raw httpx message.",
+    "Overview Market feed card and Shop Admin 'Needs attention' gold rate: show '—' when has_live=false.",
+    "Header vault-balance-pill (and any vault valuation): don't value holdings at the demo rate when has_live=false.",
+    "server.py startup: when MT5_RATES_URL or METAAPI_TOKEN is set, start RATE_FEED.source as 'offline' even if no last_live_rates is saved. This stops demo-price quotes right after a restart.",
+    "Iteration 14 tests test_price_offline and test_vault now fail: they expected the saved real price of about ₹13,000+, but the price is now the demo ₹7,285.5 with has_live=false. Update them for the new state."
+  ],
+  "critical_code_review_comments": [
+    "feedAlert() hides the banner while source==='mt5'. In the backend, source stays 'mt5' for MT5_STALE_SECONDS=60 after the first failure, so the alert appears about 60s after the feed drops, not within about 5s. This is by design for brief blips, but it is not 'as soon as'.",
+    "The poll in master_admin.html:202 swallows all errors silently. If /master/rate itself fails (backend down), the banner never appears. Consider showing the alert on fetch failure too.",
+    "Saving a file under /app/backend (including tests) triggers a uvicorn reload, which opens the 'simulated' window described in backend_issues."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration15_feed_down_alert.py"],
+  "success_rate": {"backend": "100% (6/6 executed, 1 skipped because of the OTP rate limit)", "frontend": "~70% (banner, chip, Check feed, Feed down badge, customer ticker and cards and PAUSED all work; 7 issues listed above)"},
+  "seed_data_creation": "None",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "The feed is intentionally DOWN (Cloudflare 530 on MT5_RATES_URL) with no saved last_live_rates, so has_live=false and the demo base is ₹7,285.5. Master login: #lu/#lp/#login-btn. Jeweller login: #le/#lp/#login-btn. Tabs can be switched with page.evaluate(\"go('rates')\"). The banner selector is #feed-down-alert inside #feedalert. Do not fix the tunnel.",
+  "rca_of_issue": "Missing banner on Overview and Pricing: render() calls feedAlert(S.price), but those loaders replace S.price with a price object that has no .feed property."
+}

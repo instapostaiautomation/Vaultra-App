@@ -1,0 +1,29 @@
+{
+  "summary": "Retest of iteration 16 MEDIUM items: ALL PASS. (1) Master Pricing: Live gold/silver cards show '— /g' and both shops' gold/silver buy-rate columns show '—'. (2) Shop Admin Needs attention: 'Gold buy rate —/g' + 'Feed down · rates paused'; Commission tab #live-gold, #live-silver, #cl_gold/#cl_silver, #cb_gold/#cb_silver all '—', still '—' after typing 150 commission and after a 16s poll cycle. (3) Customer BuyWidget: label '24K BUY RATE' (no LAST), '—/g', 'Waiting for live rates', breakdown (Base Price/GST/Total) hidden, CTA 'Rates paused' disabled. (4) Vault: 'Rates paused · value shown when live rates return', P&L '—'. Feed banner: after `supervisorctl restart backend`, feed.error is '' then '[Errno -2] Name or service not known'; never 'MetaApi token looks invalid' (polled 12x @0.5s + browser login right after restart). Banner reads 'Feed link not found (DNS)…'. Regression: #feed-down-alert present on all 19 Master tabs, all Shop Admin tabs render, 0 JS page errors on both dashboards and customer app; customer home shows '24K — PAUSED' ticker and 'RATES PAUSED' cards. Backend: 15/15 (iter16+iter17 suites). Old iter14/iter15 assertions (last-live-rate 14321.85, '530' in error) are stale for current state, not regressions. No expo/react-native deprecated-package issues found.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "BuyWidget input row (BuyWidget.tsx:134-140, styles.input line 240)", "issue": "On 375px web preview the 'You get / You pay' equivalent (testID buy-equivalent) renders at x=485, outside the card/viewport, so it is clipped and invisible. TextInput with flex:1 keeps its intrinsic web width. Add minWidth:0 (or width:0) to styles.input. Also during outage it still contains '0.0000g' / '₹0.00' (hidden only by the overflow).", "testID": "buy-equivalent", "priority": "LOW"},
+      {"component": "Vault P&L color (vault.tsx:122)", "issue": "When noRate, P&L shows '—' but in red (#F87171) because color still uses demo-based unrealized_pnl. Use neutral color when noRate.", "testID": "portfolio-pnl", "priority": "LOW"},
+      {"component": "Shop Admin Commission tab", "issue": "Green '▲ 0%' change badges still shown next to '—' rates, and footer note says 'Market feed is not connected yet — showing indicative rates' although no rates are shown. Hide badge / reword note when has_live=false.", "testID": "n/a (web panel)", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration17_feed_down_labels.py", "/app/backend/tests/test_iteration16_feed_down_retest.py", "/app/test_reports/pytest/pytest_iter17.xml"],
+  "action_items": [
+    "LOW: BuyWidget.tsx styles.input add minWidth:0 so 'You get' is visible on web; blank buy-equivalent when liveRate===0.",
+    "LOW: vault.tsx portfolio-pnl use neutral color when noRate.",
+    "LOW: jeweller_admin.html Commission tab: hide ▲0% badges and change 'showing indicative rates' note when has_live===false.",
+    "Optional: update stale assertions in tests/test_iteration14_offline_guards.py (buy 14321.85, vault buy_rate>13000) and test_iteration15_feed_down_alert.py ('530' in error) to the current DNS/no-last-live state."
+  ],
+  "critical_code_review_comments": ["feedReason() duplicate return cleaned up. server.py:73 correctly suppresses METAAPI_INVALID when MT5_RATES_URL is set. /api/vault still computes current_value from demo price server-side (UI masks it)."],
+  "updated_files": ["/app/backend/tests/test_iteration17_feed_down_labels.py"],
+  "success_rate": {"backend": "100%", "frontend": "100% of requested items (3 LOW cosmetic findings)"},
+  "seed_data_creation": "None. Commission typed (150) but not saved.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Feed intentionally DOWN (DNS error on trycloudflare host). OTP request is rate-limited (~a few per minute per phone) -> 'Too many requests'; wait 60s. Customer login at /login. Master: #lu/#lp/#login-btn; Jeweller: #le/#lp/#login-btn; tabs via go('tab'). Use iter16+iter17 suites as baseline; iter14/15 have stale assertions.",
+  "rca_of_issue": ""
+}

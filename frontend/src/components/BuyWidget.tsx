@@ -28,7 +28,7 @@ export function BuyWidget() {
   const [payStage, setPayStage] = useState<"select" | "processing" | "success">("select");
   const [lastTxn, setLastTxn] = useState<any>(null);
 
-  const liveRate = metal === "gold" ? price?.buy ?? 0 : price?.silver?.buy ?? 0;
+  const liveRate = price?.has_live === false ? 0 : metal === "gold" ? price?.buy ?? 0 : price?.silver?.buy ?? 0;
   const paused = !!price?.offline;
   const priceReady = !!price;
 
@@ -94,9 +94,9 @@ export function BuyWidget() {
     <View style={styles.root} testID="buy-widget">
       <View style={styles.head}>
         <View>
-          <Text style={styles.headLabel}>{paused ? "LAST" : "LIVE"} {metal === "gold" ? "24K" : "SILVER"} BUY RATE</Text>
-          <Text style={styles.headRate} testID="buy-rate">{inr(rate)}<Text style={styles.perG}>/g</Text></Text>
-          <Text style={styles.gstNote}>{paused ? "Showing last live rate" : "Price locked for 5 minutes · excl. 3% GST"}</Text>
+          <Text style={styles.headLabel}>{paused ? (liveRate > 0 ? "LAST" : "") : "LIVE"} {metal === "gold" ? "24K" : "SILVER"} BUY RATE</Text>
+          <Text style={styles.headRate} testID="buy-rate">{rate > 0 ? inr(rate) : "—"}<Text style={styles.perG}>/g</Text></Text>
+          <Text style={styles.gstNote}>{paused ? (rate > 0 ? "Showing last live rate" : "Waiting for live rates") : "Price locked for 5 minutes · excl. 3% GST"}</Text>
         </View>
         {paused ? null : (
           <View style={styles.timerBox}>
@@ -150,12 +150,14 @@ export function BuyWidget() {
       </View>
 
       {/* Breakdown */}
+      {liveRate > 0 ? (
       <View style={styles.breakdown}>
         <View style={styles.row}><Text style={styles.bk}>Base Price ({grams(g)})</Text><Text style={styles.bkr}>{inr(amt)}</Text></View>
         <View style={styles.row}><Text style={styles.bk}>GST (3%)</Text><Text style={styles.bkr}>{inr(gst)}</Text></View>
         <View style={styles.divider} />
         <View style={styles.row}><Text style={styles.total}>Total Payable</Text><Text style={styles.totalR}>{inr(total)}</Text></View>
       </View>
+      ) : null}
 
       {/* CTA */}
       {paused ? (
@@ -235,7 +237,7 @@ const styles = StyleSheet.create({
   modeActiveText: { color: colors.brandSecondary, fontFamily: fonts.bold },
   inputRow: { flexDirection: "row", alignItems: "center", marginHorizontal: 16, marginTop: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.brandPrimary, height: 60, paddingHorizontal: 14 },
   rupeeSign: { fontFamily: fonts.bold, fontSize: 22, color: colors.brandSecondary, marginRight: 6 },
-  input: { flex: 1, fontFamily: fonts.black, fontSize: 28, color: colors.onSurface, letterSpacing: -0.4 },
+  input: { flex: 1, minWidth: 0, fontFamily: fonts.black, fontSize: 28, color: colors.onSurface, letterSpacing: -0.4 },
   equiv: { alignItems: "flex-end" },
   eqLabel: { fontFamily: fonts.regular, fontSize: 11, color: colors.muted },
   eqVal: { fontFamily: fonts.bold, fontSize: 16, color: colors.brandSecondary, letterSpacing: -0.3 },

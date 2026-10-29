@@ -122,7 +122,7 @@ function vDashboard() {
     <div class="card"><div class="card-h"><h3>Needs attention</h3></div><div class="list">
       <div class="item"><div class="avatar" style="background:var(--amberbg);color:var(--amber);border-color:#FEDF89">${icon('redeem')}</div><div class="grow"><div class="t">${d.pending.pickups} pickups waiting</div><div class="s">Customers coming to collect coins</div></div><button class="btn sm" onclick="go('redemptions')">Open</button></div>
       <div class="item"><div class="avatar" style="background:var(--bluebg);color:var(--blue);border-color:#C7D7FE">${icon('kyc')}</div><div class="grow"><div class="t">${d.pending.kyc} KYC to review</div><div class="s">Approve to unlock redemption</div></div><button class="btn sm" onclick="go('kyc')">Review</button></div>
-      <div class="item"><div class="avatar">${icon('commission')}</div><div class="grow"><div class="t">Gold buy rate ${inr(d.price.buy)}/g</div><div class="s">Live ${inr(d.price.base_rate)} + your commission</div></div><button class="btn sm" onclick="go('commission')">Edit</button></div>
+      <div class="item"><div class="avatar">${icon('commission')}</div><div class="grow"><div class="t">Gold buy rate ${rv(d.price, d.price.buy)}/g</div><div class="s">${d.price.has_live === false ? "Feed down · rates paused" : (d.price.live ? "Live " : "Market ") + inr(d.price.base_rate) + " + your commission"}</div></div><button class="btn sm" onclick="go('commission')">Edit</button></div>
     </div></div>
   </div>
   <div class="card section"><div class="card-h"><h3>Latest orders</h3><button class="btn sm" onclick="go('orders')">View all</button></div>
@@ -146,30 +146,30 @@ function vCommission() {
         <div class="prefix"><span>₹</span><input class="input lg num" id="c_${metal}" type="number" min="0" max="${max}" step="0.01" value="${val}" oninput="commInput('${metal}', this.value)"></div>
         <div class="hint">Flat amount in rupees per gram · up to ₹${max.toLocaleString('en-IN')}</div></div>
       <div class="calc">
-        <div class="row"><span>Live ${metal} rate</span><span class="num" id="cl_${metal}">${inr(base)}</span></div>
+        <div class="row"><span>Live ${metal} rate</span><span class="num" id="cl_${metal}">${rv(S.price, base)}</span></div>
         <div class="row"><span>+ Your commission</span><span class="num" id="cc_${metal}">${inr(val || 0)}</span></div>
-        <div class="row total"><span>Customer buy rate</span><span class="v num" id="cb_${metal}">${inr(buy)}/g</span></div>
+        <div class="row total"><span>Customer buy rate</span><span class="v num" id="cb_${metal}">${rv(S.price, buy)}/g</span></div>
       </div></div>`;
   };
   return `<div class="page-head"><div><h2>Commission</h2><p>Set a flat rupee amount per gram on top of the live rate. Changes reach the customer app instantly.</p></div></div>
     <div class="grid g2">
       <div class="card rate-card"><div class="coin"></div><div style="flex:1"><div class="label"><span class="dot ${p.live ? 'live' : ''}"></span> Live gold rate</div>
-        <div class="value num" id="live-gold">${inr(p.base_rate)} <small>/g</small></div></div><div class="chg ${p.change_pct >= 0 ? 'up' : 'down'}">${p.change_pct >= 0 ? '▲' : '▼'} ${Math.abs(p.change_pct)}%</div></div>
+        <div class="value num" id="live-gold">${rv(p, p.base_rate)} <small>/g</small></div></div><div class="chg ${p.change_pct >= 0 ? 'up' : 'down'}" style="${p.offline ? 'display:none' : ''}">${p.change_pct >= 0 ? '▲' : '▼'} ${Math.abs(p.change_pct)}%</div></div>
       <div class="card rate-card"><div class="coin silver"></div><div style="flex:1"><div class="label"><span class="dot ${p.live ? 'live' : ''}"></span> Live silver rate</div>
-        <div class="value num" id="live-silver">${inr(p.silver?.base_rate)} <small>/g</small></div></div><div class="chg ${(p.silver?.change_pct || 0) >= 0 ? 'up' : 'down'}">${(p.silver?.change_pct || 0) >= 0 ? '▲' : '▼'} ${Math.abs(p.silver?.change_pct || 0)}%</div></div>
+        <div class="value num" id="live-silver">${rv(p, p.silver?.base_rate)} <small>/g</small></div></div><div class="chg ${(p.silver?.change_pct || 0) >= 0 ? 'up' : 'down'}" style="${p.offline ? 'display:none' : ''}">${(p.silver?.change_pct || 0) >= 0 ? '▲' : '▼'} ${Math.abs(p.silver?.change_pct || 0)}%</div></div>
     </div>
     <div class="grid g2 section">${card('gold', p.base_rate, S.comm.gold, 1000)}${card('silver', p.silver?.base_rate, S.comm.silver, 100)}</div>
     <div class="section" style="display:flex;align-items:center;gap:14px">
       <button class="btn gold" id="save-commission" onclick="saveComm()" style="height:44px;padding:0 22px">Save commission</button>
       <span style="font-size:12px;color:var(--mute)" id="comm-status">${S.comm.dirty ? 'Unsaved changes' : (S.me.commission_updated_at ? 'Last updated ' + dt(S.me.commission_updated_at) : '')}</span>
     </div>
-    <div class="note gray section">${icon('rate')}<span>${p.live ? 'Rates update every few seconds from the market feed.' : 'Market feed is not connected yet — showing indicative rates. Customer prices will follow the live rate as soon as it connects.'}</span></div>`;
+    <div class="note gray section">${icon('rate')}<span>${p.live ? 'Rates update every few seconds from the market feed.' : p.offline ? 'Live rate feed is down — customer buying is paused until it returns.' : 'Market feed is not connected yet — showing indicative rates. Customer prices will follow the live rate as soon as it connects.'}</span></div>`;
 }
 function commInput(metal, v) {
   S.comm[metal] = v; S.comm.dirty = true;
   const base = metal === 'gold' ? S.price.base_rate : S.price.silver.base_rate;
   $('#cc_' + metal).textContent = inr(Number(v || 0));
-  $('#cb_' + metal).textContent = inr(Number(base) + Number(v || 0)) + '/g';
+  $('#cb_' + metal).textContent = rv(S.price, Number(base) + Number(v || 0)) + '/g';
   $('#comm-status').textContent = 'Unsaved changes';
 }
 async function saveComm() {
@@ -183,10 +183,10 @@ async function saveComm() {
 function syncComm() { if (!S.comm.dirty && S.me) { S.comm.gold = S.me.gold_commission_per_g || 0; S.comm.silver = S.me.silver_commission_per_g || 0; } }
 function refreshLiveRates() {
   if (S.tab !== 'commission' || !S.price) return;
-  const set = (id, v) => { const el = $(id); if (el) el.innerHTML = `${inr(v)} <small>/g</small>`; };
+  const set = (id, v) => { const el = $(id); if (el) el.innerHTML = `${rv(S.price, v)} <small>/g</small>`; };
   set('#live-gold', S.price.base_rate); set('#live-silver', S.price.silver?.base_rate);
   ['gold', 'silver'].forEach((m) => { const base = m === 'gold' ? S.price.base_rate : S.price.silver.base_rate; const l = $('#cl_' + m), cb = $('#cb_' + m);
-    if (l) l.textContent = inr(base); if (cb) cb.textContent = inr(Number(base) + Number(S.comm[m] || 0)) + '/g'; });
+    if (l) l.textContent = rv(S.price, base); if (cb) cb.textContent = rv(S.price, Number(base) + Number(S.comm[m] || 0)) + '/g'; });
 }
 
 /* ── orders ───────────────────────────── */

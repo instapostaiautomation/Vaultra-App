@@ -52,6 +52,7 @@ function shell(c) {
     <nav class="nav">${NAV.map(([g, items]) => `<div class="group">${g}</div>${items.map(([k, l, ic]) => `<button class="${S.tab === k ? 'on' : ''}" onclick="go('${k}')" data-tab="${k}">${icon(ic)}<span>${l}</span></button>`).join('')}`).join('')}</nav>
     <div class="side-foot"><div class="avatar">${esc(initials(S.me?.name || 'Admin'))}</div><div class="who"><b>${esc(S.me?.name || 'Admin')}</b><span>Platform admin</span></div><button class="btn ghost sm" onclick="logout()" id="logout-btn">${icon('logout')}</button></div></aside>
     <main class="main"><div class="top"><button class="btn ghost sm menu-btn" onclick="$('#side').classList.toggle('open')">${icon('menu')}</button><h1>${TITLES[S.tab]}</h1><div class="spacer"></div>${rateChip(S.price)}</div>
+    <div id="feedalert">${feedAlert(S.price)}</div>
     <div class="content">${c}</div></main></div>`;
 }
 function render() { if (!localStorage.getItem('master_token')) { $('#root').innerHTML = loginView(); return; } $('#root').innerHTML = shell(VIEWS[S.tab]()); }
@@ -60,7 +61,7 @@ async function safe(fn, tab) { try { await fn(); } catch (e) { if (e.status === 
 
 /* overview */
 const rq = (r) => r.range === 'custom' ? `range=custom&start=${r.from || ''}&end=${r.to || ''}` : `range=${r.range}`;
-const loadOv = () => safe(async () => { S.ov = await api('/master/v3/overview?' + rq(S.r)); S.price = S.ov.price; }, 'overview');
+const loadOv = () => safe(async () => { S.ov = await api('/master/v3/overview?' + rq(S.r)); S.price = {...S.ov.price, feed: S.ov.feed}; S.feed = S.ov.feed; }, 'overview');
 function onRange(k, apply) { if (k === 'custom' && apply) { S.r.from = $('#r_from').value; S.r.to = $('#r_to').value; if (!S.r.from) return toast('Choose a start date', true); }
   S.r.range = k; if (k !== 'custom' || apply) { S.ov = null; render(); loadOv(); } else render(); }
 function vOverview() {
@@ -72,8 +73,8 @@ function vOverview() {
     ${kpi('Silver booked', g4(t.silver_g), 'in this period', 'coin', 'gray')}${kpi('Partner stores', `${t.active_jewellers}<small>/${t.jewellers}</small>`, `${t.customers} customers`, 'store', 'blue')}</div>
     <div class="grid section" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr)">
       <div class="card"><div class="card-h"><div><h3>Daily sales</h3><p>All stores combined</p></div></div>${barChart(o.series, 'amount', inr0)}<div style="height:16px"></div></div>
-      <div class="card"><div class="card-h"><h3>Market feed</h3>${o.feed.source === 'simulated' ? '<span class="badge amber">Indicative</span>' : '<span class="badge green">Live</span>'}</div><div style="padding:8px 20px 16px">
-        <div class="kv"><span>Gold (${esc(o.feed.gold_symbol)})</span><b class="num">${inr(o.price.base_rate)}/g</b></div><div class="kv"><span>Silver (${esc(o.feed.silver_symbol)})</span><b class="num">${inr(o.price.silver.base_rate)}/g</b></div>
+      <div class="card"><div class="card-h"><h3>Market feed</h3>${o.feed.source === 'mt5' ? '<span class="badge green">Live</span>' : o.feed.source === 'offline' ? '<span class="badge red">Feed down</span>' : '<span class="badge amber">Indicative</span>'}</div><div style="padding:8px 20px 16px">
+        <div class="kv"><span>Gold (${esc(o.feed.gold_symbol)})</span><b class="num">${o.price.has_live === false ? '—' : inr(o.price.base_rate) + '/g'}</b></div><div class="kv"><span>Silver (${esc(o.feed.silver_symbol)})</span><b class="num">${o.price.has_live === false ? '—' : inr(o.price.silver.base_rate) + '/g'}</b></div>
         <div class="kv"><span>Gold held by customers</span><b class="num">${g4(t.hold_gold_g)}</b></div><div class="kv"><span>Provider</span><b>${o.feed.provider === 'metaapi' ? 'MetaApi · MT5' : o.feed.provider === 'mt5_script' ? 'MT5 bridge' : 'Not connected'}</b></div></div></div></div>
     <div class="card section"><div class="card-h"><h3>Store performance</h3><button class="btn sm" onclick="go('jewellers')">Manage stores</button></div><div class="table-wrap"><table>
       <thead><tr><th>Store</th><th>Status</th><th class="r">Customers</th><th class="r">Sales</th><th class="r">Gold booked</th><th class="r">Silver booked</th><th class="r">Redeemed</th><th class="r">Gold held</th></tr></thead><tbody>
@@ -124,18 +125,18 @@ async function checkDns(id) { try { const c = await api(`/master/jewellers/${id}
 } catch (e) { toast(e.message, true); } }
 
 /* rates */
-const loadRate = () => safe(async () => { S.rate = await api('/master/rate'); S.price = S.rate; }, 'rates');
+const loadRate = () => safe(async () => { S.rate = await api('/master/rate'); S.price = S.rate; S.feed = S.rate.feed; }, 'rates');
 function vRates() {
   const head = `<div class="page-head"><div><h2>Live rates</h2><p>Base market rate before each store's commission.</p></div><button class="btn" onclick="loadRate()">Refresh</button></div>`;
   const r = S.rate; if (!r) return head + loading; const f = r.feed;
   return head + `<div class="grid g2">
-    <div class="card rate-card"><div class="coin"></div><div style="flex:1"><div class="label"><span class="dot ${r.live ? 'live' : ''}"></span> Gold · ${esc(f.gold_symbol)}</div><div class="value num">${inr(r.base_rate)} <small>/g</small></div></div><div class="chg ${r.change_pct >= 0 ? 'up' : 'down'}">${r.change_pct >= 0 ? '▲' : '▼'} ${Math.abs(r.change_pct)}%</div></div>
-    <div class="card rate-card"><div class="coin silver"></div><div style="flex:1"><div class="label"><span class="dot ${r.live ? 'live' : ''}"></span> Silver · ${esc(f.silver_symbol)}</div><div class="value num">${inr(r.silver.base_rate)} <small>/g</small></div></div><div class="chg ${r.silver.change_pct >= 0 ? 'up' : 'down'}">${r.silver.change_pct >= 0 ? '▲' : '▼'} ${Math.abs(r.silver.change_pct)}%</div></div></div>
-    <div class="card section"><div class="card-h"><h3>Feed status</h3>${r.live ? '<span class="badge green">Live</span>' : '<span class="badge amber">Indicative</span>'}</div><div style="padding:8px 20px 16px">
+    <div class="card rate-card"><div class="coin"></div><div style="flex:1"><div class="label"><span class="dot ${r.live ? 'live' : ''}"></span> Gold · ${esc(f.gold_symbol)}</div><div class="value num">${r.has_live === false ? '—' : inr(r.base_rate)} <small>/g</small></div></div><div class="chg ${r.change_pct >= 0 ? 'up' : 'down'}">${r.change_pct >= 0 ? '▲' : '▼'} ${Math.abs(r.change_pct)}%</div></div>
+    <div class="card rate-card"><div class="coin silver"></div><div style="flex:1"><div class="label"><span class="dot ${r.live ? 'live' : ''}"></span> Silver · ${esc(f.silver_symbol)}</div><div class="value num">${r.has_live === false ? '—' : inr(r.silver.base_rate)} <small>/g</small></div></div><div class="chg ${r.silver.change_pct >= 0 ? 'up' : 'down'}">${r.silver.change_pct >= 0 ? '▲' : '▼'} ${Math.abs(r.silver.change_pct)}%</div></div></div>
+    <div class="card section"><div class="card-h"><h3>Feed status</h3>${r.live ? '<span class="badge green">Live</span>' : r.offline ? '<span class="badge red">Feed down</span>' : '<span class="badge amber">Indicative</span>'}</div><div style="padding:8px 20px 16px">
       <div class="kv"><span>Provider</span><b>${f.provider === 'metaapi' ? 'MetaApi · MT5 account' : f.provider === 'mt5_script' ? 'MT5 bridge script' : 'Not connected'}</b></div>
       <div class="kv"><span>Last live tick</span><b>${f.last_live_at ? dt(f.last_live_at) : '—'}</b></div>
       <div class="kv"><span>Quote units</span><b>Gold per ${f.gold_unit_grams}g · Silver per ${f.silver_unit_grams}g</b></div>
-      ${f.error ? `<div class="kv"><span>Last message</span><b style="color:var(--amber)">${esc(f.error)}</b></div>` : ''}</div></div>`;
+      ${f.error ? `<div class="kv"><span>Last message</span><b style="color:var(--red)">${esc(feedReason(f.error))}</b></div>` : ''}</div></div>`;
 }
 
 /* pool & invoices */
@@ -187,7 +188,32 @@ function vCustomers() {
 const VIEWS = { overview: vOverview, jewellers: vJewellers, rates: vRates, pool: vPool, invoices: vInvoices, transactions: vTransactions, customers: vCustomers, pricing: vPricing, catalogue: vMCatalogue, content: vMContent, orders: vMOrders, kyc: vMKyc, settlement: vSettlement, sips: vMSips, referrals: vMRefs, gifts: vMGifts, redemptions: vMRed, goals: vMGoals, audit: vAudit };
 const LOAD = { overview: loadOv, jewellers: loadJ, rates: loadRate, pool: loadPool, invoices: loadInv, transactions: loadTx, customers: loadC, pricing: loadPricing, catalogue: loadMCat, content: loadMContent, orders: loadMOrders, kyc: loadMKyc, settlement: loadSettle, sips: loadMSips, referrals: loadMRefs, gifts: loadMGifts, redemptions: loadMRed, goals: loadMGoals, audit: loadAudit };
 function boot() { if (!VIEWS[S.tab]) S.tab = 'overview'; render(); LOAD[S.tab](); if (S.tab !== 'jewellers') api('/master/jewellers').then((j) => { S.jewellers = j; }).catch(() => {}); }
-setInterval(async () => { if (!localStorage.getItem('master_token')) return; try { S.price = await api('/price'); const c = $('#ratechip'); if (c) c.outerHTML = rateChip(S.price); } catch {} }, 5000);
+function feedAlert(p) {
+  const f = p?.feed || S.feed;
+  if (!f || !f.configured || f.source === 'mt5') return '';
+  const last = f.last_live_at;
+  const err = feedReason(f.error);
+  return `<div class="feed-alert" id="feed-down-alert" role="alert"><span class="fa-dot"></span><div><b>MT5 live rate feed is down</b><p>${esc(err || 'No response from the rate feed')}${last ? ` · Last live rate at ${esc(new Date(last).toLocaleString('en-IN'))}` : ''}. Customers cannot buy, gift or run SIPs until the feed is back.</p></div><button class="btn sm" onclick="go('rates')">Check feed</button></div>`;
+}
+function feedReason(raw) {
+  raw = raw || '';
+  return /Name or service not known|getaddrinfo/.test(raw) ? 'Feed link not found (DNS). The tunnel link has changed or is stopped; update MT5_RATES_URL with the new link'
+    : /530/.test(raw) ? 'Feed link not found (Cloudflare 530). The tunnel link has changed or is stopped; update MT5_RATES_URL with the new link'
+    : /502|503|504/.test(raw) ? 'Feed server is not responding (' + (raw.match(/50\d/) || [''])[0] + '). Check the MT5 script and tunnel on your PC'
+    : /401|403|key/i.test(raw) ? 'Feed rejected the API key'
+    : raw.replace(/ for url .*/s, '').slice(0, 140);
+}
+async function pollRate() {
+  if (!localStorage.getItem('master_token')) return;
+  try {
+    S.price = await api('/master/rate'); S.feed = S.price.feed;
+    const c = $('#ratechip'); if (c) c.outerHTML = rateChip(S.price);
+    const a = $('#feedalert'); if (a) a.innerHTML = feedAlert(S.price);
+  } catch {
+    const a = $('#feedalert'); if (a) a.innerHTML = '<div class="feed-alert" id="feed-down-alert" role="alert"><span class="fa-dot"></span><div><b>Server not reachable</b><p>The platform backend is not responding. Rates and orders are unavailable.</p></div></div>';
+  }
+}
+pollRate(); setInterval(pollRate, 5000);
 if (localStorage.getItem('master_token')) boot(); else render();
 </script>
 </body>

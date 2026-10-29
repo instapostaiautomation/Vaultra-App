@@ -8,7 +8,8 @@ import { colors, fonts, cardShadow } from "@/src/theme";
 export function PriceCards() {
   const { price } = useApp();
   const live = !!price?.live;
-  const liveLabel = live ? "Live Rate" : "Indicative Rate";
+  const paused = !!price?.offline;
+  const liveLabel = live ? "Live Rate" : paused ? "Rates Paused" : "Indicative Rate";
   const goldUp = (price?.change_pct ?? 0) >= 0;
   const silverUp = (price?.silver?.change_pct ?? 0) >= 0;
   const fmt = (n: number) => `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -26,11 +27,11 @@ export function PriceCards() {
           Gold <Text style={[styles.metalPurity, { color: colors.goldSheen }]}>24K · 999</Text>
         </Text>
         <Text style={styles.price} testID="gold-price-card" numberOfLines={1} adjustsFontSizeToFit>
-          {price ? fmt(price.buy) : "—"}
+          {price && price.has_live !== false ? fmt(price.buy) : "—"}
           <Text style={styles.perGram}> /gm</Text>
         </Text>
         <Text style={[styles.change, { color: goldUp ? colors.success : colors.error }]}>
-          {goldUp ? "▲" : "▼"} {Math.abs(price?.change_pct ?? 0).toFixed(2)}% <Text style={styles.since}>since yesterday</Text>
+          {paused ? <Text style={styles.since}>Resumes when feed is back</Text> : <>{goldUp ? "▲" : "▼"} {Math.abs(price?.change_pct ?? 0).toFixed(2)}% <Text style={styles.since}>since yesterday</Text></>}
         </Text>
       </LinearGradient>
 
@@ -45,11 +46,11 @@ export function PriceCards() {
           Silver <Text style={[styles.metalPurity, { color: colors.mutedLight }]}>999 Fine</Text>
         </Text>
         <Text style={styles.price} testID="silver-price-card" numberOfLines={1} adjustsFontSizeToFit>
-          {price?.silver ? fmt(price.silver.buy) : "—"}
+          {price?.silver && price.has_live !== false ? fmt(price.silver.buy) : "—"}
           <Text style={styles.perGram}> /gm</Text>
         </Text>
         <Text style={[styles.change, { color: silverUp ? colors.success : colors.error }]}>
-          {silverUp ? "▲" : "▼"} {Math.abs(price?.silver?.change_pct ?? 0).toFixed(2)}% <Text style={styles.since}>since yesterday</Text>
+          {paused ? <Text style={styles.since}>Resumes when feed is back</Text> : <>{silverUp ? "▲" : "▼"} {Math.abs(price?.silver?.change_pct ?? 0).toFixed(2)}% <Text style={styles.since}>since yesterday</Text></>}
         </Text>
       </LinearGradient>
     </View>

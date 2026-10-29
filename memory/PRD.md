@@ -120,3 +120,9 @@ Multi-tenant white-label digital gold platform. Vaultra onboards jewellery shop 
 - If MT5 feed configured but down > 60s: source="offline", last real price frozen (persisted in app_settings.last_live_rates), /quote, /sips/{id}/run, /gifts return 503. App shows PAUSED + disabled buy. Auto-resumes when feed returns.
 - Backend startup retries DB 30x2s. MT5 key redacted in logs.
 - App does NOT place MT5 trade orders (rates only).
+
+## Feed-down alert + persistence (iteration 15-16)
+- Master Admin red banner #feed-down-alert (polls /api/master/rate every 5s, shows friendly reason). Feed marked down after 15s without data. Startup = offline until feed answers when feed configured.
+- has_live=false -> all panels/app show "—" instead of demo prices.
+- PostgreSQL data moved to /app/pgdata (persistent). Previously /var/lib was wiped on pod restart -> DB reseeded (data loss on 29 Oct). Backups in /app/backups.
+- MT5_RATES_URL currently points to a dead trycloudflare host; user must provide new link via secrets.

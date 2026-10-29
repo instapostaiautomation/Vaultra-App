@@ -65,12 +65,12 @@ if METAAPI_ACCOUNT_ID and not re.fullmatch(r"[0-9a-fA-F-]{20,64}", METAAPI_ACCOU
 # Runtime MetaApi state (account may be created automatically from MT5 login details)
 META = {"account_id": METAAPI_ACCOUNT_ID, "state": "", "connection": "", "ready": False, "checked_at": 0.0}
 METAAPI_PREV: dict = {}  # symbol -> (prev_close, fetched_at_epoch)
-MT5_STALE_SECONDS = 60
+MT5_STALE_SECONDS = 15
 
 PRICE = {"base": 7285.50, "open": 7285.50, "prev": 7285.50, "anchor": 7285.50, "updated_at": None}
 SILVER_PRICE = {"base": 92.50, "open": 92.50, "prev": 92.50, "anchor": 92.50, "updated_at": None}
 RATE_FEED = {"source": "simulated", "last_live_at": None,
-             "error": METAAPI_INVALID or ("" if (MT5_RATES_URL or METAAPI_TOKEN) else "Live rate feed not configured")}
+             "error": ("" if MT5_RATES_URL else METAAPI_INVALID) or ("" if (MT5_RATES_URL or METAAPI_TOKEN) else "Live rate feed not configured")}
 
 DEFAULT_MARGIN = {"gold_buy": 0.0, "gold_sell": 3.0, "silver_buy": 0.0, "silver_sell": 3.0}
 MARGINS: dict = {}  # jeweller_id -> margin dict (percent)
@@ -126,6 +126,7 @@ def price_payload(jid: Optional[str] = None):
         "direction": "up" if PRICE["base"] >= PRICE["open"] else "down",
         "gst_rate": GST_RATE, "updated_at": PRICE["updated_at"] or now_iso(),
         "source": RATE_FEED["source"], "live": live, "offline": RATE_FEED["source"] == "offline",
+        "has_live": RATE_FEED["source"] != "offline" or bool(PRICE.get("real")),
         "base_rate": r2(PRICE["base"]),
         "silver": {
             "buy": silver_buy, "sell": silver_sell,
@@ -269,6 +270,7 @@ async def fetch_metaapi(client):
 
 
 def _set_live(state, px, prev):
+    state["real"] = True
     state["prev"] = state["base"]
     state["base"] = r2(px)
     state["open"] = r2(prev)
@@ -2973,8 +2975,8 @@ async def startup():
         _set_live(PRICE, d["g"], d["gp"])
         _set_live(SILVER_PRICE, d["s"], d["sp"])
         PRICE["updated_at"] = SILVER_PRICE["updated_at"] = d.get("at")
-        if MT5_RATES_URL or METAAPI_TOKEN:
-            RATE_FEED["source"] = "offline"  # until the feed answers
+    if MT5_RATES_URL or METAAPI_TOKEN:
+        RATE_FEED["source"] = "offline"  # never quote demo prices before the live feed answers
     asyncio.create_task(price_loop())
     logger.info("Vaultra DigiGold v2.0 started with PostgreSQL")
 

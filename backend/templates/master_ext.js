@@ -5,17 +5,17 @@ const ph = (t, p, right = '') => `<div class="page-head"><div><h2>${t}</h2><p>${
 const needJ = async () => { if (!S.jewellers) S.jewellers = await api('/master/jewellers'); };
 
 /* pricing */
-const loadPricing = () => safe(async () => { S.pricing = await api('/master/v3/pricing'); S.price = S.pricing.price; }, 'pricing');
+const loadPricing = () => safe(async () => { S.pricing = await api('/master/v3/pricing'); S.price = {...S.pricing.price, feed: S.feed}; }, 'pricing');
 function vPricing() {
   const head = ph('Pricing', 'Each shop\'s commission on top of the live rate. Changes reach that shop\'s app instantly.');
   const p = S.pricing; if (!p) return head + loading;
   return head + `<div class="grid g2" style="margin-bottom:16px">
-    <div class="card rate-card"><div class="coin"></div><div><div class="label"><span class="dot ${p.price.live ? 'live' : ''}"></span> Live gold</div><div class="value num">${inr(p.price.base_rate)} <small>/g</small></div></div></div>
-    <div class="card rate-card"><div class="coin silver"></div><div><div class="label"><span class="dot ${p.price.live ? 'live' : ''}"></span> Live silver</div><div class="value num">${inr(p.price.silver.base_rate)} <small>/g</small></div></div></div></div>
+    <div class="card rate-card"><div class="coin"></div><div><div class="label"><span class="dot ${p.price.live ? 'live' : ''}"></span> Live gold</div><div class="value num">${rv(p.price, p.price.base_rate)} <small>/g</small></div></div></div>
+    <div class="card rate-card"><div class="coin silver"></div><div><div class="label"><span class="dot ${p.price.live ? 'live' : ''}"></span> Live silver</div><div class="value num">${rv(p.price, p.price.silver.base_rate)} <small>/g</small></div></div></div></div>
     <div class="card"><div class="table-wrap"><table><thead><tr><th>Shop</th><th>Gold commission / g</th><th class="r">Gold buy rate</th><th>Silver commission / g</th><th class="r">Silver buy rate</th><th></th></tr></thead><tbody>
     ${p.shops.map((s) => `<tr><td><b>${esc(s.shop)}</b><div class="sub">${statusBadge(s.status)}</div></td>
-      <td><div class="prefix" style="width:140px"><span>₹</span><input class="input num" type="number" min="0" max="1000" step="0.01" id="pg_${s.id}" value="${s.gold_commission_per_g}"></div></td><td class="r num"><b>${inr(s.gold_buy)}</b></td>
-      <td><div class="prefix" style="width:140px"><span>₹</span><input class="input num" type="number" min="0" max="100" step="0.01" id="ps_${s.id}" value="${s.silver_commission_per_g}"></div></td><td class="r num"><b>${inr(s.silver_buy)}</b></td>
+      <td><div class="prefix" style="width:140px"><span>₹</span><input class="input num" type="number" min="0" max="1000" step="0.01" id="pg_${s.id}" value="${s.gold_commission_per_g}"></div></td><td class="r num"><b>${rv(p.price, s.gold_buy)}</b></td>
+      <td><div class="prefix" style="width:140px"><span>₹</span><input class="input num" type="number" min="0" max="100" step="0.01" id="ps_${s.id}" value="${s.silver_commission_per_g}"></div></td><td class="r num"><b>${rv(p.price, s.silver_buy)}</b></td>
       <td class="r"><button class="btn sm primary" onclick="savePricing('${s.id}')">Save</button></td></tr>`).join('')}</tbody></table></div></div>`;
 }
 async function savePricing(id) { try { await api('/master/v3/pricing/' + id, { method: 'PUT', body: { gold_per_g: Number($('#pg_' + id).value || 0), silver_per_g: Number($('#ps_' + id).value || 0) } }); toast('Pricing updated'); loadPricing(); } catch (e) { toast(e.message, true); } }
