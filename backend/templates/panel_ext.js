@@ -125,7 +125,7 @@ function sipView(data, filters, onStatus, onSearch, showShop) {
   const s = data.summary;
   const freq = s.by_frequency; const tot = Math.max(1, freq.daily + freq.weekly + freq.monthly);
   return `<div class="grid g4">
-      ${kpi('Active SIPs', s.active, `${s.paused} paused · ${s.total} total`, 'refresh', 'green')}
+      ${kpi('Active SIPs', s.active, `${s.paused} paused · ${s.cancelled || 0} cancelled`, 'refresh', 'green')}
       ${kpi('Monthly SIP value', inr0(s.monthly_value), 'expected every month', 'trend')}
       ${kpi('Gold saved via SIP', g4(s.grams), `${s.installments} instalment${s.installments === 1 ? '' : 's'} paid`, 'coin')}
       ${kpi('Total invested', inr0(s.invested), 'through SIP', 'wallet', 'blue')}</div>
@@ -134,12 +134,12 @@ function sipView(data, filters, onStatus, onSearch, showShop) {
         ${['daily', 'weekly', 'monthly'].map((f) => `<div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;font-size:13px"><span style="text-transform:capitalize">${f}</span><b>${freq[f]}</b></div>
           <div class="bar-track"><div style="width:${(freq[f] / tot) * 100}%"></div></div></div>`).join('')}
         <div class="note gray" style="margin-top:6px">${icon('rate')}<span>Each instalment buys gold at your live buy rate.</span></div></div>
-      <div class="card"><div class="card-h"><div class="seg">${[['all', 'All'], ['active', 'Active'], ['paused', 'Paused']].map(([k, l]) => `<button class="${filters.status === k ? 'on' : ''}" onclick="${onStatus}('${k}')">${l}</button>`).join('')}</div>
+      <div class="card"><div class="card-h"><div class="seg">${[['all', 'All'], ['active', 'Active'], ['paused', 'Paused'], ['cancelled', 'Cancelled']].map(([k, l]) => `<button class="${filters.status === k ? 'on' : ''}" onclick="${onStatus}('${k}')">${l}</button>`).join('')}</div>
         <input class="input search" placeholder="Name or phone" value="${esc(filters.search)}" oninput="${onSearch}(this.value)"></div>
         <div class="table-wrap"><table><thead><tr><th>Customer</th>${showShop ? '<th>Shop</th>' : ''}<th class="r">Amount</th><th>Frequency</th><th class="r">Paid</th><th class="r">Gold saved</th><th class="r">Invested</th><th>Next debit</th><th>Status</th></tr></thead><tbody>
         ${data.sips.length ? data.sips.map((x) => `<tr><td><b>${esc(x.customer)}</b><div class="sub">${phoneFmt(x.phone)} · since ${dOnly(x.created_at)}</div></td>${showShop ? `<td>${esc(x.shop)}</td>` : ''}
           <td class="r num"><b>${inr0(x.amount)}</b></td><td style="text-transform:capitalize">${esc(x.frequency)}</td><td class="r num">${x.installments}</td>
-          <td class="r num">${g4(x.grams)}</td><td class="r num">${inr0(x.invested)}</td><td>${x.status === 'active' ? dOnly(x.next_run) : '—'}</td><td>${statusBadge(x.status === 'paused' ? 'pending' : x.status).replace('>pending<', '>paused<')}</td></tr>`).join('') : emptyRow(showShop ? 9 : 8, 'No SIPs yet', 'Customers start a SIP from the SIP tab in the app.')}
+          <td class="r num">${g4(x.grams)}</td><td class="r num">${inr0(x.invested)}</td><td>${x.status === 'active' ? dOnly(x.next_run) : '—'}</td><td>${x.status === 'paused' ? '<span class="badge amber">Paused</span>' : x.status === 'cancelled' ? '<span class="badge red">Cancelled</span>' : statusBadge(x.status)}</td></tr>`).join('') : emptyRow(showShop ? 9 : 8, 'No SIPs yet', 'Customers start a SIP from the SIP tab in the app.')}
         </tbody></table></div></div></div>`;
 }
 const SF = { status: 'all', search: '' };

@@ -33,6 +33,7 @@ app = FastAPI(title="Vaultra DigiGold API")
 api = APIRouter(prefix="/api")
 bearer = HTTPBearer(auto_error=False)
 logger = logging.getLogger("vaultra")
+logging.getLogger("httpx").setLevel(logging.WARNING)  # request URLs carry the feed API key
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 GST_RATE = 0.03
@@ -155,9 +156,11 @@ def _per_gram(data: dict, symbol: str, unit: float):
 
 async def fetch_mt5(client):
     headers = {"ngrok-skip-browser-warning": "1"}
+    params = {"symbols": f"{MT5_GOLD_SYMBOL},{MT5_SILVER_SYMBOL}"}
     if MT5_API_KEY:
         headers["X-API-Key"] = MT5_API_KEY
-    r = await client.get(_mt5_url(), params={"symbols": f"{MT5_GOLD_SYMBOL},{MT5_SILVER_SYMBOL}"}, headers=headers)
+        params["key"] = MT5_API_KEY
+    r = await client.get(_mt5_url(), params=params, headers=headers)
     r.raise_for_status()
     data = r.json()
     return _per_gram(data, MT5_GOLD_SYMBOL, MT5_GOLD_UNIT_GRAMS), _per_gram(data, MT5_SILVER_SYMBOL, MT5_SILVER_UNIT_GRAMS)
@@ -284,7 +287,7 @@ async def price_loop():
             await asyncio.sleep(MT5_POLL_SECONDS if live_cfg else 3)
             if live_cfg:
                 try:
-                    if METAAPI_TOKEN:
+                    if METAAPI_TOKEN and not MT5_RATES_URL:
                         if not await ensure_metaapi(client):
                             raise ValueError(RATE_FEED["error"] or "MetaApi not ready")
                         (g, gp), (s, sp) = await fetch_metaapi(client)
@@ -1885,7 +1888,7 @@ def rate_feed_status():
     return {
         "source": RATE_FEED["source"], "configured": bool(MT5_RATES_URL or METAAPI_TOKEN),
         "metaapi_state": META["state"], "metaapi_connection": META["connection"],
-        "provider": "metaapi" if METAAPI_TOKEN else ("mt5_script" if MT5_RATES_URL else "none"),
+        "provider": "mt5_script" if MT5_RATES_URL else ("metaapi" if METAAPI_TOKEN else "none"),
         "last_live_at": last.isoformat() if last else None, "error": RATE_FEED["error"],
         "gold_symbol": MT5_GOLD_SYMBOL, "silver_symbol": MT5_SILVER_SYMBOL,
         "gold_unit_grams": MT5_GOLD_UNIT_GRAMS, "silver_unit_grams": MT5_SILVER_UNIT_GRAMS,
@@ -2616,7 +2619,7 @@ async def jp_content_del(kind: str, item_id: str, jeweller: Jeweller = Depends(g
     if not x:
         raise HTTPException(404, "Not found")
     await db.delete(x)
-    await audit(db, "jeweller", jeweller, f"{kind[:-1]}.delete", item_id, jeweller_id=jeweller.id)
+    await audit(db, "jeweller", jeweller, f"{kind[:-1]}.delete", (getattr(x, "title", None) or getattr(x, "question", None) or getattr(x, "name", None) or item_id)[:120], jeweller_id=jeweller.id)
     await db.commit()
     return {"ok": True}
 
@@ -2652,7 +2655,7 @@ async def mp_content_del(kind: str, item_id: str, admin: MasterAdmin = Depends(g
         x.is_active = False
     else:
         await db.delete(x)
-    await audit(db, "master", admin, f"{kind[:-1]}.delete", item_id)
+    await audit(db, "master", admin, f"{kind[:-1]}.delete", (getattr(x, "title", None) or getattr(x, "question", None) or getattr(x, "name", None) or item_id)[:120])
     await db.commit()
     return {"ok": True}
 
@@ -2728,7 +2731,8 @@ async def _sips(db, jid=None, status="all", search=""):
                     "next_run": sp.next_run.isoformat() if sp.next_run else None,
                     "created_at": sp.created_at.isoformat() if sp.created_at else ""})
     act = [x for x in out if x["status"] == "active"]
-    return {"summary": {"total": len(out), "active": len(act), "paused": sum(1 for x in out if x["status"] == "paused"),
+    return {"summary": {"total": sum(1 for x in out if x["status"] != "cancelled"), "active": len(act), "paused": sum(1 for x in out if x["status"] == "paused"),
+                        "cancelled": sum(1 for x in out if x["status"] == "cancelled"),
                         "monthly_value": r2(sum(x["monthly_value"] for x in act)), "grams": r4(sum(x["grams"] for x in out)),
                         "invested": r2(sum(x["invested"] for x in out)), "installments": sum(x["installments"] for x in out),
                         "by_frequency": {f: sum(1 for x in act if x["frequency"] == f) for f in ("daily", "weekly", "monthly")}},

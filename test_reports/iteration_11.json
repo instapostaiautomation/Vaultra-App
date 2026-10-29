@@ -1,0 +1,24 @@
+{
+  "summary": "Iteration 11 retest of the 4 minor items from iteration_10, plus a quick regression. All items pass. Backend: test_iteration11_retest.py passed 9/9. (1) Expo app at 390x844: a TEST product with an empty tag shows no tag pill on the Jewellery card or the product-detail hero (no empty absolute element in the DOM). Tagged products still show their badge ('New' on Classic Solitaire Ring, 'Classic', 'Luxury', 'Premium' on the cards). (2) The card label reads 'Price' and the value is total_price (₹16,294 for 2g at 12% making). 'Gold value' no longer appears. (3) Audit Log: removing a banner or FAQ records the title or question as the target, for both the shop and master endpoints (API). It also works through the UI: shop banner remove, shop FAQ remove and master FAQ remove all show the text, e.g. 'Banner Removed | TEST_UI Remove Banner'. No UUIDs appear. (4) Shop SIP tab: the filter shows All/Active/Paused/Cancelled. The KPI foot reads '1 paused · 1 cancelled'. summary.total is 2 for 1 active + 1 paused + 1 cancelled, so cancelled SIPs are excluded (master too). ?status=cancelled returns only cancelled rows, and the UI shows a red 'Cancelled' badge (bg #FEF3F2, text #B42318). The Active and Paused filters are correct. (5) Regression: shop Catalogue (9 rows, product remove works) and master Overview render with no JS page errors and no 4xx/5xx. The only 404 is the expected, handled tenant/resolve call on the preview host.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Shop/Master SIP tab", "issues": ["LOW: The KPI cards are calculated from the filtered list. With the 'Cancelled' filter on, Active SIPs shows 0 and the foot shows '0 paused · 1 cancelled'. Consider always calculating the KPIs from the unfiltered set."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration11_retest.py", "/app/test_reports/pytest/pytest_iter11.xml"],
+  "action_items": ["OPTIONAL/LOW: Calculate the SIP KPI summary on unfiltered data so the cards don't change when the status filter changes"],
+  "critical_code_review_comments": [
+    "/jeweller/v3/upload accepted a truncated 7-byte fake PNG during setup. Consider validating the image content (for example with PIL verify).",
+    "server.py is ~2950 lines; consider splitting it into routers"
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration11_retest.py"],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% of retest items (5/5)"},
+  "seed_data_creation": "None persisted. The TEST_NoTag Ring product was removed via the Catalogue UI. TEST_ banners and FAQs were removed through the UI and API (DB count of TEST_ banners, FAQs and active products is 0). The 3 test SIPs for Aarav (active, paused, cancelled) were hard-deleted via psql. Note: Sharma had 0 SIPs before this test.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Sharma shop currently has 0 SIPs. To test the SIP UI, create SIPs as 9876543210 via POST /api/sips, toggle and DELETE (soft cancel) them, then hard-delete via psql (DATABASE_URL_SYNC in backend/.env, strip +psycopg2). Master content FAQ inputs: #mf_q/#mf_a plus the 'Add question' button. Shop FAQ: #fq/#fa/#add-faq. Remove uses confirm(), so accept the dialog."
+}

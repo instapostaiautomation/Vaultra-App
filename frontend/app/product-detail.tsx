@@ -99,9 +99,11 @@ export default function ProductDetailScreen() {
             contentFit="cover"
             transition={300}
           />
-          <View style={styles.tagBadge}>
-            <Text style={styles.tagText}>{product.tag}</Text>
-          </View>
+          {product.tag ? (
+            <View style={styles.tagBadge}>
+              <Text style={styles.tagText}>{product.tag}</Text>
+            </View>
+          ) : null}
         </View>
 
         {/* Image Thumbnails */}

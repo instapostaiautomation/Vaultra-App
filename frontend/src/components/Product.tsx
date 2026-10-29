@@ -25,9 +25,11 @@ export function ProductCard({ p, width, onRedeem }: { p: Product; width: number;
     >
       <View style={styles.imgWrap}>
         <Image source={p.image_url ? { uri: p.image_url.startsWith("/") ? (process.env.EXPO_PUBLIC_BACKEND_URL || "") + p.image_url : p.image_url } : IMAGES[p.image]} style={{ width: "100%", height: "100%" }} contentFit="cover" transition={200} />
-        <View style={styles.tag}>
-          <Text style={styles.tagText}>{p.tag}</Text>
-        </View>
+        {p.tag ? (
+          <View style={styles.tag}>
+            <Text style={styles.tagText}>{p.tag}</Text>
+          </View>
+        ) : null}
       </View>
       <View style={styles.body2}>
         <Text style={styles.name} numberOfLines={2}>
@@ -37,7 +39,7 @@ export function ProductCard({ p, width, onRedeem }: { p: Product; width: number;
           {p.grams}g · 24K · Making {p.making_pct ?? 12}%
         </Text>
         <View style={styles.valueRow}>
-          <Text style={styles.valueLabel}>Gold value</Text>
+          <Text style={styles.valueLabel}>Price</Text>
           <Text style={styles.value} numberOfLines={1}>
             {p.total_price ? inr(p.total_price, 0) : price ? inr(p.grams * price.buy, 0) : "—"}
           </Text>

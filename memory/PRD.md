@@ -103,3 +103,10 @@ Multi-tenant white-label digital gold platform. Vaultra onboards jewellery shop 
 - Master (dark luxury sidebar): Overview hero, Shops, Pricing, Market & Feed, Catalogue, App Content, Orders (+bill), Customers, KYC, Transactions, Settlement, SIP, Referrals, Gifts, Redemptions, Gold Goals, Gold Pool, Invoices, Audit Log.
 - New tables: banners, faqs, uploads, audit_logs; products.making_pct. Customer app banners + FAQ load from /api/content.
 - PostgreSQL self-heals via /app/scripts/ensure_postgres.sh (supervisor program "postgresql").
+
+## Database safety (Jun 2026)
+- Alembic configured: /app/backend/alembic.ini, /app/backend/migrations (baseline 00e340a04c4e stamped; app_settings excluded from autogenerate).
+- Future schema change: edit models -> `cd /app/backend && alembic revision --autogenerate -m "msg"` -> review -> `alembic upgrade head`. Never drop_all.
+- Seed is idempotent (skips if master admin exists). init_db only creates/adds, never deletes.
+- Backup: /app/scripts/backup_db.sh -> /app/backups (keeps last 14). Run before every migration.
+- LIVE RATES: hosted MT5 JSON feed via MT5_RATES_URL + MT5_API_KEY (takes priority over MetaApi). Verified live: GOLDDEC per 10g, SILVERDEC per kg -> per gram. httpx logs silenced (key in URL). Order booking API (/order, /positions, /close_order) available on same host, not yet integrated.
