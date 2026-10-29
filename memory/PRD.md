@@ -115,3 +115,8 @@ Multi-tenant white-label digital gold platform. Vaultra onboards jewellery shop 
 - Left-top side drawer (src/components/SideMenu.tsx): profile block, Vault & Redeem, Catalogue, SIP, Gift, Refer, Notifications*, KYC*, FAQ, Logout*; footer jeweller support_phone (from /jewellers/list = jeweller.phone) + Powered by.
 - Wallet pill only when signed in. Category tiles = lucide icons. Product/detail images contentFit contain on cream. Banners: blurred backdrop + contain; uploaded banners show no text overlay.
 - Dark luxe price cards; price alert banner only for user's triggered alerts; price direction vs open; jeweller product total uses making %.
+
+## Rates offline handling (iteration 13-14)
+- If MT5 feed configured but down > 60s: source="offline", last real price frozen (persisted in app_settings.last_live_rates), /quote, /sips/{id}/run, /gifts return 503. App shows PAUSED + disabled buy. Auto-resumes when feed returns.
+- Backend startup retries DB 30x2s. MT5 key redacted in logs.
+- App does NOT place MT5 trade orders (rates only).

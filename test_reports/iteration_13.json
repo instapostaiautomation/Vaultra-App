@@ -1,0 +1,44 @@
+{
+  "summary": "Tested what happens when the MT5 rate feed is down (the Cloudflare tunnel returns 502), plus backend startup resilience and regressions. Backend: 11/11 pytest tests pass. GET /api/price returns source=offline, offline=true, live=false, gold buy 14321.85 and silver buy 191.99; the price stays the same over time, so it is not the old ~7285 demo price. POST /api/quote and /api/quote/silver return 503 with the exact message. Logs written since the fix show the key as key=***. Startup resilience was checked live: with PostgreSQL stopped the backend logged 'Waiting for PostgreSQL (n/30)', then started normally once PostgreSQL came back, and /api/price returned 200. Regressions pass: OTP login, vault, products, jewellers/list, and both admin panels. Frontend at 390x844: the ticker shows 'RATES PAUSED' with a red dot, the price cards show INDICATIVE RATE ₹14,321.85, the BuyWidget shows the rates-paused-notice and 'Showing last live rate', and buy-proceed-button is aria-disabled with text 'Rates paused' (tapping it does not open the payment sheet; checked both logged out and logged in). One real bug remains: on every cold load an error toast appears ('Live rates are temporarily unavailable...') because /api/quote fires before /api/price has loaded. No deprecated Expo packages were found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "startup()", "issue": "The retry loop only catches OSError. While PostgreSQL is still starting it can raise asyncpg CannotConnectNowError ('the database system is starting up'), which is not an OSError, so startup could still crash. Catch Exception, or add asyncpg.exceptions.CannotConnectNowError."},
+      {"endpoint": "POST /api/gifts, POST /api/sips/{id}/run, POST /api/redeem, product purchase", "issue": "While offline these still price at the frozen last rate via gold_rate(). Only /api/quote checks RATE_FEED source=='offline'. Gifts and SIP runs could take money at a stale rate. Consider blocking them, or warning, while offline."},
+      {"endpoint": "/var/log/supervisor/backend.err.log", "issue": "The current code redacts the key correctly. However, 31 older log lines (written before the fix, the last at 13:26:50) still contain the plain MT5_API_KEY. Recommend rotating the key and truncating the old log."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "BuyWidget lock()", "issue": "An error toast 'Live rates are temporarily unavailable. Please try again in a few minutes.' (testID toast-title) shows on every cold load of the home screen. Cause: lock() runs on mount while price is still null, so paused=false. POST /api/quote returns 503 before GET /api/price, and the `if (!paused) toast(...)` guard does not stop it. Network order seen: 503 /quote -> 200 /price -> 503 /quote. Fix: skip lock() until price is loaded and price.offline is false, or never toast on a 503 response.", "testID": "buy-widget", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Home header (logged in, 390px)", "issues": ["The ticker pill is squeezed by vault-balance-pill and cuts off both the price ('₹14,321.8…') and the status ('RATES PAUS…'). Shorten the label (e.g. 'PAUSED'), hide the '24K (99.9%)' label when space is tight, or let the pill shrink less."]},
+      {"screen": "BuyWidget (offline)", "issues": ["The header label still says 'LIVE 24K BUY RATE' while rates are paused. It should read something like 'LAST 24K BUY RATE'.", "The timer pill shows a meaningless 00:00 while paused. Hide it when paused."]},
+      {"screen": "Header LiveTicker", "issues": ["The colour of the 'RATES PAUSED' text comes from change_pct direction, not from the paused state. It is red now only because the change is negative; if change_pct >= 0 it would show green. Force colors.error when offline."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration13_offline_rates.py", "/app/test_reports/pytest/pytest_iter13.xml"],
+  "action_items": [
+    "HIGH: Stop the error toast on cold load in BuyWidget. Do not call /quote (or do not toast) until `price` is loaded and not offline, e.g. `useEffect(() => { if (price && !price.offline) lock(); }, [lock, price?.offline])`, and do not toast on 503.",
+    "Make the startup retry also catch asyncpg CannotConnectNowError / generic Exception.",
+    "Block, or warn, for gifts, SIP run and product purchase while RATE_FEED source is offline, so nothing is priced at a frozen rate.",
+    "Make the LiveTicker status text use colors.error when offline. Fix the cut-off ticker text when logged in.",
+    "Change the BuyWidget label from 'LIVE ... BUY RATE' when paused and hide the 00:00 timer.",
+    "Rotate MT5_API_KEY, since old log lines contain the plain key."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 2977 lines and should be split into routers (price engine, auth, orders, admin).",
+    "If last_live_rates was never saved and the feed is down, the app shows offline with the 7285.50 demo default. The UI should hide the price or say 'unavailable' in that case.",
+    "httpx logger set to WARNING is a good defence against the key appearing in request URLs."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration13_offline_rates.py"],
+  "success_rate": {"backend": "100% (11/11)", "frontend": "~90% (all paused-state checks pass; error toast shown on cold load)"},
+  "seed_data_creation": "None",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "The MT5 tunnel is externally down (502), so offline is the expected state. Customer OTP: POST /api/auth/otp/request {phone, jeweller_id} -> challenge_id + demo_otp; POST /api/auth/otp/verify -> access_token. The pytest.ini uses xdist (-n). To check for the toast race, poll [data-testid=toast-title] for about 3s right after a cold load of /.",
+  "rca_of_issue": "Toast on cold load: in BuyWidget, `paused = !!price?.offline` is false while AppContext has not yet fetched /api/price. The mount effect calls lock() immediately, /api/quote returns 503, and the catch block toasts because paused is false. Once the price arrives, lock is recreated (paused is in its deps) and runs again silently. Reproduced on 3/3 cold loads."
+}

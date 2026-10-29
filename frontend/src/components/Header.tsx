@@ -30,12 +30,12 @@ export function LiveTicker({ testID = "live-gold-ticker" }: { testID?: string })
   const up = (price?.change_pct ?? 0) >= 0;
   return (
     <View style={styles.ticker} testID={testID}>
-      <PulseDot color={priceError ? colors.error : colors.success} />
-      <Text style={styles.tickerLabel} numberOfLines={1}>24K (99.9%)</Text>
+      <PulseDot color={priceError || price?.offline ? colors.error : colors.success} />
+      <Text style={styles.tickerLabel} numberOfLines={1}>24K</Text>
       <Text style={styles.tickerPrice} numberOfLines={1} testID="live-gold-price">
         {price ? `${inr(price.buy)}/g` : "—"}
       </Text>
-      <Text numberOfLines={1} style={[styles.tickerLive, { color: up ? colors.success : colors.error }]}>{priceError ? "OFFLINE" : `${up ? "▲" : "▼"} ${price?.live ? "LIVE" : "INDICATIVE"}`}</Text>
+      <Text numberOfLines={1} style={[styles.tickerLive, { color: priceError || price?.offline ? colors.error : up ? colors.success : colors.error }]}>{priceError ? "NO NETWORK" : price?.offline ? "PAUSED" : `${up ? "▲" : "▼"} ${price?.live ? "LIVE" : "INDICATIVE"}`}</Text>
     </View>
   );
 }

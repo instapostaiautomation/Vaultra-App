@@ -12,7 +12,7 @@ from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import select, update, delete, func, and_, or_, desc, asc, text, case
 from sqlalchemy.ext.asyncio import AsyncSession
-import os, re, logging, uuid, random, asyncio, hmac, hashlib, secrets, math
+import os, re, json, logging, uuid, random, asyncio, hmac, hashlib, secrets, math
 import bcrypt, jwt
 
 ROOT_DIR = Path(__file__).parent
@@ -125,7 +125,7 @@ def price_payload(jid: Optional[str] = None):
         "change": change, "change_pct": r2(change / PRICE["open"] * 100) if PRICE["open"] else 0,
         "direction": "up" if PRICE["base"] >= PRICE["open"] else "down",
         "gst_rate": GST_RATE, "updated_at": PRICE["updated_at"] or now_iso(),
-        "source": RATE_FEED["source"], "live": live,
+        "source": RATE_FEED["source"], "live": live, "offline": RATE_FEED["source"] == "offline",
         "base_rate": r2(PRICE["base"]),
         "silver": {
             "buy": silver_buy, "sell": silver_sell,
@@ -135,6 +135,12 @@ def price_payload(jid: Optional[str] = None):
             "base_rate": r2(SILVER_PRICE["base"]),
         },
     }
+
+
+def require_live_rates():
+    """Never charge customers at a frozen/stale rate while the live feed is down."""
+    if RATE_FEED["source"] == "offline":
+        raise HTTPException(503, "Live rates are temporarily unavailable. Please try again in a few minutes.")
 
 
 def _mt5_url():
@@ -281,6 +287,7 @@ def _simulate(state, jitter):
 async def price_loop():
     import httpx
     last_err_log = 0.0
+    last_save = 0.0
     async with httpx.AsyncClient(timeout=5) as client:
         while True:
             live_cfg = bool(METAAPI_TOKEN) or bool(MT5_RATES_URL)
@@ -296,15 +303,22 @@ async def price_loop():
                     _set_live(PRICE, g, gp)
                     _set_live(SILVER_PRICE, s, sp)
                     RATE_FEED.update(source="mt5", last_live_at=now_utc(), error="")
+                    if asyncio.get_event_loop().time() - last_save > 60:
+                        last_save = asyncio.get_event_loop().time()
+                        await _setting("last_live_rates", json.dumps({"g": g, "gp": gp, "s": s, "sp": sp, "at": now_iso()}))
                     continue
                 except Exception as e:  # feed down / tunnel closed / market closed
-                    RATE_FEED["error"] = str(e)[:200]
+                    msg = str(e).replace(MT5_API_KEY, "***") if MT5_API_KEY else str(e)
+                    RATE_FEED["error"] = msg[:200]
                     if asyncio.get_event_loop().time() - last_err_log > 60:
-                        logger.warning(f"MT5 rate feed error: {e}")
+                        logger.warning(f"MT5 rate feed error: {msg[:300]}")
                         last_err_log = asyncio.get_event_loop().time()
                     last = RATE_FEED["last_live_at"]
                     if last and (now_utc() - last).total_seconds() < MT5_STALE_SECONDS:
                         continue  # keep last live price briefly
+                    # Live feed configured but down: freeze last price and block new quotes (never invent prices)
+                    RATE_FEED["source"] = "offline"
+                    continue
             RATE_FEED["source"] = "simulated"
             _simulate(PRICE, PRICE["anchor"] * 0.0006)
             _simulate(SILVER_PRICE, SILVER_PRICE["anchor"] * 0.0016)
@@ -948,6 +962,7 @@ async def create_quote(
 ):
     if body and body.metal:
         metal = body.metal
+    require_live_rates()
     jid = await _quote_jeweller(creds, body.tenant if body else "", db)
     if metal == "silver":
         buy, sell = silver_rate(jid)
@@ -1187,6 +1202,7 @@ async def run_sip(sip_id: str, customer: Customer = Depends(get_current_customer
     sip = result.scalar_one_or_none()
     if not sip:
         raise HTTPException(404, "Active SIP not found")
+    require_live_rates()
     rate, _ = gold_rate(customer.jeweller_id)
     grams = r4(sip.amount / rate)
     gst = r2(sip.amount * GST_RATE)
@@ -1216,6 +1232,7 @@ GIFT_THEMES = ("diwali", "birthday", "wedding", "thank_you", "congrats")
 
 @api.post("/gifts")
 async def send_gift(body: GiftCreate, customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    require_live_rates()
     phone = norm_phone(body.phone)
     if len(phone) != 10:
         raise HTTPException(400, "Enter a valid 10-digit mobile number")
@@ -2937,11 +2954,27 @@ async def panel_asset(name: str):
 # ═══════════════════ STARTUP ══════════════════════════════════════════════════
 @app.on_event("startup")
 async def startup():
-    await init_db()
+    for attempt in range(30):  # PostgreSQL may still be booting after a pod restart
+        try:
+            await init_db()
+            break
+        except Exception as e:
+            logger.warning(f"Waiting for PostgreSQL ({attempt + 1}/30): {e}")
+            await asyncio.sleep(2)
+    else:
+        await init_db()
     await seed_data()
     async with AsyncSessionLocal() as db:
         for j in (await db.execute(select(Jeweller))).scalars().all():
             cache_margins(j)
+    saved = await _setting("last_live_rates")
+    if saved:  # start from the last real MT5 price, not the demo default
+        d = json.loads(saved)
+        _set_live(PRICE, d["g"], d["gp"])
+        _set_live(SILVER_PRICE, d["s"], d["sp"])
+        PRICE["updated_at"] = SILVER_PRICE["updated_at"] = d.get("at")
+        if MT5_RATES_URL or METAAPI_TOKEN:
+            RATE_FEED["source"] = "offline"  # until the feed answers
     asyncio.create_task(price_loop())
     logger.info("Vaultra DigiGold v2.0 started with PostgreSQL")
 

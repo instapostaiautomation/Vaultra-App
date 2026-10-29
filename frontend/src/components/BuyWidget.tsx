@@ -29,16 +29,20 @@ export function BuyWidget() {
   const [lastTxn, setLastTxn] = useState<any>(null);
 
   const liveRate = metal === "gold" ? price?.buy ?? 0 : price?.silver?.buy ?? 0;
+  const paused = !!price?.offline;
+  const priceReady = !!price;
 
   const lock = useCallback(async () => {
+    if (!priceReady || paused) { setQuote(null); return; }
     try {
       const q = await api(metal === "gold" ? "/quote" : "/quote/silver", { method: "POST", body: { tenant }, auth: "none" });
       setQuote(q);
       setSecs(q.lock_seconds || LOCK_SECONDS);
-    } catch {
-      toast("error", "Quote failed");
+    } catch (e: any) {
+      setQuote(null);
+      if (e?.status !== 503) toast("error", e?.message || "Could not lock price. Please retry");
     }
-  }, [metal, tenant, toast]);
+  }, [metal, tenant, toast, paused, priceReady]);
 
   useEffect(() => { lock(); }, [lock]);
 
@@ -90,14 +94,16 @@ export function BuyWidget() {
     <View style={styles.root} testID="buy-widget">
       <View style={styles.head}>
         <View>
-          <Text style={styles.headLabel}>LIVE {metal === "gold" ? "24K" : "SILVER"} BUY RATE</Text>
+          <Text style={styles.headLabel}>{paused ? "LAST" : "LIVE"} {metal === "gold" ? "24K" : "SILVER"} BUY RATE</Text>
           <Text style={styles.headRate} testID="buy-rate">{inr(rate)}<Text style={styles.perG}>/g</Text></Text>
-          <Text style={styles.gstNote}>Price locked for 5 minutes · excl. 3% GST</Text>
+          <Text style={styles.gstNote}>{paused ? "Showing last live rate" : "Price locked for 5 minutes · excl. 3% GST"}</Text>
         </View>
-        <View style={styles.timerBox}>
-          <Timer size={14} color={colors.onBrandTertiary} />
-          <Text style={styles.timerText}>{String(mm).padStart(2, "0")}:{String(ss).padStart(2, "0")}</Text>
-        </View>
+        {paused ? null : (
+          <View style={styles.timerBox}>
+            <Timer size={14} color={colors.onBrandTertiary} />
+            <Text style={styles.timerText}>{String(mm).padStart(2, "0")}:{String(ss).padStart(2, "0")}</Text>
+          </View>
+        )}
       </View>
 
       {/* Metal Toggle */}
@@ -152,8 +158,14 @@ export function BuyWidget() {
       </View>
 
       {/* CTA */}
-      <Pressable testID="buy-proceed-button" onPress={proceedToBuy} style={({ pressed }) => [styles.cta, pressed && { opacity: 0.85 }]}>
-        <Text style={styles.ctaText} testID="buy-proceed-text">Proceed to Buy {metalLabel}  →</Text>
+      {paused ? (
+        <View style={styles.pausedBox} testID="rates-paused-notice">
+          <Text style={styles.pausedTitle}>Live rates paused</Text>
+          <Text style={styles.pausedSub}>Buying will resume automatically as soon as live rates are back.</Text>
+        </View>
+      ) : null}
+      <Pressable testID="buy-proceed-button" disabled={paused} onPress={proceedToBuy} style={({ pressed }) => [styles.cta, paused && { opacity: 0.45 }, pressed && { opacity: 0.85 }]}>
+        <Text style={styles.ctaText} testID="buy-proceed-text">{paused ? "Rates paused" : `Proceed to Buy ${metalLabel}  →`}</Text>
       </Pressable>
 
       {/* Payment Sheet - Inline */}
@@ -197,6 +209,10 @@ export function BuyWidget() {
 }
 
 const styles = StyleSheet.create({
+  pausedBox: { backgroundColor: colors.errorTint, borderRadius: 12, padding: 12, marginTop: 12 },
+  pausedTitle: { fontFamily: fonts.bold, fontSize: 13, color: colors.error },
+  pausedSub: { fontFamily: fonts.regular, fontSize: 12, color: colors.onSurface, marginTop: 2 },
+
   root: { marginHorizontal: 16, borderRadius: 14, borderWidth: 1.5, borderColor: colors.brandPrimary, backgroundColor: colors.surface, overflow: "hidden" },
   head: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", padding: 16, gap: 8 },
   headLabel: { fontFamily: fonts.bold, fontSize: 11, color: colors.muted, letterSpacing: 0.5 },

@@ -1,0 +1,26 @@
+{
+  "summary": "Retest of the issues from iteration 13. The MT5 feed is still offline (expected). Backend: 10/10 new pytest tests pass, and 11/11 iteration-13 tests still pass. POST /api/quote, POST /api/sips/{id}/run and POST /api/gifts each return 503 with the exact 'Live rates are temporarily unavailable...' message. The SIP run does not change vault grams, and a SIP that does not exist still returns 404. The startup loop now catches Exception. No backend*.log contains the plain MT5_API_KEY; only key=*** appears. /api/price returns 200 with offline=true and buy=14321.85; vault and products work. Frontend at 390x844 (Expo web): on 3 fresh loads logged out and 3 fresh loads logged in, NO toast-title appeared. /api/quote was not called at all, only /api/price returned 200. The header ticker reads '24K ₹14,321.85/g PAUSED'. PAUSED is red rgb(220,38,38), and no part is cut off (scrollWidth equals clientWidth), both logged out and logged in next to the vault pill. BuyWidget: the label reads 'LAST 24K BUY RATE', or 'LAST SILVER BUY RATE' after switching to silver (no toast on switch). There is no 00:00 timer. rates-paused-notice is visible. buy-proceed-button is aria-disabled with text 'Rates paused', and tapping it opens no payment sheet. All iteration-13 issues are resolved.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Home (minor, optional)", "issues": ["GET /api/price is called twice on each cold load (duplicate fetch). Harmless.", "The logged-in header eyebrow 'SHARMA GOLD & …' is truncated at 390px. Cosmetic only."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration14_offline_guards.py", "/app/test_reports/pytest/pytest_iter14.xml"],
+  "action_items": ["None blocking. Optional: remove the duplicate /api/price fetch on mount."],
+  "critical_code_review_comments": [
+    "In run_sip, require_live_rates() runs after the SIP ownership lookup, so a bad id still gets 404. That is fine. send_gift checks live rates before input validation, so while offline a malformed gift returns 503 instead of 400. Acceptable.",
+    "Redeem (customer) and the jeweller redemption approval still use the frozen gold_rate for making-charge and value calculation while offline. This is intentional according to the main agent.",
+    "server.py is still about 2980 lines; split it into routers."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration14_offline_guards.py"],
+  "success_rate": {"backend": "100% (10/10 new + 11/11 regression)", "frontend": "100%"},
+  "seed_data_creation": "A temporary SIP for 9876543210 was created and deleted inside test_sip_run_503.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "The MT5 tunnel is externally down, so offline is expected. Customer login: POST /api/auth/otp/request {phone, jeweller_id:'demo-jeweller-001'} -> challenge_id + demo_otp; POST /api/auth/otp/verify -> access_token. Run pytest with '-p no:xdist -o addopts=\"\"' for single files. UI login: login-phone-input -> login-send-otp-button -> login-autofill-otp -> login-verify-button.",
+  "rca_of_issue": "The cold-load toast is fixed. BuyWidget.lock() now returns early when price is not loaded (priceReady=false) or the feed is offline (paused=true), and it does not toast on status 503. Verified: no /quote request goes out while offline."
+}
