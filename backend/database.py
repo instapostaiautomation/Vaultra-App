@@ -39,5 +39,17 @@ async def init_db():
             "CREATE TABLE IF NOT EXISTS app_settings (key VARCHAR(100) PRIMARY KEY, value TEXT)",
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS making_pct DOUBLE PRECISION DEFAULT 12",
             "ALTER TABLE jewellers ADD COLUMN IF NOT EXISTS silver_commission_per_g DOUBLE PRECISION DEFAULT 0",
+            "ALTER TABLE jewellers ADD COLUMN IF NOT EXISTS gold22_commission_per_g DOUBLE PRECISION DEFAULT 0",
+            "ALTER TABLE jewellers ADD COLUMN IF NOT EXISTS gold18_commission_per_g DOUBLE PRECISION DEFAULT 0",
+            "ALTER TABLE jewellers ADD COLUMN IF NOT EXISTS app_name VARCHAR(60) DEFAULT ''",
+            "ALTER TABLE jewellers ADD COLUMN IF NOT EXISTS bundle_id VARCHAR(120) DEFAULT ''",
+            "ALTER TABLE jewellers ADD COLUMN IF NOT EXISTS theme_preset VARCHAR(40) DEFAULT ''",
+            "ALTER TABLE jewellers ADD COLUMN IF NOT EXISTS splash_url VARCHAR(500) DEFAULT ''",
+            "ALTER TABLE jewellers ADD COLUMN IF NOT EXISTS app_status VARCHAR(30) DEFAULT 'details_pending'",
+            "ALTER TABLE jewellers ADD COLUMN IF NOT EXISTS app_version VARCHAR(20) DEFAULT '1.0.0'",
+            "ALTER TABLE jewellers ADD COLUMN IF NOT EXISTS store_short VARCHAR(80) DEFAULT ''",
+            "ALTER TABLE jewellers ADD COLUMN IF NOT EXISTS store_long TEXT DEFAULT ''",
+            "ALTER TABLE jewellers ADD COLUMN IF NOT EXISTS store_keywords VARCHAR(100) DEFAULT ''",
+            "ALTER TABLE jewellers ADD COLUMN IF NOT EXISTS support_email VARCHAR(200) DEFAULT ''",
         ):
             await conn.execute(text(stmt))

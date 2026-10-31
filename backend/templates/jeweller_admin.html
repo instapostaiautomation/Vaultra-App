@@ -143,7 +143,7 @@ function vCommission() {
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px"><div class="rate-card" style="padding:0"><div class="coin ${metal === 'silver' ? 'silver' : ''}" style="width:36px;height:36px"></div></div>
         <div><h3 style="font-size:16px">${metal === 'gold' ? 'Gold · 24K 99.9%' : 'Silver · 999'}</h3><div style="font-size:12px;color:var(--mute)">Commission added on every gram your customers buy</div></div></div>
       <div class="field"><label>Your commission per gram</label>
-        <div class="prefix"><span>₹</span><input class="input lg num" id="c_${metal}" type="number" min="0" max="${max}" step="0.01" value="${val}" oninput="commInput('${metal}', this.value)"></div>
+        <div class="prefix"><span>₹</span><input class="input lg num" id="c_${metal}" type="number" min="-${max}" max="${max}" step="0.01" value="${val}" oninput="commInput('${metal}', this.value)"></div>
         <div class="hint">Flat amount in rupees per gram · up to ₹${max.toLocaleString('en-IN')}</div></div>
       <div class="calc">
         <div class="row"><span>Live ${metal} rate</span><span class="num" id="cl_${metal}">${rv(S.price, base)}</span></div>
@@ -159,6 +159,8 @@ function vCommission() {
         <div class="value num" id="live-silver">${rv(p, p.silver?.base_rate)} <small>/g</small></div></div><div class="chg ${(p.silver?.change_pct || 0) >= 0 ? 'up' : 'down'}" style="${p.offline ? 'display:none' : ''}">${(p.silver?.change_pct || 0) >= 0 ? '▲' : '▼'} ${Math.abs(p.silver?.change_pct || 0)}%</div></div>
     </div>
     <div class="grid g2 section">${card('gold', p.base_rate, S.comm.gold, 1000)}${card('silver', p.silver?.base_rate, S.comm.silver, 100)}</div>
+    <div class="card pad section"><h3 style="font-size:16px;margin-bottom:4px">Jewellery karat rates</h3><div style="font-size:12px;color:var(--mute);margin-bottom:14px">Shown to customers on the live rates screen. 22K = 24K × 22/24, 18K = 24K × 18/24, plus your margin (use minus for a discount).</div>
+      <div class="grid g2">${['22', '18'].map((k) => `<div class="field"><label>${k}K margin per gram</label><div class="prefix"><span>₹</span><input class="input num" id="c_g${k}" type="number" min="-1000" max="1000" step="0.01" value="${S.comm['g' + k]}" oninput="S.comm['g${k}']=this.value;S.comm.dirty=true;$('#comm-status').textContent='Unsaved changes'"></div><div class="hint">Customer ${k}K rate now: <b>${rv(S.price, p.karats?.[k + 'K'])}/g</b></div></div>`).join('')}</div></div>
     <div class="section" style="display:flex;align-items:center;gap:14px">
       <button class="btn gold" id="save-commission" onclick="saveComm()" style="height:44px;padding:0 22px">Save commission</button>
       <span style="font-size:12px;color:var(--mute)" id="comm-status">${S.comm.dirty ? 'Unsaved changes' : (S.me.commission_updated_at ? 'Last updated ' + dt(S.me.commission_updated_at) : '')}</span>
@@ -175,12 +177,12 @@ function commInput(metal, v) {
 async function saveComm() {
   const b = $('#save-commission'); b.disabled = true;
   try {
-    const r = await api('/jeweller/v3/commission', { method: 'PUT', body: { gold_per_g: Number(S.comm.gold || 0), silver_per_g: Number(S.comm.silver || 0) } });
+    const r = await api('/jeweller/v3/commission', { method: 'PUT', body: { gold_per_g: Number(S.comm.gold || 0), silver_per_g: Number(S.comm.silver || 0), gold22_per_g: Number(S.comm.g22 || 0), gold18_per_g: Number(S.comm.g18 || 0) } });
     S.price = r.price; delete r.price; S.me = { ...S.me, ...r, commission_updated_at: new Date().toISOString() }; S.comm.dirty = false;
     toast(`Saved · customers now pay ${inr(S.price.buy)}/g for gold`); render();
   } catch (e) { toast(e.message, true); b.disabled = false; }
 }
-function syncComm() { if (!S.comm.dirty && S.me) { S.comm.gold = S.me.gold_commission_per_g || 0; S.comm.silver = S.me.silver_commission_per_g || 0; } }
+function syncComm() { if (!S.comm.dirty && S.me) { S.comm.gold = S.me.gold_commission_per_g || 0; S.comm.silver = S.me.silver_commission_per_g || 0; S.comm.g22 = S.me.gold22_commission_per_g || 0; S.comm.g18 = S.me.gold18_commission_per_g || 0; } }
 function refreshLiveRates() {
   if (S.tab !== 'commission' || !S.price) return;
   const set = (id, v) => { const el = $(id); if (el) el.innerHTML = `${rv(S.price, v)} <small>/g</small>`; };

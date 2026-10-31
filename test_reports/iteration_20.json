@@ -1,0 +1,33 @@
+{
+  "summary": "Iteration 20 short retest of the OTP/tenant fix. Backend: 8/8 pytest pass (one quote test was skipped on the first run because it hit the OTP rate limit while running in parallel; it passed when re-run on its own). POST /api/auth/otp/request with X-Tenant-ID demo-jeweller-002 returns jeweller_id 002 and is_new_user=false for 9845678903. Verify logs in Rohan, and the JWT jeweller_id is 002. An invalid header or body jeweller_id returns 400 'This store is not available'. With no header the default is Sharma (001). The Sharma phone 9876543210 under the Patel header shows is_new_user=true, so stores stay separate. The Patel buy quote (13848.50) matches Patel /price and not Sharma (13948.50). Customer app at 390x844: after picking Patel in the side menu, Sign In with 9845678903 sends X-Tenant-ID 002 on request and verify. Rohan logs straight into Patel's home (no 'Complete your profile'), with 3.4970g held and ₹13,848.50/g. The Vault screen shows 'Patel Jewellery House'. After logout, switching to Sharma and logging in 9876543210 lands Aarav on Sharma's home at ₹13,948.50/g. Master panel top chip shows 'Gold ₹13,848.50/g · Silver ₹179.13/g' (2 decimals).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/auth/otp/verify", "issue": "body.jeweller_id/body.tenant can still override the challenge's jeweller_id. is_new_user from /otp/request is computed for the challenge store, so a different tenant at verify could silently create a 'Gold' customer in another store and skip the profile step. Suggest binding verify to c.jeweller_id only."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Vault (Patel / Rohan)", "issues": ["Shows 3.4970g held but the Transaction Passbook says 'No transactions yet', and P&L is +234.6% (avg ₹4,014.68/g). This looks like seed data: the holdings have no ledger rows. Not a regression."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration20_otp_tenant.py", "/app/test_reports/pytest/pytest_iter20.xml"],
+  "action_items": [
+    "Optional: in otp_verify, ignore body.tenant/jeweller_id (or reject a mismatch) and use the challenge's jeweller_id",
+    "Optional: seed ledger transactions for Rohan Gupta (Patel) so the vault passbook matches his holdings"
+  ],
+  "critical_code_review_comments": [
+    "otp_request change is correct: it checks for an active store and falls back to the default store only when no jeweller is given",
+    "The frontend api.ts already sends X-Tenant-ID on every request, so login.tsx needs no body change"
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration20_otp_tenant.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "None. No data deleted.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "OTP request is rate-limited to 5 per minute per phone, so wait 60s between repeated pytest runs. The side menu slides in, so wait about 1.2s before clicking side-menu-store-picker. The master login username input has no type attribute; use input nth(0).",
+  "rca_of_issue": "Iteration 19 HIGH bug (OTP ignored the store picked in the app) is fixed: otp_request now reads body.jeweller_id, then the X-Tenant-ID header."
+}

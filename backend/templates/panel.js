@@ -2,7 +2,7 @@
 const API = '/api';
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const inr = (n, d = 2) => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: d });
+const inr = (n, d = 2) => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: d ? 2 : 0, maximumFractionDigits: d });
 const inr0 = (n) => inr(n, 0);
 const g4 = (n) => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 4 }) + 'g';
 const initials = (s) => String(s || '?').split(' ').filter(Boolean).slice(0, 2).map((x) => x[0]).join('').toUpperCase() || '?';

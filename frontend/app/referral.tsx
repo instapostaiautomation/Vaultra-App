@@ -23,7 +23,7 @@ export default function ReferralScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const toast = useToast();
-  const { token } = useApp();
+  const { token, tenantName } = useApp();
   const [data, setData] = useState<ReferralData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -45,8 +45,8 @@ export default function ReferralScreen() {
     if (!data) return;
     try {
       await Share.share({
-        message: `Join Vaultra DigiGold and get ₹50 reward! Use my referral code: ${data.referral_code}\n\nBuy & save 24K gold from just ₹10.\nDownload now: https://vaultra.gold/invite/${data.referral_code}`,
-        title: "Invite to Vaultra DigiGold",
+        message: `Join ${tenantName || "us"} and get ₹50 reward! Use my referral code: ${data.referral_code}\n\nBuy & save 24K gold from just ₹10.`,
+        title: `Invite to ${tenantName || "Digital Gold"}`,
       });
     } catch {}
   };

@@ -127,3 +127,12 @@ Multi-tenant white-label digital gold platform. Vaultra onboards jewellery shop 
 - PostgreSQL data moved to /app/pgdata (persistent). Previously /var/lib was wiped on pod restart -> DB reseeded (data loss on 29 Oct). Backups in /app/backups.
 - MT5_RATES_URL currently points to a dead trycloudflare host; user must provide new link via secrets.
 - 31 Oct: MT5_RATES_URL switched to permanent direct server (http, port 8000). Live verified: source=mt5, quotes OK.
+
+## White-label SaaS structure (iteration 18)
+- frontend/tenant.config.json (empty tenantId = base app with jeweller picker) + src/tenantConfig.ts + app.config.js (applies name, bundleId, package, icon, splash from tenant-assets/). theme.ts overrides brand colours from tenantConfig.theme; home section order from tenantConfig.homeLayout.
+- api.ts sends X-Tenant-ID; backend get_current_customer rejects token/tenant mismatch (403); /price & /products fall back to header.
+- Karat rates: 22K = 24K x 22/24 + gold22_commission_per_g; 18K = x 18/24 + gold18_commission_per_g; margins may be negative. Editable in Master Pricing + Shop Admin Commission. KaratRates card on home.
+- Master "App Studio" tab (templates/app_studio.js): 5 presets (backend/white_label.py), live phone preview, App ID auto, logo/splash upload, auto store listing, privacy/terms at /api/tenant/{id}/privacy|terms, status Details pending→Theme chosen→Config ready→Built→Submitted→Live, Export App Kit zip (/api/master/app-studio/{id}/kit): config.json, icon, adaptive icon, splash, 3 screenshots 1290x2796, feature graphic, listing.md, README.
+- Alembic revision 7a1c2e9b4d10.
+- Iter 18 fixes: store picker in side menu (base mode), FreeSans fonts in backend/fonts for ₹ in kit images, locked tenant header from first request, per-tenant URL scheme, export saves draft first, status steps back if logo removed.
+- OTP request honours X-Tenant-ID (picked store); panel inr shows 2 decimals.

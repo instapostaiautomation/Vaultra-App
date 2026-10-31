@@ -207,7 +207,7 @@ export default function VaultScreen() {
 function InvoiceSheet({ t, onClose }: { t: any; onClose: () => void }) {
   const share = async () => {
     if (!t) return;
-    const text = `Vaultra DigiGold — Tax Invoice\nInvoice: ${t.invoice_no}\nDate: ${dateTime(t.created_at)}\nStore: ${TENANT_NAME[t.tenant]}\nType: ${TXN_LABEL[t.type] || t.type}\n${t.metal === "silver" ? "Silver" : "Gold"}: ${grams(t.grams)} ${t.metal === "silver" ? "999" : "24K"} @ ${inr(t.rate)}/g\nValue: ${inr(t.amount)}\nGST (3%): ${inr(t.gst)}\nTotal: ${inr(t.total)}\nStatus: ${t.status}`;
+    const text = `${TENANT_NAME[t.tenant] || "Digital Gold"} — Tax Invoice\nInvoice: ${t.invoice_no}\nDate: ${dateTime(t.created_at)}\nStore: ${TENANT_NAME[t.tenant]}\nType: ${TXN_LABEL[t.type] || t.type}\n${t.metal === "silver" ? "Silver" : "Gold"}: ${grams(t.grams)} ${t.metal === "silver" ? "999" : "24K"} @ ${inr(t.rate)}/g\nValue: ${inr(t.amount)}\nGST (3%): ${inr(t.gst)}\nTotal: ${inr(t.total)}\nStatus: ${t.status}`;
     try {
       await Share.share({ message: text, title: t.invoice_no });
     } catch {}

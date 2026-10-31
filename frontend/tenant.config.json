@@ -1,0 +1,13 @@
+{
+  "tenantId": "",
+  "appName": "Digital Gold",
+  "slug": "",
+  "bundleId": "",
+  "packageName": "",
+  "version": "1.0.0",
+  "apiBaseUrl": "",
+  "theme": null,
+  "homeLayout": null,
+  "assets": { "logoUrl": "", "splashUrl": "" },
+  "support": { "phone": "", "email": "" }
+}

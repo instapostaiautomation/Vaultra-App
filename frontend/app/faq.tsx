@@ -10,7 +10,7 @@ import { useApp } from "@/src/store/AppContext";
 import { colors, fonts, radius } from "@/src/theme";
 
 const DEFAULT_FAQS = [
-  ["What is Vaultra DigiGold?", "A digital way to buy 24K 99.9% pure LBMA-certified gold starting at ₹10. Every gram you buy is backed by physical gold stored in insured, audited vaults."],
+  ["What is digital gold?", "A digital way to buy 24K 99.9% pure LBMA-certified gold starting at ₹10. Every gram you buy is backed by physical gold stored in insured, audited vaults."],
   ["Where is my gold stored?", "Your gold is held in BRINK'S-secured vaults under an independent trustee. It is fully insured and audited periodically."],
   ["How is the price calculated?", "We stream a live 24K rate. When you buy, the rate is locked for 5 minutes. 3% GST is added on top of the gold value as per Indian tax law."],
   ["Can I take my gold as jewellery or coins?", "Yes. Once your KYC is approved you can redeem your balance for coins or jewellery at your store. Making charges, if any, are shown before you confirm."],

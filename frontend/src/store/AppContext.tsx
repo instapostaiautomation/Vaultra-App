@@ -1,11 +1,14 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
 
-import { api, setToken } from "@/src/api";
+import { api, setApiTenant, setToken } from "@/src/api";
 import { storage } from "@/src/utils/storage";
 import { TENANT_NAME, TENANT_PHONE } from "@/src/format";
+import { LOCKED_TENANT_ID, tenantConfig } from "@/src/tenantConfig";
 
 export const DEFAULT_TENANT = "demo-jeweller-001";
+// Branded builds identify themselves on the very first request
+if (LOCKED_TENANT_ID) setApiTenant(LOCKED_TENANT_ID);
 
 export type User = {
   id: string;
@@ -32,7 +35,7 @@ export type User = {
 
 export type SilverPrice = { buy: number; sell: number; change: number; change_pct: number; direction: "up" | "down" };
 
-export type Price = { buy: number; sell: number; change: number; change_pct: number; direction: "up" | "down"; updated_at: string; live?: boolean; offline?: boolean; has_live?: boolean; source?: string; silver?: SilverPrice };
+export type Price = { buy: number; sell: number; change: number; change_pct: number; direction: "up" | "down"; updated_at: string; live?: boolean; offline?: boolean; has_live?: boolean; source?: string; silver?: SilverPrice; karats?: Record<"24K" | "22K" | "18K", number> };
 
 export type Vault = {
   user: User;
@@ -83,7 +86,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [booting, setBooting] = useState(true);
   const [token, setTok] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
-  const [tenant, setTenantState] = useState(DEFAULT_TENANT);
+  const [tenant, setTenantState] = useState(LOCKED_TENANT_ID || DEFAULT_TENANT);
   const [tenantName, setTenantName] = useState("");
   const [tenantLocked, setTenantLocked] = useState(false);
   const [price, setPrice] = useState<Price | null>(null);
@@ -131,7 +134,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setVault(v);
       setUser(v.user);
     } catch (e: any) {
-      if (e.status === 401) {
+      if (e.status === 401 || e.status === 403) {
         setToken("user", null);
         setTok(null);
         setUser(null);
@@ -144,14 +147,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       const [t, tn] = await Promise.all([storage.secureGet(TOKEN_KEY, null), storage.getItem(TENANT_KEY, DEFAULT_TENANT)]);
-      let active = String(tn || DEFAULT_TENANT);
+      let active = LOCKED_TENANT_ID || String(tn || DEFAULT_TENANT);
       try {
         const list = await api<{ id: string; business_name: string; support_phone?: string }[]>("/jewellers/list", { auth: "none" });
         list.forEach((j) => { TENANT_NAME[j.id] = j.business_name; TENANT_PHONE[j.id] = j.support_phone || ""; });
-        if (!list.some((j) => j.id === active)) active = list.some((j) => j.id === DEFAULT_TENANT) ? DEFAULT_TENANT : list[0]?.id || DEFAULT_TENANT;
+        if (!LOCKED_TENANT_ID && !list.some((j) => j.id === active)) active = list.some((j) => j.id === DEFAULT_TENANT) ? DEFAULT_TENANT : list[0]?.id || DEFAULT_TENANT;
       } catch {}
+      if (LOCKED_TENANT_ID) {
+        // Branded build: always this jeweller, shown under the app's own name
+        TENANT_NAME[active] = tenantConfig.appName || TENANT_NAME[active] || "";
+        if (tenantConfig.support?.phone) TENANT_PHONE[active] = tenantConfig.support.phone;
+        setTenantLocked(true);
+      }
       // Jeweller's own custom domain → fixed store (web)
-      if (Platform.OS === "web" && typeof window !== "undefined") {
+      if (!LOCKED_TENANT_ID && Platform.OS === "web" && typeof window !== "undefined") {
         try {
           const r = await api<{ kind: "app" | "admin"; jeweller: { id: string; business_name: string } }>(
             `/tenant/resolve?host=${encodeURIComponent(window.location.hostname)}`, { auth: "none" });
@@ -161,6 +170,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           setTenantLocked(true);
         } catch {}
       }
+      setApiTenant(active);
       setTenantState(active);
       setTenantName(TENANT_NAME[active] || "");
       if (t) {
@@ -208,6 +218,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const setTenant = (t: string) => {
     if (tenantLocked) return;
+    setApiTenant(t);
     setTenantState(t);
     setTenantName(TENANT_NAME[t] || "");
     storage.setItem(TENANT_KEY, t);

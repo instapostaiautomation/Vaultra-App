@@ -1,15 +1,22 @@
 const BASE = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api`;
 
 const tokens: { user: string | null; staff: string | null } = { user: null, staff: null };
+let tenantHeader = "";
 
 export function setToken(kind: "user" | "staff", token: string | null) {
   tokens[kind] = token;
+}
+
+/** Jeweller this app is serving; sent as X-Tenant-ID on every request. */
+export function setApiTenant(tenantId: string) {
+  tenantHeader = tenantId;
 }
 
 type Opts = { method?: string; body?: unknown; auth?: "user" | "staff" | "none" };
 
 export async function api<T = any>(path: string, { method = "GET", body, auth = "user" }: Opts = {}): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (tenantHeader) headers["X-Tenant-ID"] = tenantHeader;
   const tok = auth === "none" ? null : tokens[auth];
   if (tok) headers.Authorization = `Bearer ${tok}`;
   let res: Response;

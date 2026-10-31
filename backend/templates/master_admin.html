@@ -16,9 +16,10 @@ const S = { tab: localStorage.getItem('mp_tab') || 'overview', me: JSON.parse(lo
   ov: null, r: { range: '30d' }, jewellers: null, rate: null, pools: null, invoices: null, txns: null, tf: { jeweller: '', type: 'all' }, customers: null, cs: '', cj: '' };
 </script>
 <script src="/api/admin/assets/master_ext.js"></script>
+<script src="/api/admin/assets/app_studio.js"></script>
 <script>
 const NAV = [
-  ['Platform', [['overview', 'Overview', 'dashboard'], ['jewellers', 'Shops', 'store'], ['pricing', 'Pricing', 'commission'], ['rates', 'Market & Feed', 'rate'], ['catalogue', 'Catalogue', 'catalogue'], ['content', 'App Content', 'image']]],
+  ['Platform', [['overview', 'Overview', 'dashboard'], ['jewellers', 'Shops', 'store'], ['studio', 'App Studio', 'image'], ['pricing', 'Pricing', 'commission'], ['rates', 'Market & Feed', 'rate'], ['catalogue', 'Catalogue', 'catalogue'], ['content', 'App Content', 'image']]],
   ['Business', [['orders', 'Orders', 'orders'], ['customers', 'Customers', 'customers'], ['kyc', 'KYC', 'kyc'], ['transactions', 'Transactions', 'invoice'], ['settlement', 'Settlement', 'wallet']]],
   ['Engagement', [['sips', 'SIP', 'refresh'], ['referrals', 'Referrals', 'referral'], ['gifts', 'Gifts', 'gifts'], ['redemptions', 'Redemptions', 'redeem'], ['goals', 'Gold Goals', 'target']]],
   ['Treasury', [['pool', 'Gold Pool', 'pool'], ['invoices', 'Invoices', 'invoice'], ['audit', 'Audit Log', 'log']]],
@@ -185,8 +186,8 @@ function vCustomers() {
     </tbody></table></div></div>`;
 }
 
-const VIEWS = { overview: vOverview, jewellers: vJewellers, rates: vRates, pool: vPool, invoices: vInvoices, transactions: vTransactions, customers: vCustomers, pricing: vPricing, catalogue: vMCatalogue, content: vMContent, orders: vMOrders, kyc: vMKyc, settlement: vSettlement, sips: vMSips, referrals: vMRefs, gifts: vMGifts, redemptions: vMRed, goals: vMGoals, audit: vAudit };
-const LOAD = { overview: loadOv, jewellers: loadJ, rates: loadRate, pool: loadPool, invoices: loadInv, transactions: loadTx, customers: loadC, pricing: loadPricing, catalogue: loadMCat, content: loadMContent, orders: loadMOrders, kyc: loadMKyc, settlement: loadSettle, sips: loadMSips, referrals: loadMRefs, gifts: loadMGifts, redemptions: loadMRed, goals: loadMGoals, audit: loadAudit };
+const VIEWS = { overview: vOverview, jewellers: vJewellers, studio: vStudio, rates: vRates, pool: vPool, invoices: vInvoices, transactions: vTransactions, customers: vCustomers, pricing: vPricing, catalogue: vMCatalogue, content: vMContent, orders: vMOrders, kyc: vMKyc, settlement: vSettlement, sips: vMSips, referrals: vMRefs, gifts: vMGifts, redemptions: vMRed, goals: vMGoals, audit: vAudit };
+const LOAD = { overview: loadOv, jewellers: loadJ, studio: loadStudio, rates: loadRate, pool: loadPool, invoices: loadInv, transactions: loadTx, customers: loadC, pricing: loadPricing, catalogue: loadMCat, content: loadMContent, orders: loadMOrders, kyc: loadMKyc, settlement: loadSettle, sips: loadMSips, referrals: loadMRefs, gifts: loadMGifts, redemptions: loadMRed, goals: loadMGoals, audit: loadAudit };
 function boot() { if (!VIEWS[S.tab]) S.tab = 'overview'; render(); LOAD[S.tab](); if (S.tab !== 'jewellers') api('/master/jewellers').then((j) => { S.jewellers = j; }).catch(() => {}); }
 function feedAlert(p) {
   const f = p?.feed || S.feed;

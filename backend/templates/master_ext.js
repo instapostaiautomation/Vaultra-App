@@ -12,13 +12,14 @@ function vPricing() {
   return head + `<div class="grid g2" style="margin-bottom:16px">
     <div class="card rate-card"><div class="coin"></div><div><div class="label"><span class="dot ${p.price.live ? 'live' : ''}"></span> Live gold</div><div class="value num">${rv(p.price, p.price.base_rate)} <small>/g</small></div></div></div>
     <div class="card rate-card"><div class="coin silver"></div><div><div class="label"><span class="dot ${p.price.live ? 'live' : ''}"></span> Live silver</div><div class="value num">${rv(p.price, p.price.silver.base_rate)} <small>/g</small></div></div></div></div>
-    <div class="card"><div class="table-wrap"><table><thead><tr><th>Shop</th><th>Gold commission / g</th><th class="r">Gold buy rate</th><th>Silver commission / g</th><th class="r">Silver buy rate</th><th></th></tr></thead><tbody>
-    ${p.shops.map((s) => `<tr><td><b>${esc(s.shop)}</b><div class="sub">${statusBadge(s.status)}</div></td>
-      <td><div class="prefix" style="width:140px"><span>₹</span><input class="input num" type="number" min="0" max="1000" step="0.01" id="pg_${s.id}" value="${s.gold_commission_per_g}"></div></td><td class="r num"><b>${rv(p.price, s.gold_buy)}</b></td>
-      <td><div class="prefix" style="width:140px"><span>₹</span><input class="input num" type="number" min="0" max="100" step="0.01" id="ps_${s.id}" value="${s.silver_commission_per_g}"></div></td><td class="r num"><b>${rv(p.price, s.silver_buy)}</b></td>
-      <td class="r"><button class="btn sm primary" onclick="savePricing('${s.id}')">Save</button></td></tr>`).join('')}</tbody></table></div></div>`;
+    <div class="card"><div class="table-wrap"><table><thead><tr><th>Shop</th><th>24K margin / g</th><th>22K margin / g</th><th>18K margin / g</th><th>Silver margin / g</th><th class="r">Customer rates</th><th></th></tr></thead><tbody>
+    ${p.shops.map((s) => { const inp = (id, v, max) => `<div class="prefix" style="width:120px"><span>₹</span><input class="input num" type="number" min="-${max}" max="${max}" step="0.01" id="${id}_${s.id}" value="${v}"></div>`; return `<tr><td><b>${esc(s.shop)}</b><div class="sub">${statusBadge(s.status)}</div></td>
+      <td>${inp('pg', s.gold_commission_per_g, 1000)}</td><td>${inp('p22', s.gold22_commission_per_g, 1000)}</td><td>${inp('p18', s.gold18_commission_per_g, 1000)}</td><td>${inp('ps', s.silver_commission_per_g, 100)}</td>
+      <td class="r num" style="white-space:nowrap;font-size:12px">24K <b>${rv(p.price, s.karats['24K'])}</b><br>22K <b>${rv(p.price, s.karats['22K'])}</b><br>18K <b>${rv(p.price, s.karats['18K'])}</b><br>Silver <b>${rv(p.price, s.silver_buy)}</b></td>
+      <td class="r"><button class="btn sm primary" onclick="savePricing('${s.id}')">Save</button></td></tr>`; }).join('')}</tbody></table></div></div>
+    <div class="note gray section">${icon('rate')}<span>22K = live 24K × 22/24 and 18K = live 24K × 18/24, plus each shop's margin. Margins can be negative (discount). 24K and silver margins apply to digital gold/silver purchases.</span></div>`;
 }
-async function savePricing(id) { try { await api('/master/v3/pricing/' + id, { method: 'PUT', body: { gold_per_g: Number($('#pg_' + id).value || 0), silver_per_g: Number($('#ps_' + id).value || 0) } }); toast('Pricing updated'); loadPricing(); } catch (e) { toast(e.message, true); } }
+async function savePricing(id) { const n = (k) => Number($(`#${k}_${id}`).value || 0); try { await api('/master/v3/pricing/' + id, { method: 'PUT', body: { gold_per_g: n('pg'), silver_per_g: n('ps'), gold22_per_g: n('p22'), gold18_per_g: n('p18') } }); toast('Pricing updated'); loadPricing(); } catch (e) { toast(e.message, true); } }
 
 /* catalogue */
 S.catJ = '';

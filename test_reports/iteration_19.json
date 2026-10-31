@@ -1,0 +1,39 @@
+{
+  "summary": "Short retest of the 3 issues from iteration 18 plus the minor fixes. All requested fixes PASS: (1) store picker in the side menu (390x844): the YOUR JEWELLER block shows when the tenant is not locked and lists Sharma/Patel; picking Patel switches header name, 24K/silver prices and catalogue; a signed-in user (Aarav) is signed out on switch; the choice persists after reload (localStorage vdg_tenant). (2) App Kit images for J2 (1-home, 2-rates with 4 rows incl. Silver and no price cards, 3-vault, feature-graphic) render ₹ and → correctly in FreeSans, with no empty boxes. (3) AppContext calls setApiTenant(LOCKED_TENANT_ID) at module load (line 11) and initial state is LOCKED_TENANT_ID || DEFAULT_TENANT (line 89). Minor fixes: app.config.js scheme = 'patelgold' for slug 'patel-gold' (base config gives 'frontend'; tenant.config.json restored to empty base). Export saves the unsaved draft before downloading (store_short persisted, zip downloaded). Removing the logo after config_ready (and after built) moves status back to theme_selected. Studio preview prices have 2 decimals. Regression: karat-rates card on home and the App Studio tab both load. NEW HIGH bug found: customer OTP login ignores the selected jeweller, so a customer who picks Patel is signed in or registered under Sharma. Deprecated packages detected: none.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/auth/otp/request", "issue": "Ignores the X-Tenant-ID header. jeweller_id comes only from the body and otherwise falls back to the first active jeweller (Sharma). frontend app/login.tsx sends only {phone}, so with Patel picked, Patel customer 9845678903 gets is_new_user=true, jeweller_id=demo-jeweller-001 and the Complete-your-profile screen. A new account would be created under Sharma. With body jeweller_id=demo-jeweller-002 it correctly returns is_new_user=false. Reference: /app/backend/server.py:774-781", "priority": "HIGH"}
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Store picker → Sign in", "issue": "After switching to Patel, sign-in goes to the Sharma tenant (see backend critical issue). This defeats the picker for login and registration.", "affected_testIDs": ["login-send-otp-button", "login-verify-button", "store-option-demo-jeweller-002"]}
+    ],
+    "design_issues": [
+      {"screen": "App Kit screenshots", "issues": ["'PG' initials in the logo badge are cramped and touch the right edge of the tile", "Bottom ~30-35% of 1-home/2-rates/3-vault is empty background"]},
+      {"screen": "Master panel top bar", "issues": ["Gold rate shows 1 decimal (₹13,848.5/g) because panel.js inr() uses minimumFractionDigits:0, while the studio preview shows 2 decimals"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration19_retest.py", "/app/test_reports/pytest/iteration19.xml"],
+  "action_items": [
+    "HIGH: in otp_request (server.py ~774) use jeweller_id = body.jeweller_id or request.headers.get('x-tenant-id') (validate it is an active jeweller) before falling back to the default. Or have login.tsx send jeweller_id: tenant from useApp() in /auth/otp/request (and in verify/register). Retest by picking Patel → login 9845678903 → should sign in as Rohan Gupta, not show registration.",
+    "Minor: panel.js inr() → minimumFractionDigits 2 for rates in the master top bar",
+    "Minor (cosmetic): shrink the initials font in the kit logo badge; reduce the empty bottom area in the kit screenshots"
+  ],
+  "critical_code_review_comments": [
+    "AppContext.tsx:11 setApiTenant(LOCKED_TENANT_ID) at module load and :89 useState(LOCKED_TENANT_ID || DEFAULT_TENANT) — correct",
+    "app.config.js scheme derived from slug (non-alphanumerics stripped) — correct; base config is unchanged",
+    "server.py _status_after_edit steps back correctly and keeps built/submitted/live only while config is still complete",
+    "app_studio.js studioKit saves S.draft before fetching the kit — correct"
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration19_retest.py (new)"],
+  "success_rate": {"backend": "100% (5/5 retest)", "frontend": "100% of requested retest items; 1 new HIGH integration bug (tenant-aware OTP login)"},
+  "seed_data_creation": "None. App Studio data restored with restore_studio_iter18.py; tenant.config.json restored to the empty base.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "The base app is not tenant-locked, so the picker shows in the side menu. Stored tenant key in localStorage: vdg_tenant (JSON string). Kit images extracted by the test to /tmp/kit19. Run restore_studio_iter18.py after any App Studio edit. Rates: Sharma 24K has +₹100 commission; 22K/18K margins are 0 for both shops, so those rates are identical (by design).",
+  "rca_of_issue": "Customer picks Patel → api.ts sends X-Tenant-ID: demo-jeweller-002 → POST /auth/otp/request {phone} → otp_request reads only body.jeweller_id and falls back to the oldest active jeweller (Sharma) → challenge.jeweller_id = Sharma → is_new_user is computed against Sharma's customers → verify/register create or log in the account under Sharma. Fix: honour the x-tenant-id header (or the body jeweller_id sent from the client)."
+}

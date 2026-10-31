@@ -3,6 +3,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { Platform, StyleSheet, type ImageStyle, type TextStyle, type ViewStyle } from "react-native";
 
+import { tenantConfig } from "./tenantConfig";
+
 export type ColorScheme = "light" | "dark";
 
 const light = {
@@ -170,6 +172,21 @@ export function useTheme() {
 
 // Static colors for files that import { colors } directly - uses light as default
 export const colors = light;
+
+// White-label: a branded build's theme replaces the brand tokens (base app keeps the defaults above)
+const tt = tenantConfig.theme;
+if (tt) {
+  const hexA = (h: string, a: number) => {
+    const n = parseInt(h.replace("#", ""), 16);
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+  };
+  const brand = {
+    brand: tt.primaryColor, brandPrimary: tt.primaryColor, brandSecondary: tt.primaryColor,
+    brandDeep: tt.secondaryColor, onBrandTertiary: tt.secondaryColor, goldHairline: hexA(tt.primaryColor, 0.35),
+  };
+  Object.assign(light, brand, { surfaceInverse: tt.accentColor, brandTertiary: tt.backgroundColor || light.brandTertiary });
+  Object.assign(dark, brand);
+}
 
 export const fonts = {
   regular: "Inter-400",

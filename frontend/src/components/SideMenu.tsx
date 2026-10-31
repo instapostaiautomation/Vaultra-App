@@ -7,7 +7,7 @@ import { Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "r
 import Animated, { FadeIn, SlideInLeft } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { maskPhone } from "@/src/format";
+import { maskPhone, TENANT_NAME } from "@/src/format";
 import { useApp } from "@/src/store/AppContext";
 import { colors, fonts, radius } from "@/src/theme";
 
@@ -16,7 +16,9 @@ type Item = { key: string; label: string; icon: any; to?: string; auth?: boolean
 export function SideMenu({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { token, user, vault, tenantName, tenantPhone, signOut } = useApp();
+  const { token, user, vault, tenant, tenantName, tenantPhone, tenantLocked, setTenant, signOut } = useApp();
+  const [pickOpen, setPickOpen] = React.useState(false);
+  const stores = Object.entries(TENANT_NAME).filter(([id]) => id !== "all");
   const kyc = vault?.user.kyc_status;
   const name = user?.name || [user?.first_name].filter(Boolean).join(" ") || "Customer";
   const initials = name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
@@ -59,6 +61,38 @@ export function SideMenu({ visible, onClose }: { visible: boolean; onClose: () =
             </View>
             <ChevronRight size={20} color={colors.brandPrimary} />
           </Pressable>
+
+          {!tenantLocked && stores.length > 1 ? (
+            <View style={styles.storeBox}>
+              <Pressable style={styles.storeRow} onPress={() => setPickOpen((v) => !v)} testID="side-menu-store-picker">
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.storeLabel}>YOUR JEWELLER</Text>
+                  <Text style={styles.storeName} numberOfLines={1}>{tenantName || "Choose jeweller"}</Text>
+                </View>
+                <Text style={styles.storeChange}>{pickOpen ? "Close" : "Change"}</Text>
+              </Pressable>
+              {pickOpen
+                ? stores.map(([id, name]) => (
+                    <Pressable
+                      key={id}
+                      style={[styles.storeOpt, id === tenant && { backgroundColor: colors.brandTertiary }]}
+                      onPress={() => {
+                        if (id !== tenant) {
+                          if (token) signOut(); // accounts belong to one jeweller
+                          setTenant(id);
+                        }
+                        setPickOpen(false);
+                        onClose();
+                      }}
+                      testID={`store-option-${id}`}
+                    >
+                      <Text style={[styles.itemLabel, id === tenant && { fontFamily: fonts.bold }]}>{name}</Text>
+                      {id === tenant ? <BadgeCheck size={16} color={colors.brandDeep} /> : null}
+                    </Pressable>
+                  ))
+                : null}
+            </View>
+          ) : null}
 
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingVertical: 8 }} showsVerticalScrollIndicator={false}>
             {items.filter((i) => !i.auth || token).map((it) => {
@@ -117,6 +151,12 @@ const styles = StyleSheet.create({
   itemLabel: { flex: 1, fontFamily: fonts.medium, fontSize: 15, color: colors.onSurface },
   hint: { fontFamily: fonts.semibold, fontSize: 11, color: colors.warning },
   footer: { borderTopWidth: 1, borderTopColor: colors.divider, paddingTop: 14, alignItems: "center", gap: 10 },
+  storeBox: { marginHorizontal: 16, marginTop: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.goldHairline, overflow: "hidden" },
+  storeRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, minHeight: 56 },
+  storeLabel: { fontFamily: fonts.semibold, fontSize: 10, letterSpacing: 1, color: colors.muted },
+  storeName: { fontFamily: fonts.bold, fontSize: 14, color: colors.onSurface, marginTop: 2 },
+  storeChange: { fontFamily: fonts.semibold, fontSize: 13, color: colors.brandDeep },
+  storeOpt: { flexDirection: "row", alignItems: "center", minHeight: 48, paddingHorizontal: 14, borderTopWidth: 1, borderTopColor: colors.divider },
   footMuted: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted },
   phoneRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 },
   footPhone: { fontFamily: fonts.semibold, fontSize: 15, color: colors.onSurface, letterSpacing: 0.3 },

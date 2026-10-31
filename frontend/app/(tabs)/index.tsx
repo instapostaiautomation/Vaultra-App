@@ -11,11 +11,13 @@ import { BannerCarousel } from "@/src/components/BannerCarousel";
 import { BuyWidget } from "@/src/components/BuyWidget";
 import { HomeHeader } from "@/src/components/Header";
 import { HomeGoalCard } from "@/src/components/Goals";
+import { KaratRates } from "@/src/components/KaratRates";
 import { PriceAlertBanner, PriceAlertCard } from "@/src/components/PriceAlert";
 import { PriceCards } from "@/src/components/PriceCards";
 import { Product, ProductCard, RedeemSheet } from "@/src/components/Product";
 import { usesNativeTabs } from "@/src/navigation";
 import { useApp } from "@/src/store/AppContext";
+import { homeLayout, type HomeSection } from "@/src/tenantConfig";
 import { colors, fonts } from "@/src/theme";
 
 const CAT_ICONS: Record<string, any> = { CircleDot, Disc3, Gem, Link2, Crown, Diamond, Watch };
@@ -44,44 +46,45 @@ export default function Home() {
     setRefreshing(false);
   };
 
-  return (
-    <View style={styles.root} testID="home-screen">
-      <HomeHeader />
-      <ScrollView
-        contentContainerStyle={{ paddingTop: 16, paddingBottom: bottomChrome + 24 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brandPrimary} />}
-        keyboardShouldPersistTaps="handled"
-      >
-        {/* Gold + Silver Price Cards */}
-        <Animated.View entering={FadeInDown.duration(300)}>
-          <PriceCards />
-        </Animated.View>
-
-        {/* Auto SIP - attractive card */}
-        <Pressable style={styles.sipPromo} onPress={() => router.push("/sip")} testID="home-sip-promo">
-          <View style={styles.sipGlow} />
-          <View style={{ flex: 1, zIndex: 1 }}>
-            <Text style={styles.sipEyebrow}>AUTO SIP</Text>
-            <Text style={styles.sipTitle}>Save in gold daily from ₹100</Text>
-            <Text style={styles.sipSub}>UPI AutoPay · Pause or cancel anytime</Text>
-          </View>
-          <View style={styles.sipArrow}>
-            <ArrowRight size={20} color={colors.onBrandPrimary} />
-          </View>
-        </Pressable>
-
+  const sections: Record<HomeSection, React.ReactNode> = {
+    prices: (
+      <Animated.View entering={FadeInDown.duration(300)}>
+        <PriceCards />
+      </Animated.View>
+    ),
+    karats: <KaratRates />,
+    sip: (
+      <Pressable style={styles.sipPromo} onPress={() => router.push("/sip")} testID="home-sip-promo">
+        <View style={styles.sipGlow} />
+        <View style={{ flex: 1, zIndex: 1 }}>
+          <Text style={styles.sipEyebrow}>AUTO SIP</Text>
+          <Text style={styles.sipTitle}>Save in gold daily from ₹100</Text>
+          <Text style={styles.sipSub}>UPI AutoPay · Pause or cancel anytime</Text>
+        </View>
+        <View style={styles.sipArrow}>
+          <ArrowRight size={20} color={colors.onBrandPrimary} />
+        </View>
+      </Pressable>
+    ),
+    banners: (
+      <>
         <PriceAlertBanner />
         <Animated.View entering={FadeInDown.delay(50).duration(400)} style={{ marginTop: 8 }}>
           <BannerCarousel />
         </Animated.View>
-
+      </>
+    ),
+    buy: (
+      <>
         <Animated.View entering={FadeInDown.delay(100).duration(400)} style={{ marginTop: 20 }}>
           <BuyWidget />
         </Animated.View>
-
         <PriceAlertCard />
         <HomeGoalCard />
-
+      </>
+    ),
+    categories: (
+      <>
         <View style={styles.sectionHead}>
           <Text style={styles.sectionTitle}>Shop by Category</Text>
         </View>
@@ -102,7 +105,10 @@ export default function Home() {
             </Pressable>
           ))}
         </ScrollView>
-
+      </>
+    ),
+    trending: (
+      <>
         <View style={styles.sectionHead}>
           <Text style={styles.sectionTitle}>Trending Jewellery</Text>
           <Pressable onPress={() => router.push("/jewellery")} style={styles.seeAll} testID="see-all-jewellery">
@@ -115,7 +121,10 @@ export default function Home() {
             <ProductCard key={p.id} p={p} width={196} onRedeem={(x) => setTarget({ kind: "product", product: x })} />
           ))}
         </ScrollView>
-
+      </>
+    ),
+    promos: (
+      <>
         <Pressable style={styles.giftPromo} onPress={() => router.push("/gift")} testID="home-gift-promo">
           <View style={styles.giftIcon}>
             <Gift size={22} color={colors.giftDiwaliAccent} />
@@ -126,8 +135,6 @@ export default function Home() {
           </View>
           <ArrowRight size={18} color={colors.giftDiwaliAccent} />
         </Pressable>
-
-        {/* Refer & Earn promo */}
         <Pressable style={styles.referPromo} onPress={() => router.push("/referral")} testID="home-refer-promo">
           <View style={styles.referIcon}>
             <Users size={22} color={colors.brandPrimary} />
@@ -138,12 +145,27 @@ export default function Home() {
           </View>
           <ArrowRight size={18} color={colors.brandPrimary} />
         </Pressable>
-
         <Pressable style={styles.faqRow} onPress={() => router.push("/faq")} testID="home-faq-link">
           <HelpCircle size={20} color={colors.onSurfaceTertiary} />
           <Text style={styles.faqText}>Frequently asked questions</Text>
           <ArrowRight size={16} color={colors.muted} />
         </Pressable>
+      </>
+    ),
+  };
+
+  return (
+    <View style={styles.root} testID="home-screen">
+      <HomeHeader />
+      <ScrollView
+        contentContainerStyle={{ paddingTop: 16, paddingBottom: bottomChrome + 24 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brandPrimary} />}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Section order comes from the white-label theme (tenantConfig.homeLayout) */}
+        {homeLayout.map((k) => (
+          <React.Fragment key={k}>{sections[k]}</React.Fragment>
+        ))}
       </ScrollView>
       <RedeemSheet target={target} onClose={() => setTarget(null)} />
     </View>

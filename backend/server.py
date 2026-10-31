@@ -13,6 +13,7 @@ from datetime import datetime, timezone, timedelta
 from sqlalchemy import select, update, delete, func, and_, or_, desc, asc, text, case
 from sqlalchemy.ext.asyncio import AsyncSession
 import os, re, json, logging, uuid, random, asyncio, hmac, hashlib, secrets, math
+import white_label as wl
 import bcrypt, jwt
 
 ROOT_DIR = Path(__file__).parent
@@ -81,7 +82,17 @@ def cache_margins(j):
         "gold_buy": j.gold_buy_markup_pct or 0.0, "gold_sell": j.gold_sell_discount_pct or 0.0,
         "silver_buy": j.silver_buy_markup_pct or 0.0, "silver_sell": j.silver_sell_discount_pct or 0.0,
         "gold_comm": j.gold_commission_per_g or 0.0, "silver_comm": j.silver_commission_per_g or 0.0,
+        "gold22_comm": j.gold22_commission_per_g or 0.0, "gold18_comm": j.gold18_commission_per_g or 0.0,
     }
+
+
+def karat_rates(jid=None):
+    """24K/22K/18K per-gram rates: live 24K scaled by purity (22/24, 18/24) + that karat's margin (+/- ₹/g)."""
+    m = MARGINS.get(jid) or DEFAULT_MARGIN
+    base = PRICE["base"]
+    return {"24K": gold_rate(jid)[0],
+            "22K": r2(base * 22 / 24 + m.get("gold22_comm", 0.0)),
+            "18K": r2(base * 18 / 24 + m.get("gold18_comm", 0.0))}
 
 
 def now_utc():
@@ -128,6 +139,7 @@ def price_payload(jid: Optional[str] = None):
         "source": RATE_FEED["source"], "live": live, "offline": RATE_FEED["source"] == "offline",
         "has_live": RATE_FEED["source"] != "offline" or bool(PRICE.get("real")),
         "base_rate": r2(PRICE["base"]),
+        "karats": karat_rates(jid),
         "silver": {
             "buy": silver_buy, "sell": silver_sell,
             "change": silver_change,
@@ -347,12 +359,16 @@ def decode_token(creds: Optional[HTTPAuthorizationCredentials], role: str):
     return p
 
 
-async def get_current_customer(creds: Optional[HTTPAuthorizationCredentials] = Depends(bearer), db: AsyncSession = Depends(get_db)):
+async def get_current_customer(request: Request, creds: Optional[HTTPAuthorizationCredentials] = Depends(bearer), db: AsyncSession = Depends(get_db)):
     p = decode_token(creds, "customer")
     result = await db.execute(select(Customer).where(Customer.id == p["sub"]))
     customer = result.scalar_one_or_none()
     if not customer:
         raise HTTPException(401, "Customer not found")
+    # Branded apps send X-Tenant-ID: a token from another jeweller's app is never accepted
+    tid = request.headers.get("x-tenant-id", "").strip()
+    if tid and tid != customer.jeweller_id:
+        raise HTTPException(403, "This account belongs to a different store")
     return customer
 
 
@@ -427,6 +443,7 @@ def jeweller_dict(j: Jeweller):
         "gold_buy_markup_pct": j.gold_buy_markup_pct, "gold_sell_discount_pct": j.gold_sell_discount_pct,
         "silver_buy_markup_pct": j.silver_buy_markup_pct, "silver_sell_discount_pct": j.silver_sell_discount_pct,
         "gold_commission_per_g": j.gold_commission_per_g or 0, "silver_commission_per_g": j.silver_commission_per_g or 0,
+        "gold22_commission_per_g": j.gold22_commission_per_g or 0, "gold18_commission_per_g": j.gold18_commission_per_g or 0,
         "commission_updated_at": j.updated_at.isoformat() if getattr(j, "updated_at", None) else None,
         "min_redemption_grams": j.min_redemption_grams,
         "status": j.status,
@@ -646,8 +663,8 @@ async def root():
 
 
 @api.get("/price")
-async def get_price(jeweller_id: str = "", tenant: str = ""):
-    return price_payload(jeweller_id or tenant or None)
+async def get_price(request: Request, jeweller_id: str = "", tenant: str = ""):
+    return price_payload(jeweller_id or tenant or request.headers.get("x-tenant-id") or None)
 
 
 @api.get("/config")
@@ -703,7 +720,8 @@ def product_image_key(p) -> str:
 
 
 @api.get("/products")
-async def list_products(jeweller_id: str = "", category: str = "", db: AsyncSession = Depends(get_db)):
+async def list_products(request: Request, jeweller_id: str = "", category: str = "", db: AsyncSession = Depends(get_db)):
+    jeweller_id = jeweller_id or request.headers.get("x-tenant-id", "")
     q = select(Product).join(Jeweller, Jeweller.id == Product.jeweller_id).where(Product.is_active == True, Jeweller.status == "active")
     if jeweller_id:
         q = q.where(Product.jeweller_id == jeweller_id)
@@ -748,13 +766,17 @@ async def get_product(product_id: str, db: AsyncSession = Depends(get_db)):
 
 # ═══════════════════ CUSTOMER AUTH ════════════════════════════════════════════
 @api.post("/auth/otp/request")
-async def otp_request(body: OtpRequest, db: AsyncSession = Depends(get_db)):
+async def otp_request(body: OtpRequest, request: Request, db: AsyncSession = Depends(get_db)):
     phone = norm_phone(body.phone)
     if len(phone) != 10:
         raise HTTPException(400, "Enter a valid 10-digit mobile number")
 
-    # Find default jeweller if not specified
-    jeweller_id = body.jeweller_id
+    # Jeweller: body, else the app's X-Tenant-ID (must be an active store), else the default store
+    jeweller_id = body.jeweller_id or request.headers.get("x-tenant-id", "").strip()
+    if jeweller_id:
+        ok = (await db.execute(select(Jeweller.id).where(Jeweller.id == jeweller_id, Jeweller.status == "active"))).first()
+        if not ok:
+            raise HTTPException(400, "This store is not available")
     if not jeweller_id:
         result = await db.execute(select(Jeweller).where(Jeweller.status == "active").order_by(Jeweller.created_at).limit(1))
         j = result.scalar_one_or_none()
@@ -806,11 +828,8 @@ async def otp_verify(body: OtpVerify, db: AsyncSession = Depends(get_db)):
     c.used = True
     await db.flush()
 
-    jeweller_id = body.jeweller_id or body.tenant or c.jeweller_id
-    if jeweller_id != c.jeweller_id:
-        ok = await db.execute(select(Jeweller.id).where(Jeweller.id == jeweller_id, Jeweller.status == "active"))
-        if not ok.scalar_one_or_none():
-            jeweller_id = c.jeweller_id
+    # The store is fixed when the OTP was requested; it cannot be swapped at verify time
+    jeweller_id = c.jeweller_id
 
     # Find or create customer
     cust_result = await db.execute(
@@ -2369,14 +2388,24 @@ async def jp_holding_detail(customer_id: str, jeweller: Jeweller = Depends(get_c
 
 
 class CommissionUpdate(BaseModel):
-    gold_per_g: float = Field(ge=0, le=1000)
-    silver_per_g: float = Field(ge=0, le=100)
+    gold_per_g: float = Field(ge=-1000, le=1000)
+    silver_per_g: float = Field(ge=-100, le=100)
+    gold22_per_g: Optional[float] = Field(default=None, ge=-1000, le=1000)
+    gold18_per_g: Optional[float] = Field(default=None, ge=-1000, le=1000)
+
+
+def apply_commission(j, body: "CommissionUpdate"):
+    j.gold_commission_per_g = r2(body.gold_per_g)
+    j.silver_commission_per_g = r2(body.silver_per_g)
+    if body.gold22_per_g is not None:
+        j.gold22_commission_per_g = r2(body.gold22_per_g)
+    if body.gold18_per_g is not None:
+        j.gold18_commission_per_g = r2(body.gold18_per_g)
 
 
 @api.put("/jeweller/v3/commission")
 async def jp_commission(body: CommissionUpdate, jeweller: Jeweller = Depends(get_current_jeweller), db: AsyncSession = Depends(get_db)):
-    jeweller.gold_commission_per_g = r2(body.gold_per_g)
-    jeweller.silver_commission_per_g = r2(body.silver_per_g)
+    apply_commission(jeweller, body)
     jeweller.gold_buy_markup_pct = 0.0
     jeweller.silver_buy_markup_pct = 0.0
     await audit(db, "jeweller", jeweller, "commission.update", jeweller.business_name, {"gold": body.gold_per_g, "silver": body.silver_per_g}, jeweller.id)
@@ -2897,7 +2926,9 @@ async def mp_pricing(admin: MasterAdmin = Depends(get_master_admin), db: AsyncSe
     out = []
     for j in (await db.execute(select(Jeweller).order_by(Jeweller.created_at))).scalars().all():
         out.append({"id": j.id, "shop": j.business_name, "status": j.status, "gold_commission_per_g": j.gold_commission_per_g or 0,
-                    "silver_commission_per_g": j.silver_commission_per_g or 0, "gold_buy": gold_rate(j.id)[0], "silver_buy": silver_rate(j.id)[0]})
+                    "silver_commission_per_g": j.silver_commission_per_g or 0, "gold_buy": gold_rate(j.id)[0], "silver_buy": silver_rate(j.id)[0],
+                    "gold22_commission_per_g": j.gold22_commission_per_g or 0, "gold18_commission_per_g": j.gold18_commission_per_g or 0,
+                    "karats": karat_rates(j.id)})
     return {"price": price_payload(), "shops": out}
 
 
@@ -2906,12 +2937,166 @@ async def mp_pricing_set(jid: str, body: CommissionUpdate, admin: MasterAdmin = 
     j = (await db.execute(select(Jeweller).where(Jeweller.id == jid))).scalar_one_or_none()
     if not j:
         raise HTTPException(404, "Shop not found")
-    j.gold_commission_per_g, j.silver_commission_per_g = r2(body.gold_per_g), r2(body.silver_per_g)
+    apply_commission(j, body)
     j.gold_buy_markup_pct = j.silver_buy_markup_pct = 0.0
-    await audit(db, "master", admin, "pricing.update", j.business_name, {"gold": body.gold_per_g, "silver": body.silver_per_g}, j.id)
+    await audit(db, "master", admin, "pricing.update", j.business_name, body.model_dump(), j.id)
     await db.commit()
     cache_margins(j)
     return {"ok": True}
+
+
+# ═══════════════════ APP STUDIO (white-label apps) ══════════════════════════════
+def _public_base(request: Request):
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+    return f"{proto}://{host}"
+
+
+def app_studio_row(j, base):
+    cfg = wl.tenant_config(j, base)
+    return {"id": j.id, "business_name": j.business_name, "city": j.city, "status": j.status, "phone": j.phone, "email": j.email,
+            "app_name": j.app_name or "", "bundle_id": j.bundle_id or "", "theme_preset": j.theme_preset or "",
+            "logo_url": j.logo_url or "", "splash_url": j.splash_url or "", "app_version": j.app_version or "1.0.0",
+            "app_status": j.app_status or "details_pending", "support_email": j.support_email or "",
+            "store_short": j.store_short or "", "store_long": j.store_long or "", "store_keywords": j.store_keywords or "",
+            "suggested_bundle_id": wl.default_bundle_id(j.business_name), "config": cfg,
+            "karats": karat_rates(j.id), "silver_buy": silver_rate(j.id)[0]}
+
+
+def _auto_status(j):
+    """Move forward through the first steps automatically; built/submitted/live are set by the admin."""
+    cur = j.app_status or "details_pending"
+    if wl.APP_STATUSES.index(cur) >= wl.APP_STATUSES.index("config_ready"):
+        return cur
+    if j.app_name and j.bundle_id and j.theme_preset:
+        return "config_ready" if j.logo_url else "theme_selected"
+    return "details_pending"
+
+
+def _status_after_edit(j):
+    """Like _auto_status, but steps back to an earlier stage if required details were removed."""
+    ready = "config_ready" if (j.app_name and j.bundle_id and j.theme_preset and j.logo_url) else \
+        "theme_selected" if (j.app_name and j.bundle_id and j.theme_preset) else "details_pending"
+    cur = j.app_status or "details_pending"
+    return cur if ready == "config_ready" and wl.APP_STATUSES.index(cur) >= wl.APP_STATUSES.index("config_ready") else ready
+
+
+@api.get("/master/app-studio")
+async def ms_list(request: Request, admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    base = _public_base(request)
+    js = (await db.execute(select(Jeweller).order_by(Jeweller.created_at))).scalars().all()
+    presets = {k: {kk: vv for kk, vv in v.items()} for k, v in wl.THEME_PRESETS.items()}
+    return {"presets": presets, "statuses": [{"key": s, "label": wl.APP_STATUS_LABEL[s]} for s in wl.APP_STATUSES],
+            "karats": karat_rates(), "price": price_payload(), "apps": [app_studio_row(j, base) for j in js]}
+
+
+class AppStudioUpdate(BaseModel):
+    app_name: str = Field(min_length=2, max_length=30)
+    bundle_id: str = ""
+    theme_preset: str
+    logo_url: str = ""
+    splash_url: str = ""
+    app_version: str = Field(default="1.0.0", pattern=r"^\d+\.\d+\.\d+$")
+    support_email: str = ""
+    store_short: str = Field(default="", max_length=80)
+    store_long: str = Field(default="", max_length=4000)
+    store_keywords: str = Field(default="", max_length=100)
+
+
+@api.put("/master/app-studio/{jid}")
+async def ms_update(jid: str, body: AppStudioUpdate, request: Request, admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    j = (await db.execute(select(Jeweller).where(Jeweller.id == jid))).scalar_one_or_none()
+    if not j:
+        raise HTTPException(404, "Shop not found")
+    if body.theme_preset not in wl.THEME_PRESETS:
+        raise HTTPException(400, "Unknown theme")
+    bundle = (body.bundle_id or wl.default_bundle_id(j.business_name)).strip().lower()
+    if not wl.valid_bundle_id(bundle):
+        raise HTTPException(400, "App ID must look like in.shopname.gold (lowercase letters/digits, at least 3 parts)")
+    clash = (await db.execute(select(Jeweller.id).where(Jeweller.bundle_id == bundle, Jeweller.id != jid))).first()
+    if clash:
+        raise HTTPException(409, "This App ID is already used by another shop")
+    j.app_name, j.bundle_id, j.theme_preset = body.app_name.strip(), bundle, body.theme_preset
+    j.logo_url, j.splash_url, j.app_version = body.logo_url, body.splash_url, body.app_version
+    j.support_email, j.store_short, j.store_long, j.store_keywords = body.support_email.strip(), body.store_short.strip(), body.store_long.strip(), body.store_keywords.strip()
+    j.app_status = _status_after_edit(j)
+    await audit(db, "master", admin, "app.update", j.business_name, {"app_name": j.app_name, "bundle_id": bundle, "theme": j.theme_preset}, j.id)
+    await db.commit()
+    return app_studio_row(j, _public_base(request))
+
+
+class AppStatusUpdate(BaseModel):
+    status: str
+
+
+@api.put("/master/app-studio/{jid}/status")
+async def ms_status(jid: str, body: AppStatusUpdate, request: Request, admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    j = (await db.execute(select(Jeweller).where(Jeweller.id == jid))).scalar_one_or_none()
+    if not j:
+        raise HTTPException(404, "Shop not found")
+    if body.status not in wl.APP_STATUSES:
+        raise HTTPException(400, "Unknown status")
+    if wl.APP_STATUSES.index(body.status) >= wl.APP_STATUSES.index("built") and _auto_status(j) != "config_ready" and (j.app_status or "") not in ("config_ready", "built", "submitted", "live"):
+        raise HTTPException(400, "Complete app name, App ID, theme and logo first")
+    j.app_status = body.status
+    await audit(db, "master", admin, "app.status", j.business_name, {"status": body.status}, j.id)
+    await db.commit()
+    return app_studio_row(j, _public_base(request))
+
+
+async def _file_bytes(url, db):
+    m = re.match(r"^/api/files/([\w-]+)$", url or "")
+    if not m:
+        return None
+    u = (await db.execute(select(Upload).where(Upload.id == m.group(1)))).scalar_one_or_none()
+    if not u:
+        return None
+    data, _ = await run_in_threadpool(_storage_get, u.path)
+    return data
+
+
+@api.get("/master/app-studio/{jid}/kit")
+async def ms_kit(jid: str, request: Request, admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    j = (await db.execute(select(Jeweller).where(Jeweller.id == jid))).scalar_one_or_none()
+    if not j:
+        raise HTTPException(404, "Shop not found")
+    if not (j.app_name and j.bundle_id and j.theme_preset):
+        raise HTTPException(400, "Set app name, App ID and theme before exporting")
+    logo, splash = await _file_bytes(j.logo_url, db), await _file_bytes(j.splash_url, db)
+    rates = karat_rates(j.id) | {"silver": silver_rate(j.id)[0]}
+    if RATE_FEED["source"] == "offline" and not PRICE.get("real"):
+        rates = {}
+    data, _ = await run_in_threadpool(wl.build_app_kit, j, _public_base(request), rates, logo, splash)
+    await audit(db, "master", admin, "app.kit_export", j.business_name, {"bundle_id": j.bundle_id}, j.id)
+    await db.commit()
+    fname = f"{wl.slugify(j.app_name, '-')}-app-kit.zip"
+    return Response(content=data, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
+@api.get("/tenant/{jid}/config")
+async def tenant_public_config(jid: str, request: Request, db: AsyncSession = Depends(get_db)):
+    """Runtime branding for a tenant-locked app (no secrets)."""
+    j = (await db.execute(select(Jeweller).where(Jeweller.id == jid, Jeweller.status == "active"))).scalar_one_or_none()
+    if not j:
+        raise HTTPException(404, "Store not found")
+    cfg = wl.tenant_config(j, _public_base(request))
+    return {k: cfg[k] for k in ("tenantId", "appName", "theme", "homeLayout", "assets", "support")} | {"business_name": j.business_name}
+
+
+@api.get("/tenant/{jid}/privacy", response_class=HTMLResponse)
+async def tenant_privacy(jid: str, db: AsyncSession = Depends(get_db)):
+    j = (await db.execute(select(Jeweller).where(Jeweller.id == jid))).scalar_one_or_none()
+    if not j:
+        raise HTTPException(404, "Store not found")
+    return HTMLResponse(wl.privacy_html(j))
+
+
+@api.get("/tenant/{jid}/terms", response_class=HTMLResponse)
+async def tenant_terms(jid: str, db: AsyncSession = Depends(get_db)):
+    j = (await db.execute(select(Jeweller).where(Jeweller.id == jid))).scalar_one_or_none()
+    if not j:
+        raise HTTPException(404, "Store not found")
+    return HTMLResponse(wl.privacy_html(j, terms=True))
 
 
 @api.get("/master/v3/audit")
@@ -2936,6 +3121,7 @@ PANEL_ASSETS = {
     "panel.js": (TEMPLATES / "panel.js", "application/javascript"),
     "panel_ext.js": (TEMPLATES / "panel_ext.js", "application/javascript"),
     "master_ext.js": (TEMPLATES / "master_ext.js", "application/javascript"),
+    "app_studio.js": (TEMPLATES / "app_studio.js", "application/javascript"),
     **{f"Inter-{w}.ttf": (ROOT_DIR.parent / "frontend" / "assets" / "fonts" / f"Inter-{w}.ttf", "font/ttf") for w in (400, 500, 600, 700)},
     **{f"img-{k}.jpg": (ROOT_DIR.parent / "frontend" / "assets" / "dg" / v, "image/jpeg") for k, v in {
         "banner-1": "banner-12.jpg", "banner-2": "banner-11.jpg", "heritage-necklace": "heritage-necklace-24k.jpg",
