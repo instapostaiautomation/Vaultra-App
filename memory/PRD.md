@@ -126,3 +126,4 @@ Multi-tenant white-label digital gold platform. Vaultra onboards jewellery shop 
 - has_live=false -> all panels/app show "—" instead of demo prices.
 - PostgreSQL data moved to /app/pgdata (persistent). Previously /var/lib was wiped on pod restart -> DB reseeded (data loss on 29 Oct). Backups in /app/backups.
 - MT5_RATES_URL currently points to a dead trycloudflare host; user must provide new link via secrets.
+- 31 Oct: MT5_RATES_URL switched to permanent direct server (http, port 8000). Live verified: source=mt5, quotes OK.
