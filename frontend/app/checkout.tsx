@@ -6,6 +6,7 @@ import { WebView } from "react-native-webview";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as WebBrowser from "expo-web-browser";
 
+import { GlassBackdrop } from "@/src/components/GlassBackdrop";
 import { api } from "@/src/api";
 import { useToast } from "@/src/components/Toast";
 import { Button } from "@/src/components/ui";
@@ -41,6 +42,7 @@ export default function Checkout() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]} testID="checkout-screen">
+      <GlassBackdrop />
       <View style={styles.bar}>
         <Text style={styles.title}>Razorpay Secure Checkout</Text>
         <Pressable onPress={() => router.back()} style={styles.close} testID="checkout-close">
@@ -66,7 +68,7 @@ export default function Checkout() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.surface },
+  root: { flex: 1, backgroundColor: "transparent" },
   bar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, height: 52, borderBottomWidth: 1, borderBottomColor: colors.divider },
   title: { fontFamily: fonts.bold, fontSize: 16, color: colors.onSurface },
   close: { width: 44, height: 44, alignItems: "flex-end", justifyContent: "center" },

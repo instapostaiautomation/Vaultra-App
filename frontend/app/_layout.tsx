@@ -31,7 +31,7 @@ export default function RootLayout() {
             <QueryClientProvider client={qc}>
               <AppProvider>
                 <ToastProvider>
-                  <Stack screenOptions={{ headerShown: false }}>
+                  <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "transparent" } }}>
                     <Stack.Screen name="(tabs)" />
                     <Stack.Screen name="login" options={{ presentation: "modal" }} />
                     <Stack.Screen name="profile" />

@@ -74,6 +74,13 @@ const light = {
   glassBorder: "rgba(255,255,255,0.75)",
   glassHighlight: "rgba(255,255,255,0.18)",
   glassTint: "light",
+  glassCard: "rgba(255,255,255,0.48)",
+  glassCardBorder: "rgba(255,255,255,0.85)",
+  bgA: "#FBF4E2",
+  bgB: "#F1ECF8",
+  bgC: "#E6F2F0",
+  orbA: "rgba(212,175,55,0.28)",
+  orbB: "rgba(120,190,185,0.30)",
 };
 
 const dark: typeof light = {
@@ -143,6 +150,13 @@ const dark: typeof light = {
   glassBorder: "rgba(255,255,255,0.15)",
   glassHighlight: "rgba(255,255,255,0.05)",
   glassTint: "dark",
+  glassCard: "rgba(30,41,59,0.55)",
+  glassCardBorder: "rgba(255,255,255,0.12)",
+  bgA: "#0B1220",
+  bgB: "#151B2E",
+  bgC: "#0E1F24",
+  orbA: "rgba(212,175,55,0.18)",
+  orbB: "rgba(80,160,155,0.18)",
 };
 
 export type ThemeColors = typeof light;

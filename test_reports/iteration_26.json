@@ -1,0 +1,32 @@
+{
+  "summary": "Frontend-only UI regression for the glassmorphism restyle (390x844) + Master Admin Catalogue column change. All requested flows PASS. Every screen (Home, Vault signed-in/out, Jewellery, SIP, Login, Profile, FAQ, Referral, Notifications, Product detail) renders the pastel GlassBackdrop + translucent cards with readable text. No bleed-through after switching tabs many times and pushing/popping profile, product-detail (x2), referral, notifications, FAQ (elementFromPoint checks confirm the active screen covers the viewport). Floating tab bar labels not clipped (Jewellery label 54px wide, scrollWidth==clientWidth, 14px height == scrollHeight). Vault/Home/Jewellery/SIP content scrolls clear of the floating tab bar. Login with demo OTP (9876543210) OK, Buy widget ₹500 -> confirm -> success sheet (vault 2.3377g -> 2.3722g) OK, SIP start ₹500 monthly -> Active card with UPI AutoPay mandate, then cancel OK, side menu open/close (X and backdrop) OK. Master Admin Catalogue headers = Image, Product, Shop, Weight, Purity, Rate / g, Price, (actions) — no Making column; all 24 rows have 8 cells and are aligned; shop filter works. No pageerrors. Only minor cosmetic issues found. No deprecated Expo packages detected.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Profile / FAQ / Notifications / Referral / Product detail (pushed screens)", "issues": ["Header bar uses solid colors.surface (#FFF) with a hard divider, so the top 60px is opaque white while the rest is the pastel glass backdrop; tab screens use a translucent header. Make these headers translucent/Glass for consistency. Reference: /app/frontend/app/faq.tsx:66, /app/frontend/app/profile.tsx:204 (same pattern in notifications.tsx:100, referral.tsx:189, product-detail.tsx:211)"]},
+      {"screen": "Jewellery / Vault filter rows", "issues": ["ChipRow container uses solid colors.surface background -> opaque white strip under the header, breaks the glass look. Reference: /app/frontend/src/components/ui.tsx:149"]},
+      {"screen": "Login / Buy widget (web preview only)", "issues": ["Focused TextInput shows the browser default black rectangular focus outline inside the rounded field (login-phone-input, buy-input). Add outlineStyle:'none' on web."]},
+      {"screen": "Master Admin Catalogue", "issues": ["Subtitle says price = purity rate '+ shop commission', but Price actually includes the making % (e.g. Minimalist Gold Bangle 8.2g: Sharma ₹1,30,882 vs Patel ₹1,18,216 with identical Rate/g). With the Making column removed there is no hint why prices differ — update the subtitle text. Reference: /app/backend/templates/master_ext.js:28"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_26.json"],
+  "action_items": [
+    "Optional polish: make pushed-screen headers (faq/profile/notifications/referral/product-detail) translucent instead of colors.surface",
+    "Optional polish: ChipRow background -> transparent/glass in ui.tsx:149",
+    "Optional: add outlineStyle 'none' to TextInputs on web",
+    "Optional: update Master Catalogue subtitle to mention making % is included in Price"
+  ],
+  "critical_code_review_comments": [
+    "Stack/Tabs use transparent contentStyle/sceneStyle; bleed-through is prevented only because every screen renders its own opaque <GlassBackdrop/>. Any new screen that forgets GlassBackdrop will show the previous screen behind it — consider placing one GlassBackdrop in the root layout or keep a lint/checklist.",
+    "Notifications showed 6 near-duplicate 'SIP instalment successful' entries within minutes for Aarav (artifact of iteration_25 scheduler tests), not a UI bug."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (not requested)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "Buy ₹500 gold and one ₹500 monthly SIP (started then cancelled) on customer 9876543210.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Customer web token stored in localStorage 'vdg_user_token' (JSON-stringified); injecting it via add_init_script avoids the OTP rate limit. Tabs are clickable via get_by_role('tab', name=...). Master admin login fields: #lu, #lp, #login-btn; sidebar #side."
+}

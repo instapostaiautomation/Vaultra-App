@@ -5,6 +5,7 @@ import { Pressable, RefreshControl, StyleSheet, Text, View } from "react-native"
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { GlassBackdrop } from "@/src/components/GlassBackdrop";
 import { api } from "@/src/api";
 import { ScreenHeader } from "@/src/components/Header";
 import { useToast } from "@/src/components/Toast";
@@ -77,6 +78,7 @@ export default function SipScreen() {
 
   return (
     <View style={styles.root} testID="sip-screen">
+      <GlassBackdrop />
       <ScreenHeader title="Auto SIP" subtitle={`Build your ${metal} savings on autopilot`} showBack />
       <KeyboardAwareScrollView
         contentContainerStyle={{ padding: 16, paddingBottom: bottomChrome + 24, gap: 16 }}
@@ -194,7 +196,7 @@ export default function SipScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.surfaceSecondary },
+  root: { flex: 1, backgroundColor: "transparent" },
   label: { fontFamily: fonts.semibold, fontSize: 12, color: colors.muted, textTransform: "uppercase", letterSpacing: 0.3 },
   big: { fontFamily: fonts.black, fontSize: 34, letterSpacing: -1.2, color: colors.onSurface, marginTop: 4 },
   wrapRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },

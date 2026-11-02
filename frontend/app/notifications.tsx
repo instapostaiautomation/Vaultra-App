@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { GlassBackdrop } from "@/src/components/GlassBackdrop";
 import { api } from "@/src/api";
 import { useApp } from "@/src/store/AppContext";
 import { colors, fonts, radius, cardShadow } from "@/src/theme";
@@ -52,6 +53,7 @@ export default function NotificationsScreen() {
 
   return (
     <View style={styles.root} testID="notifications-screen">
+      <GlassBackdrop />
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <Pressable onPress={() => router.back()} style={styles.backBtn} testID="notif-back-button">
           <ArrowLeft size={22} color={colors.onSurface} />
@@ -94,14 +96,14 @@ export default function NotificationsScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.surfaceSecondary },
+  root: { flex: 1, backgroundColor: "transparent" },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingBottom: 8,
-    backgroundColor: colors.surface,
+    backgroundColor: "transparent",
     borderBottomWidth: 1,
     borderBottomColor: colors.divider,
   },

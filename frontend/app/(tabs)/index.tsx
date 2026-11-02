@@ -5,6 +5,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "r
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { GlassBackdrop } from "@/src/components/GlassBackdrop";
 import { api } from "@/src/api";
 import { CATEGORIES } from "@/src/assets";
 import { BannerCarousel } from "@/src/components/BannerCarousel";
@@ -145,6 +146,7 @@ export default function Home() {
 
   return (
     <View style={styles.root} testID="home-screen">
+      <GlassBackdrop />
       <HomeHeader />
       <ScrollView
         contentContainerStyle={{ paddingTop: 16, paddingBottom: bottomChrome + 24 }}
@@ -162,7 +164,7 @@ export default function Home() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.surfaceSecondary },
+  root: { flex: 1, backgroundColor: "transparent" },
   sectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, marginTop: 32, marginBottom: 14 },
   sectionTitle: { fontFamily: fonts.bold, fontSize: 20, letterSpacing: -0.4, color: colors.onSurface },
   seeAll: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 44 },

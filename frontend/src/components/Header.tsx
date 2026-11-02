@@ -205,5 +205,5 @@ const styles = StyleSheet.create({
   screenSub: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted, marginTop: 2 },
   backBtn: { width: 44, height: 44, justifyContent: "center", alignItems: "center" },
   // headers sit on a soft tinted backdrop so the glass controls read as frosted
-  header: { backgroundColor: colors.brandTertiary, paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.goldHairline },
+  header: { backgroundColor: "transparent", paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.goldHairline },
 });

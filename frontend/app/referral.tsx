@@ -5,6 +5,7 @@ import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Share, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { GlassBackdrop } from "@/src/components/GlassBackdrop";
 import { api } from "@/src/api";
 import { useToast } from "@/src/components/Toast";
 import { Button, Card } from "@/src/components/ui";
@@ -58,6 +59,7 @@ export default function ReferralScreen() {
   if (!token) {
     return (
       <View style={styles.root}>
+        <GlassBackdrop />
         <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
           <Pressable onPress={() => router.back()} style={styles.backBtn}>
             <ArrowLeft size={22} color={colors.onSurface} />
@@ -77,6 +79,7 @@ export default function ReferralScreen() {
 
   return (
     <View style={styles.root} testID="referral-screen">
+      <GlassBackdrop />
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <Pressable onPress={() => router.back()} style={styles.backBtn} testID="referral-back-button">
           <ArrowLeft size={22} color={colors.onSurface} />
@@ -182,14 +185,14 @@ export default function ReferralScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.surfaceSecondary },
+  root: { flex: 1, backgroundColor: "transparent" },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingBottom: 8,
-    backgroundColor: colors.surface,
+    backgroundColor: "transparent",
     borderBottomWidth: 1,
     borderBottomColor: colors.divider,
   },

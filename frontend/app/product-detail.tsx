@@ -5,6 +5,7 @@ import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { GlassBackdrop } from "@/src/components/GlassBackdrop";
 import { api } from "@/src/api";
 import { IMAGES } from "@/src/assets";
 import { useToast } from "@/src/components/Toast";
@@ -50,6 +51,7 @@ export default function ProductDetailScreen() {
   if (loading) {
     return (
       <View style={[styles.root, { paddingTop: insets.top }]}>
+        <GlassBackdrop />
         <View style={styles.center}>
           <ActivityIndicator color={colors.brandPrimary} size="large" />
         </View>
@@ -60,6 +62,7 @@ export default function ProductDetailScreen() {
   if (!product) {
     return (
       <View style={[styles.root, { paddingTop: insets.top }]}>
+        <GlassBackdrop />
         <View style={styles.center}>
           <Text style={styles.errorText}>Product not found</Text>
           <Button title="Go Back" variant="outline" onPress={() => router.back()} />
@@ -82,6 +85,7 @@ export default function ProductDetailScreen() {
 
   return (
     <View style={styles.root} testID="product-detail-screen">
+      <GlassBackdrop />
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <Pressable onPress={() => router.back()} style={styles.backBtn} testID="product-back-button">
@@ -201,7 +205,7 @@ export default function ProductDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.surface },
+  root: { flex: 1, backgroundColor: "transparent" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
   errorText: { fontFamily: fonts.medium, fontSize: 16, color: colors.muted },
   header: {
@@ -210,7 +214,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingBottom: 10,
-    backgroundColor: colors.surface,
+    backgroundColor: "transparent",
     borderBottomWidth: 1,
     borderBottomColor: colors.divider,
   },

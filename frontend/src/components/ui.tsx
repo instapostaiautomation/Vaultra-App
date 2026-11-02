@@ -146,7 +146,7 @@ export function Chip({
 
 export function ChipRow({ children, dark, style }: { children: React.ReactNode; dark?: boolean; style?: StyleProp<ViewStyle> }) {
   return (
-    <View style={[{ height: 56, backgroundColor: dark ? colors.adminSurface : colors.surface }, style]}>
+    <View style={[{ height: 56, backgroundColor: dark ? colors.adminSurface : "transparent" }, style]}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -236,12 +236,13 @@ const styles = StyleSheet.create({
   },
   btnText: { fontFamily: fonts.semibold, letterSpacing: -0.2 },
   card: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.glassCard,
     borderRadius: 22,
-    borderWidth: StyleSheet.hairlineWidth * 1.5,
-    borderColor: colors.goldHairline,
+    borderWidth: 1,
+    borderColor: colors.glassCardBorder,
     padding: 16,
     ...cardShadow,
+    ...(Platform.OS === "web" ? ({ backdropFilter: "blur(18px) saturate(160%)" } as any) : null),
   },
   badge: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 8, height: 24, borderRadius: radius.pill, alignSelf: "flex-start" },
   badgeDot: { width: 6, height: 6, borderRadius: 3 },

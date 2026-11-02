@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Share, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { GlassBackdrop } from "@/src/components/GlassBackdrop";
 import { api } from "@/src/api";
 import { ScreenHeader } from "@/src/components/Header";
 import { GoalsSection } from "@/src/components/Goals";
@@ -53,6 +54,7 @@ export default function VaultScreen() {
   if (!token) {
     return (
       <View style={styles.root}>
+        <GlassBackdrop />
         <ScreenHeader title="Vault & Ledger" showBack />
         <View style={styles.center} testID="vault-signed-out">
           <View style={styles.emptyIcon}>
@@ -88,6 +90,7 @@ export default function VaultScreen() {
 
   return (
     <View style={styles.root} testID="vault-screen">
+      <GlassBackdrop />
       <ScreenHeader title="Vault & Ledger" subtitle={TENANT_NAME[tenant] || ""} showBack />
       <ScrollView
         stickyHeaderIndices={[3]}
@@ -240,7 +243,7 @@ function InvoiceSheet({ t, onClose }: { t: any; onClose: () => void }) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.surfaceSecondary },
+  root: { flex: 1, backgroundColor: "transparent" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24, gap: 12 },
   emptyIcon: { width: 72, height: 72, borderRadius: 36, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center" },
   emptyTitle: { fontFamily: fonts.black, fontSize: 22, letterSpacing: -0.6, color: colors.onSurface },

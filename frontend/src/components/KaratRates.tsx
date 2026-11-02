@@ -44,7 +44,7 @@ export function KaratRates() {
 }
 
 const styles = StyleSheet.create({
-  card: { marginHorizontal: 16, marginTop: 16, backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.goldHairline, paddingHorizontal: 16, paddingTop: 14 },
+  card: { marginHorizontal: 16, marginTop: 16, backgroundColor: colors.glassCard, borderRadius: 18, borderWidth: 1, borderColor: colors.goldHairline, paddingHorizontal: 16, paddingTop: 14 },
   head: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 },
   title: { fontFamily: fonts.bold, fontSize: 16, color: colors.onSurface, letterSpacing: -0.2 },
   sub: { fontFamily: fonts.medium, fontSize: 11, color: colors.muted },

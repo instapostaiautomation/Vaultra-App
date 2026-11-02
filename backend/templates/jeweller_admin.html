@@ -107,6 +107,10 @@ function vDashboard() {
   return head + (du ? `<div class="card pad" onclick="go('dues')" data-testid="dues-banner" style="cursor:pointer;margin-bottom:16px;display:flex;gap:16px;align-items:center;flex-wrap:wrap;border-color:${du.remaining > 0 ? '#F1C7C0' : 'var(--line)'}">
     <div style="flex:1;min-width:200px"><div style="font-size:12px;color:var(--mute)">Remaining to pay Master</div><div class="num" style="font-size:26px;font-weight:700;color:${du.remaining > 0 ? '#B42318' : 'inherit'}">${inr0(du.remaining)}</div></div>
     <div class="kv" style="min-width:160px"><span>Total payable</span><b>${inr0(du.payable)}</b></div><div class="kv" style="min-width:140px"><span>Paid</span><b>${inr0(du.paid)}</b></div><span class="btn sm">View details →</span></div>` : '') + `
+  <div class="card pad" onclick="dashInfo('commission')" data-testid="commission-earned" style="cursor:pointer;margin-bottom:16px;display:flex;gap:16px;align-items:center;flex-wrap:wrap;background:#ECFDF3;border-color:#ABEFC6">
+    <div style="flex:1;min-width:200px"><div style="font-size:12px;color:#067647;font-weight:600">Your commission earned ${rangeLabel(S.dr)}</div><div class="num" style="font-size:26px;font-weight:700;color:#067647">${inr0(b.commission)}</div></div>
+    <div class="kv" style="min-width:200px"><span style="color:#067647">Total commission earned (all time)</span><b style="color:#067647">${du ? inr0(du.commission) : '—'}</b></div>
+    <div class="kv" style="min-width:170px"><span style="color:#067647">Commission rate now (24K)</span><b style="color:#067647">${inr(S.me?.gold_commission_per_g || 0)}/g</b></div></div>
   <div class="grid g4">
     ${kpi('Gold booked', g4(b.gold_g), inr0(b.gold_amt) + ' collected', 'coin', '', 'kpi-gold-booked', 'gold')}
     ${kpi('Silver booked', g4(b.silver_g), inr0(b.silver_amt) + ' collected', 'coin', 'gray', 'kpi-silver-booked', 'silver')}
@@ -142,6 +146,7 @@ function dashInfo(k) {
     silver: ['Silver booked', `Digital silver your customers bought ${r}, after 3% GST.`, [['Silver grams', g4(b.silver_g)], ['Amount collected', inr(b.silver_amt)], ['Your silver rate now', rv(p, p.silver?.buy) + '/g']]],
     orders: ['Orders', `Every buy, SIP instalment and redemption ${r}.`, [['Buy orders', b.orders], ['Redemptions', b.redemptions], ['Grams redeemed', g4(b.redeemed_g)]]],
     sales: ['Total sales', `Money collected from customers ${r}, including GST.`, [['Gold', inr(b.gold_amt)], ['Silver', inr(b.silver_amt)], ['GST inside this', inr(b.gst)], ['Your commission', inr(b.commission)]]],
+    commission: ['Your commission', `What you earned ${r} from your per-gram commission on every customer buy and SIP. This stays with you — it is not part of what you pay Master.`, [[`Earned ${r}`, inr(b.commission)], ['Earned all time', S.mydues ? inr(S.mydues.summary.commission) : '—'], ['24K commission / g', inr(S.me?.gold_commission_per_g || 0)], ['Silver commission / g', inr(S.me?.silver_commission_per_g || 0)]]],
     total: ['Total customers', 'Everyone who has signed up in your app.', [['All customers', c.total], [`New ${r}`, c.new]]],
     active: ['Active customers', `Customers who bought, ran a SIP or redeemed ${r}.`, [['Active', c.active], ['Share of all customers', c.total ? Math.round(c.active / c.total * 100) + '%' : '0%']]],
     inactive: ['Inactive customers', `Signed-up customers with no activity ${r}. A good list for a call or WhatsApp offer.`, [['Inactive', c.inactive], ['Total customers', c.total]]],

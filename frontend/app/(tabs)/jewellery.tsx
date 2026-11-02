@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { GlassBackdrop } from "@/src/components/GlassBackdrop";
 import { api } from "@/src/api";
 import { useApp } from "@/src/store/AppContext";
 import { CATEGORIES } from "@/src/assets";
@@ -41,6 +42,7 @@ export default function Jewellery() {
 
   return (
     <View style={styles.root} testID="jewellery-screen">
+      <GlassBackdrop />
       <ScreenHeader title="Jewellery" subtitle="Redeem vault gold for hallmarked pieces" showBack />
       <ChipRow style={{ borderBottomWidth: 1, borderBottomColor: colors.divider }}>
         <Chip label="All" selected={cat === "all"} onPress={() => setCat("all")} testID="jewellery-filter-all" />
@@ -85,7 +87,7 @@ export default function Jewellery() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.surfaceSecondary },
+  root: { flex: 1, backgroundColor: "transparent" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
   listHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 4 },
   count: { fontFamily: fonts.semibold, fontSize: 13, color: colors.onSurfaceTertiary },

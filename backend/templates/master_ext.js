@@ -25,12 +25,12 @@ async function savePricing(id) { const n = (k) => Number($(`#${k}_${id}`).value 
 S.catJ = '';
 const loadMCat = () => safe(async () => { await needJ(); S.mcat = await api('/master/v3/catalogue?jeweller_id=' + S.catJ); }, 'catalogue');
 function vMCatalogue() {
-  const head = ph('Catalogue', 'Every product across all shops, priced at live rate + shop commission + making %.', shopSel(S.catJ, "S.catJ=this.value;loadMCat()"));
+  const head = ph('Catalogue', 'Every product across all shops, priced by purity (24K = live rate, 22K = 91.67%, 18K = 75%) + shop commission + making charge set by each shop.', shopSel(S.catJ, "S.catJ=this.value;loadMCat()"));
   const c = S.mcat; if (!c) return head + loading;
-  return head + `<div class="card"><div class="table-wrap"><table><thead><tr><th>Image</th><th>Product</th><th>Shop</th><th class="r">Weight</th><th>Purity</th><th class="r">Rate / g</th><th class="r">Making</th><th class="r">Price</th><th></th></tr></thead><tbody>
+  return head + `<div class="card"><div class="table-wrap"><table><thead><tr><th>Image</th><th>Product</th><th>Shop</th><th class="r">Weight</th><th>Purity</th><th class="r">Rate / g</th><th class="r">Price</th><th></th></tr></thead><tbody>
     ${c.products.length ? c.products.map((p) => `<tr><td><div class="thumb" style="background-image:url('${esc(p.image_url)}')"></div></td><td><b>${esc(p.name)}</b><div class="sub"><code>${esc(p.sku)}</code></div></td><td>${esc(p.shop)}</td>
-      <td class="r num">${g4(p.grams)}</td><td>${esc(p.purity)} · ${p.purity_pct}%</td><td class="r num">${inr(p.buy_rate)}</td><td class="r num">${p.making_pct}%<div class="sub">${inr0(p.making_amount)}</div></td><td class="r num"><b>${inr0(p.total_price)}</b></td>
-      <td class="r"><button class="btn sm danger" onclick="mDel('products','${p.id}',loadMCat)">Remove</button></td></tr>`).join('') : emptyRow(9, 'No products')}</tbody></table></div></div>`;
+      <td class="r num">${g4(p.grams)}</td><td>${esc(p.purity)} · ${p.purity_pct}%</td><td class="r num">${inr(p.buy_rate)}</td><td class="r num"><b>${inr0(p.total_price)}</b></td>
+      <td class="r"><button class="btn sm danger" onclick="mDel('products','${p.id}',loadMCat)">Remove</button></td></tr>`).join('') : emptyRow(8, 'No products')}</tbody></table></div></div>`;
 }
 async function mDel(kind, id, after) { if (!confirm('Remove this item?')) return; try { await api(`/master/v3/${kind}/${id}`, { method: 'DELETE' }); toast('Removed'); after(); } catch (e) { toast(e.message, true); } }
 

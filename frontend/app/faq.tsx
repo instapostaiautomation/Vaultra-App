@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { GlassBackdrop } from "@/src/components/GlassBackdrop";
 import { api } from "@/src/api";
 import { useApp } from "@/src/store/AppContext";
 import { colors, fonts, radius } from "@/src/theme";
@@ -32,6 +33,7 @@ export default function Faq() {
   const [open, setOpen] = useState<number | null>(0);
   return (
     <View style={styles.root} testID="faq-screen">
+      <GlassBackdrop />
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))} style={styles.back} testID="faq-back-button">
           <ArrowLeft size={22} color={colors.onSurface} />
@@ -60,8 +62,8 @@ export default function Faq() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.surfaceSecondary },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 8, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.divider },
+  root: { flex: 1, backgroundColor: "transparent" },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 8, backgroundColor: "transparent", borderBottomWidth: 1, borderBottomColor: colors.divider },
   back: { width: 44, height: 44, justifyContent: "center" },
   title: { fontFamily: fonts.bold, fontSize: 17, color: colors.onSurface },
   h1: { fontFamily: fonts.black, fontSize: 26, letterSpacing: -0.8, color: colors.onSurface, marginBottom: 8 },

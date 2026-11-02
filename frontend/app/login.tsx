@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { GlassBackdrop } from "@/src/components/GlassBackdrop";
 import { api } from "@/src/api";
 import { LogoMark } from "@/src/components/Header";
 import { useToast } from "@/src/components/Toast";
@@ -107,6 +108,7 @@ export default function Login() {
 
   return (
     <View style={styles.root} testID="login-screen">
+      <GlassBackdrop />
       <KeyboardAwareScrollView bottomOffset={24} contentContainerStyle={{ paddingTop: insets.top + 8, paddingBottom: insets.bottom + 24, paddingHorizontal: 24 }} keyboardShouldPersistTaps="handled">
         <Pressable onPress={goBack} style={styles.back} testID="login-back-button">
           <ArrowLeft size={22} color={colors.onSurface} />
@@ -245,7 +247,7 @@ export default function Login() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.surface },
+  root: { flex: 1, backgroundColor: "transparent" },
   back: { width: 44, height: 44, justifyContent: "center", marginBottom: 16 },
   title: { fontFamily: fonts.black, fontSize: 28, letterSpacing: -1, color: colors.onSurface, marginTop: 20 },
   sub: { fontFamily: fonts.regular, fontSize: 14, color: colors.muted, marginTop: 6, marginBottom: 24 },

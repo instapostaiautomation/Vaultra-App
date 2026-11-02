@@ -7,6 +7,7 @@ import { ActivityIndicator, Linking, Pressable, StyleSheet, Switch, Text, TextIn
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { GlassBackdrop } from "@/src/components/GlassBackdrop";
 import { api, apiUpload } from "@/src/api";
 import { uploadForm } from "@/src/utils/upload";
 import { LogoMark } from "@/src/components/Header";
@@ -78,6 +79,7 @@ export default function Profile() {
   if (!token) {
     return (
       <View style={styles.root} testID="profile-screen">
+        <GlassBackdrop />
         <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
           <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))} style={styles.back} testID="profile-back-button">
             <ArrowLeft size={22} color={colors.onSurface} />
@@ -98,6 +100,7 @@ export default function Profile() {
 
   return (
     <View style={styles.root} testID="profile-screen">
+      <GlassBackdrop />
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))} style={styles.back} testID="profile-back-button">
           <ArrowLeft size={22} color={colors.onSurface} />
@@ -197,8 +200,8 @@ export default function Profile() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.surfaceSecondary },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 8, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.divider },
+  root: { flex: 1, backgroundColor: "transparent" },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 8, backgroundColor: "transparent", borderBottomWidth: 1, borderBottomColor: colors.divider },
   back: { width: 44, height: 44, justifyContent: "center" },
   headerTitle: { fontFamily: fonts.bold, fontSize: 17, color: colors.onSurface },
   guestContainer: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, gap: 8 },
