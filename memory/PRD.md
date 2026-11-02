@@ -150,6 +150,11 @@ Multi-tenant white-label digital gold platform. Vaultra onboards jewellery shop 
 - Master: shop name → catalogue drawer; Customers → full detail (/master/v3/customers/{cid}); MT5 Bookings tab.
 - MT5 cover: purchases accumulate in app_settings mt5_pending; BUY POST {base}/order {symbol,type,volume} when ≥ min lot. Config mt5_booking_cfg (gold_lot_g 10, silver_lot_g 1000, min 1, step 1, max 10). Failed auto attempt → 5 min cooldown; manual retry. Table mt5_bookings. Migration b3d9e1f0a2c4.
 - Security audit: per-object tenant scoping PASS. Referral lookup scoped to store. Known demo risks: OTP echoed, seeded demo passwords (must change before launch).
-## Next
-- User must enable Algo Trading in MT5 (orders refused "AutoTrading disabled"); confirm real lot sizes.
+## Iteration 25 (Nov 2026) — DONE
+- MT5: gold & silver 1 lot = 100g, books 0.1 lot per 10g in pool (min 0.1, step 0.1, max 10). BUY only.
+- Rates: backend reads MT5 back-to-back (~0.4-0.5s per read over tunnel); app polls /price every 1s, panels 1.5s.
+- Customer buy: UI shows live rate, no timer/"deducted" line; 120s quote lock is backend-only at Proceed.
+- Dues: ShopPayment table; payable = collected − shop commission (metal + GST). /master/v3/dues*, /jeweller/v3/dues. Master "Shop Dues" tab + Overview banner; Shop "Payments to Master" tab + dashboard banner.
+- SIP AutoPay (demo mandate UPIMD…): first instalment debited on create, sip_scheduler every 60s auto-debits due SIPs (row lock, per-SIP commit), notification, MT5 cover. "Pay extra now" doesn't move next date.
+- Customer app liquid glass: Glass.tsx (expo-blur; Android fallback fill), floating glass tab bar, glass menu/back buttons, glass side menu. Theme keys glassFill/glassBorder/glassHighlight/glassFallback/glassTint. (orders refused "AutoTrading disabled"); confirm real lot sizes.
 - Real SMS OTP + payments before launch; replace seeded passwords.

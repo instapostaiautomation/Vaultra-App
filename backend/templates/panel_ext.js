@@ -223,3 +223,23 @@ function customerDrawer(d, showShop) {
           <div style="text-align:right"><div class="num" style="font-weight:600">${o.side === 'redeem' ? '−' : '+'}${g4(o.grams)}</div><div style="font-size:12px;color:var(--mute)" class="num">${inr(o.total)}</div></div></div>`).join('') : '<div class="empty">No activity yet</div>'}
       </div></div></div>`);
 }
+
+/* ── dues: shop → Master (metal value + GST; shop keeps commission) ── */
+function duesSummary(x, narrow) {
+  return `<div class="grid ${narrow ? 'g2' : 'g4'}">
+    ${kpi('Total payable to Master', inr0(x.payable), `${x.orders} orders · metal ${inr0(x.metal_value)} + GST ${inr0(x.gst)}`, 'wallet')}
+    ${kpi('Paid so far', inr0(x.paid), x.last_paid_on ? 'last payment ' + esc(x.last_paid_on) : 'no payment yet', 'check', 'green')}
+    ${kpi('Remaining', `<span style="color:${x.remaining > 0 ? '#B42318' : 'inherit'}">${inr0(x.remaining)}</span>`, x.remaining > 0 ? 'still to pay' : 'all settled', 'invoice', x.remaining > 0 ? 'red' : 'green')}
+    ${kpi('Shop commission (kept)', inr0(x.commission), `from ${inr0(x.collected)} collected`, 'commission', 'blue')}</div>`;
+}
+function duesDetail(d, master) {
+  const t = d.transactions, p = d.payments;
+  return `${duesSummary(d.summary, master)}
+    <div class="card section"><div class="card-h"><h3>Payments ${master ? 'received from this shop' : 'made to Master'}</h3><span style="font-size:12px;color:var(--mute)">${p.length} ${p.length === 1 ? 'entry' : 'entries'}</span></div>
+      <div class="table-wrap"><table><thead><tr><th>Date</th><th class="r">Amount</th><th>Reference / UTR</th><th>Note</th><th>Entered by</th>${master ? '<th></th>' : ''}</tr></thead><tbody>
+      ${p.length ? p.map((x) => `<tr><td>${esc(x.paid_on)}</td><td class="r num"><b>${inr(x.amount)}</b></td><td><code>${esc(x.reference || '—')}</code></td><td>${esc(x.note || '')}</td><td>${esc(x.created_by)}</td>${master ? `<td class="r"><button class="btn sm danger" onclick="duesDelPay('${x.id}')">Remove</button></td>` : ''}</tr>`).join('') : emptyRow(master ? 6 : 5, 'No payments yet')}</tbody></table></div></div>
+    <div class="card section"><div class="card-h"><h3>Customer transactions in this account</h3><span style="font-size:12px;color:var(--mute)">${t.length} latest</span></div>
+      <div class="table-wrap"><table><thead><tr><th>Date</th><th>Invoice</th><th>Customer</th><th>Wallet ID</th><th>Type</th><th>Metal</th><th class="r">Grams</th><th class="r">Customer paid</th><th class="r">GST</th><th class="r">Commission</th><th class="r">To Master</th></tr></thead><tbody>
+      ${t.length ? t.map((x) => `<tr><td>${dt(x.created_at)}</td><td><code>${esc(x.invoice_no)}</code></td><td>${esc(x.customer)}<div class="sub">${phoneFmt(x.phone)}</div></td><td><code>${esc(x.wallet_id)}</code></td><td>${x.type === 'sip' ? 'SIP' : 'Buy'}</td><td>${metalTag(x.metal)}</td>
+        <td class="r num">${g4(x.grams)}</td><td class="r num">${inr(x.total)}</td><td class="r num">${inr(x.gst)}</td><td class="r num">${inr(x.commission)}</td><td class="r num"><b>${inr(x.payable)}</b></td></tr>`).join('') : emptyRow(11, 'No transactions yet')}</tbody></table></div></div>`;
+}

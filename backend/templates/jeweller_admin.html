@@ -20,7 +20,7 @@ const S = {
   comm: { gold: 0, silver: 0, dirty: false },
 };
 const NAV = [
-  ['Overview', [['dashboard', 'Dashboard', 'dashboard'], ['commission', 'Commission', 'commission'], ['orders', 'Orders', 'orders'], ['holdings', 'Wallet & Holdings', 'wallet'], ['sips', 'SIP', 'refresh']]],
+  ['Overview', [['dashboard', 'Dashboard', 'dashboard'], ['commission', 'Commission', 'commission'], ['orders', 'Orders', 'orders'], ['holdings', 'Wallet & Holdings', 'wallet'], ['sips', 'SIP', 'refresh'], ['dues', 'Payments to Master', 'invoice']]],
   ['Customers', [['customers', 'Customers', 'customers'], ['kyc', 'KYC', 'kyc'], ['redemptions', 'Redemptions', 'redeem'], ['goals', 'Goals', 'target']]],
   ['Store', [['catalogue', 'Catalogue', 'catalogue'], ['content', 'App Content', 'image'], ['referral', 'Referral', 'referral'], ['settings', 'Settings', 'settings']]],
 ];
@@ -32,7 +32,7 @@ function loginView() {
   return `<div class="auth">
     <div class="auth-art">
       <div class="brand" style="padding:0;border:0"><div class="logo"><div class="mark">${t?.logo_url ? `<img src="${esc(t.logo_url)}">` : 'V'}</div>
-        <div><div class="name" style="color:#fff">${esc(t?.business_name || 'Vaultra')}</div><div class="sub" style="color:#B9AF95">Shop Panel</div></div></div></div>
+        <div><div class="name" style="color:#fff">${esc(t?.business_name || 'Your Shop')}</div><div class="sub" style="color:#B9AF95">Shop Panel</div></div></div></div>
       <div><h1>Run your <em>digital gold</em> counter from one place.</h1>
         <p>Track bookings, set your commission on the live rate, approve KYC and hand over redemptions — all in real time.</p></div>
       <div class="stats"><div><b>24K</b><span>99.9% pure</span></div><div><b>999</b><span>fine silver</span></div><div><b>Live</b><span>market rates</span></div></div>
@@ -73,7 +73,7 @@ function shell(content) {
     </aside>
     <main class="main">
       <div class="top"><button class="btn ghost sm menu-btn" onclick="$('#side').classList.toggle('open')">${icon('menu')}</button>
-        <h1>${TITLES[S.tab]}</h1><div class="spacer"></div>${rateChip(S.price)}</div>
+        <h1>${TITLES[S.tab]}</h1><div class="spacer"></div><div data-testid="shop-chip" style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;margin-right:12px">${j.logo_url ? `<img src="${esc(j.logo_url)}" style="width:26px;height:26px;border-radius:7px;object-fit:cover">` : ''}${esc(j.business_name || '')}</div>${rateChip(S.price)}</div>
       <div class="content" id="content">${content}</div>
     </main></div>`;
 }
@@ -103,8 +103,10 @@ function vDashboard() {
   const head = `<div class="page-head"><div><h2>Good ${new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, ${esc((S.me.owner_name || '').split(' ')[0])}</h2>
     <p>Here is how your store is doing ${rangeLabel(S.dr)}.</p></div>${rangeBar(S.dr, onDashRange)}</div>`;
   if (!d) return head + loading;
-  const b = d.booked, c = d.customers;
-  return head + `
+  const b = d.booked, c = d.customers, du = S.mydues?.summary;
+  return head + (du ? `<div class="card pad" onclick="go('dues')" data-testid="dues-banner" style="cursor:pointer;margin-bottom:16px;display:flex;gap:16px;align-items:center;flex-wrap:wrap;border-color:${du.remaining > 0 ? '#F1C7C0' : 'var(--line)'}">
+    <div style="flex:1;min-width:200px"><div style="font-size:12px;color:var(--mute)">Remaining to pay Master</div><div class="num" style="font-size:26px;font-weight:700;color:${du.remaining > 0 ? '#B42318' : 'inherit'}">${inr0(du.remaining)}</div></div>
+    <div class="kv" style="min-width:160px"><span>Total payable</span><b>${inr0(du.payable)}</b></div><div class="kv" style="min-width:140px"><span>Paid</span><b>${inr0(du.paid)}</b></div><span class="btn sm">View details →</span></div>` : '') + `
   <div class="grid g4">
     ${kpi('Gold booked', g4(b.gold_g), inr0(b.gold_amt) + ' collected', 'coin', '', 'kpi-gold-booked', 'gold')}
     ${kpi('Silver booked', g4(b.silver_g), inr0(b.silver_amt) + ' collected', 'coin', 'gray', 'kpi-silver-booked', 'silver')}
@@ -128,7 +130,7 @@ function vDashboard() {
   <div class="card section"><div class="card-h"><h3>Latest orders</h3><button class="btn sm" onclick="go('orders')">View all</button></div>
     <div class="table-wrap"><table><thead><tr><th>When</th><th>Customer</th><th>Type</th><th>Metal</th><th class="r">Quantity</th><th class="r">Amount</th><th>Status</th></tr></thead><tbody>
     ${d.recent.length ? d.recent.map((o) => `<tr><td>${dt(o.created_at)}</td><td><b>${esc(o.customer_name)}</b><div class="sub">${phoneFmt(o.phone)}</div></td>
-      <td>${o.side === 'buy' ? '<span class="badge green plain">Buy</span>' : '<span class="badge amber plain">Redeem</span>'}</td><td>${metalTag(o.metal)}</td>
+      <td>${o.side === 'buy' ? `<span class="badge green plain">${o.type === 'sip' ? 'SIP' : 'Buy'}</span>` : '<span class="badge amber plain">Redeem</span>'}</td><td>${metalTag(o.metal)}</td>
       <td class="r num">${g4(o.grams)}</td><td class="r num"><b>${inr(o.total)}</b></td><td>${statusBadge(o.status)}</td></tr>`).join('') : emptyRow(7, 'No orders yet')}
     </tbody></table></div></div>`;
 }
@@ -424,8 +426,8 @@ function vSettings() {
 }
 async function saveMin() { try { await api('/jeweller/settings/min-redemption', { method: 'PUT', body: { min_grams: Number($('#minr').value) } }); toast('Saved'); S.me.min_redemption_grams = Number($('#minr').value); loadSettings(); } catch (e) { toast(e.message, true); } }
 
-const VIEWS = { dashboard: vDashboard, commission: () => { syncComm(); return vCommission(); }, orders: vOrders, holdings: vHoldings, customers: vCustomers, kyc: vKyc, redemptions: vRedemptions, catalogue: vCatalogue2, content: vContent, sips: vSips, goals: vGoals, gifts: vGifts, referral: vReferral, settings: vSettings };
-const LOAD = { dashboard: loadDash, commission: loadDash, orders: loadOrders, holdings: loadHold, customers: loadCustomers, kyc: loadKyc, redemptions: loadPickups, catalogue: loadCat, content: loadContent, sips: loadSips, goals: loadGoals, gifts: loadGifts, referral: loadRefs, settings: loadSettings };
+const VIEWS = { dues: () => `<div class="page-head"><div><h2>Payments to Master</h2><p>You pay Master the metal value + GST of every customer purchase and keep your commission. Master enters each payment when received.</p></div></div>` + (S.mydues ? duesDetail(S.mydues, false) : loading), dashboard: vDashboard, commission: () => { syncComm(); return vCommission(); }, orders: vOrders, holdings: vHoldings, customers: vCustomers, kyc: vKyc, redemptions: vRedemptions, catalogue: vCatalogue2, content: vContent, sips: vSips, goals: vGoals, gifts: vGifts, referral: vReferral, settings: vSettings };
+const LOAD = { dues: async () => { try { S.mydues = await api('/jeweller/v3/dues'); } catch (e) { toast(e.message, true); } if (S.tab === 'dues') render(); }, dashboard: () => { loadDash(); api('/jeweller/v3/dues').then((d) => { S.mydues = d; if (S.tab === 'dashboard') render(); }).catch(() => {}); }, commission: loadDash, orders: loadOrders, holdings: loadHold, customers: loadCustomers, kyc: loadKyc, redemptions: loadPickups, catalogue: loadCat, content: loadContent, sips: loadSips, goals: loadGoals, gifts: loadGifts, referral: loadRefs, settings: loadSettings };
 
 async function boot() {
   try { if (!S.me) S.me = await api('/jeweller/me'); } catch (e) { localStorage.removeItem('jeweller_token'); render(); return; }
@@ -436,7 +438,7 @@ async function boot() {
 setInterval(async () => {
   if (!S.me) return;
   try { S.price = await api('/price?jeweller_id=' + S.me.id); const chip = $('#ratechip'); if (chip) chip.outerHTML = rateChip(S.price); refreshLiveRates(); } catch {}
-}, 5000);
+}, 1500);
 // Customer redeem requests → Accept / Decline pop-up
 S.rrSeen = S.rrSeen || {};
 async function pollRedeemRequests() {

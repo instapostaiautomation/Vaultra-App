@@ -50,7 +50,7 @@ MT5_GOLD_SYMBOL = os.environ.get('MT5_GOLD_SYMBOL', 'GOLDDEC').strip()
 MT5_SILVER_SYMBOL = os.environ.get('MT5_SILVER_SYMBOL', 'SILVERDEC').strip()
 MT5_GOLD_UNIT_GRAMS = float(os.environ.get('MT5_GOLD_UNIT_GRAMS') or 10)      # MCX gold quoted per 10g
 MT5_SILVER_UNIT_GRAMS = float(os.environ.get('MT5_SILVER_UNIT_GRAMS') or 1000)  # MCX silver quoted per kg
-MT5_POLL_SECONDS = 2
+MT5_POLL_SECONDS = 0.1  # pause between live MT5 reads (each read itself takes ~0.4s over the tunnel)
 METAAPI_TOKEN = os.environ.get('METAAPI_TOKEN', '').strip()
 METAAPI_ACCOUNT_ID = os.environ.get('METAAPI_ACCOUNT_ID', '').strip()
 METAAPI_REGION = (os.environ.get('METAAPI_REGION') or 'new-york').strip()
@@ -1228,25 +1228,25 @@ async def list_sips(customer: Customer = Depends(get_current_customer), db: Asyn
     result = await db.execute(
         select(SIP).where(SIP.customer_id == customer.id, SIP.status != "cancelled").order_by(desc(SIP.created_at))
     )
-    sips = result.scalars().all()
-    return [{"id": s.id, "amount": r2(s.amount), "frequency": s.frequency, "status": s.status, "metal": s.metal or "gold",
-             "installments": s.installments, "grams_accumulated": r4(s.grams_accumulated),
-             "next_run": s.next_run.isoformat() if s.next_run else "", "created_at": s.created_at.isoformat()} for s in sips]
+    return [_sip_out(s_) for s_ in result.scalars().all()]
 
 
 @api.post("/sips")
 async def create_sip(body: SipCreate, customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    require_live_rates()
     require_booking(customer.jeweller_id, body.amount)
-    days = {"daily": 1, "weekly": 7, "monthly": 30}.get(body.frequency, 30)
     sip = SIP(
         id=str(uuid.uuid4()), customer_id=customer.id, jeweller_id=customer.jeweller_id,
-        amount=r2(body.amount), frequency=body.frequency, metal=body.metal,
-        next_run=now_utc() + timedelta(days=days)
+        amount=r2(body.amount), frequency=body.frequency, metal=body.metal, status="active",
+        installments=0, grams_accumulated=0.0,
+        mandate_ref="UPIMD" + uuid.uuid4().hex[:12].upper(),  # demo UPI AutoPay mandate
     )
     db.add(sip)
+    await db.flush()
+    _, metal, grams = await _sip_debit(db, sip, customer)  # first instalment is debited right away
     await db.commit()
-    return {"id": sip.id, "amount": r2(sip.amount), "frequency": sip.frequency, "status": "active", "metal": sip.metal,
-            "installments": 0, "grams_accumulated": 0.0}
+    mt5_cover(metal, grams)
+    return _sip_out(sip)
 
 
 @api.post("/sips/{sip_id}/toggle")
@@ -1271,14 +1271,20 @@ async def cancel_sip(sip_id: str, customer: Customer = Depends(get_current_custo
     return {"ok": True}
 
 
-@api.post("/sips/{sip_id}/run")
-async def run_sip(sip_id: str, customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(SIP).where(SIP.id == sip_id, SIP.customer_id == customer.id, SIP.status == "active"))
-    sip = result.scalar_one_or_none()
-    if not sip:
-        raise HTTPException(404, "Active SIP not found")
-    require_live_rates()
-    require_booking(customer.jeweller_id)
+SIP_DAYS = {"daily": 1, "weekly": 7, "monthly": 30}
+
+
+def _sip_out(s_):
+    return {"id": s_.id, "amount": r2(s_.amount), "frequency": s_.frequency, "status": s_.status, "metal": s_.metal or "gold",
+            "installments": s_.installments or 0, "grams_accumulated": r4(s_.grams_accumulated or 0),
+            "mandate_ref": s_.mandate_ref or "", "last_status": s_.last_status or "", "last_error": s_.last_error or "",
+            "last_run": s_.last_run.isoformat() if s_.last_run else "",
+            "next_run": s_.next_run.isoformat() if s_.next_run else "", "created_at": s_.created_at.isoformat() if s_.created_at else ""}
+
+
+async def _sip_debit(db, sip, customer, advance=True):
+    """Auto-debit one SIP instalment through the UPI AutoPay mandate (demo payment) and credit metal at the live rate.
+    advance=False for an extra manual payment: the next scheduled auto-debit date stays the same."""
     metal = sip.metal or "gold"
     rate, _ = (silver_rate if metal == "silver" else gold_rate)(customer.jeweller_id)
     gst = r2(sip.amount * GST_RATE)  # GST-inclusive: comes out of the grams, customer pays only the SIP amount
@@ -1287,25 +1293,73 @@ async def run_sip(sip_id: str, customer: Customer = Depends(get_current_customer
         customer.silver_grams = r4((customer.silver_grams or 0) + grams)
     else:
         customer.gold_grams = r4((customer.gold_grams or 0) + grams)
-        customer.invested = r2((customer.invested or 0) + sip.amount)
+        customer.invested = r2((customer.invested or 0) + sip.amount - gst)  # same basis as one-time buys (ex-GST)
     txn = Transaction(
         id=str(uuid.uuid4()), invoice_no=invoice_no(), customer_id=customer.id,
         jeweller_id=customer.jeweller_id, type="sip", metal=metal, grams=grams, rate=rate,
         amount=r2(sip.amount - gst), gst=gst, total=r2(sip.amount), method="upi_autopay",
-        status="completed", note=f"{sip.frequency.title()} SIP installment",
-        extra={"sip_id": sip_id}, pool_contribution=True
+        status="completed", note=f"{sip.frequency.title()} SIP instalment",
+        extra={"sip_id": sip.id, "mandate": sip.mandate_ref,
+               "commission": r2(grams * (MARGINS.get(customer.jeweller_id) or {}).get(f"{metal}_comm", 0.0))},
+        pool_contribution=metal == "gold"
     )
     db.add(txn)
-    sip.installments += 1
-    sip.grams_accumulated = r4(sip.grams_accumulated + grams)
-    days = {"daily": 1, "weekly": 7, "monthly": 30}.get(sip.frequency, 30)
-    sip.next_run = now_utc() + timedelta(days=days)
+    sip.installments = (sip.installments or 0) + 1
+    sip.grams_accumulated = r4((sip.grams_accumulated or 0) + grams)
+    sip.last_run, sip.last_status, sip.last_error = now_utc(), "debited", ""
+    if advance or not sip.next_run:
+        sip.next_run = now_utc() + timedelta(days=SIP_DAYS.get(sip.frequency, 30))
+    db.add(Notification(id=str(uuid.uuid4()), customer_id=customer.id, type="sip", title="SIP instalment successful",
+                        message=f"₹{sip.amount:,.0f} auto-debited via UPI AutoPay. {grams:g}g {metal} added to your vault."))
     await db.flush()
     if metal == "gold":
         await add_to_pool(db, txn, customer)
+    return txn, metal, grams
+
+
+@api.post("/sips/{sip_id}/run")
+async def run_sip(sip_id: str, customer: Customer = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(SIP).where(SIP.id == sip_id, SIP.customer_id == customer.id, SIP.status == "active"))
+    sip = result.scalar_one_or_none()
+    if not sip:
+        raise HTTPException(404, "Active SIP not found")
+    require_live_rates()
+    require_booking(customer.jeweller_id)
+    txn, metal, grams = await _sip_debit(db, sip, customer, advance=False)
     await db.commit()
     mt5_cover(metal, grams)
     return txn_dict(txn)
+
+
+async def sip_scheduler():
+    """Every minute: auto-debit every active SIP whose date has come. If rates/booking are off, retry on the next pass."""
+    while True:
+        await asyncio.sleep(60)
+        try:
+            async with AsyncSessionLocal() as db:
+                due_ids = (await db.execute(select(SIP.id).where(SIP.status == "active", SIP.next_run <= now_utc()).limit(500))).scalars().all()
+            for sid in due_ids:  # one transaction per SIP: a failure never rolls back other customers
+                try:
+                    async with AsyncSessionLocal() as db:
+                        sip = (await db.execute(select(SIP).where(SIP.id == sid, SIP.status == "active", SIP.next_run <= now_utc())
+                                                .with_for_update(skip_locked=True))).scalar_one_or_none()
+                        if not sip:
+                            continue  # already handled by another worker
+                        customer = (await db.execute(select(Customer).where(Customer.id == sip.customer_id))).scalar_one_or_none()
+                        if not customer:
+                            continue
+                        ctl = controls_for(customer.jeweller_id)
+                        if RATE_FEED["source"] == "offline" or not ctl["rates"] or not ctl["booking"]:
+                            sip.last_status, sip.last_error = "waiting", "Waiting for live rates / booking to be on"
+                            await db.commit()
+                            continue
+                        _, metal, grams = await _sip_debit(db, sip, customer)
+                        await db.commit()
+                    mt5_cover(metal, grams)  # only after the credit is saved
+                except Exception as e:
+                    logger.warning(f"SIP auto-debit failed for {sid}: {type(e).__name__}: {str(e)[:200]}")
+        except Exception as e:
+            logger.warning(f"SIP scheduler error: {type(e).__name__}: {str(e)[:200]}")
 
 
 # ─── Gifts ────────────────────────────────────────────────────────────────────
@@ -2580,7 +2634,7 @@ import requests as _requests
 from fastapi import UploadFile, File
 from starlette.concurrency import run_in_threadpool
 from fastapi import Response
-from models import Banner, Faq, Upload, AuditLog, Goal, SIP as Sip, Mt5Booking
+from models import Banner, Faq, Upload, AuditLog, Goal, SIP as Sip, Mt5Booking, ShopPayment
 
 STORAGE_URL = ((os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com").rstrip("/") + "/objstore/api/v1/storage"
 STORAGE_APP = "vaultra-digigold"
@@ -3149,7 +3203,7 @@ async def rr_act(rid: str, action: str, jeweller: Jeweller = Depends(get_current
 # ─── MT5 cover: customer buys are booked as BUY orders on the MT5 account ─────
 import httpx
 MT5_LOCK = asyncio.Lock()
-MT5_DEFAULT_CFG = {"enabled": True, "gold_lot_g": 10.0, "silver_lot_g": 1000.0, "min_volume": 1.0, "step": 1.0, "max_volume": 10.0}
+MT5_DEFAULT_CFG = {"enabled": True, "gold_lot_g": 100.0, "silver_lot_g": 100.0, "min_volume": 0.1, "step": 0.1, "max_volume": 10.0}
 MT5_RETRY_AFTER = 300  # after a failed order, wait 5 min before auto-trying again (manual retry is immediate)
 MT5_LAST_FAIL = {"gold": 0.0, "silver": 0.0}
 MT5_TASKS = set()  # keep references so booking tasks are not garbage-collected
@@ -3321,6 +3375,103 @@ async def mp_customer(cid: str, admin: MasterAdmin = Depends(get_master_admin), 
         raise HTTPException(404, "Customer not found")
     j = (await db.execute(select(Jeweller).where(Jeweller.id == c.jeweller_id))).scalar_one()
     return await jp_holding_detail(cid, j, db)
+
+
+
+# ─── Shop dues to Master (metal value + GST; the shop keeps its commission) ───
+async def _dues(db, jid=None):
+    q = select(Transaction.jeweller_id, func.count(), func.coalesce(func.sum(Transaction.total), 0),
+               func.coalesce(func.sum(Transaction.gst), 0)).where(Transaction.type.in_(BUY_TYPES), Transaction.status == "completed")
+    if jid:
+        q = q.where(Transaction.jeweller_id == jid)
+    agg = {r[0]: r for r in (await db.execute(q.group_by(Transaction.jeweller_id))).all()}
+    comm_rows = (await db.execute(select(Transaction.jeweller_id, Transaction.extra).where(
+        Transaction.type.in_(BUY_TYPES), Transaction.status == "completed", *( [Transaction.jeweller_id == jid] if jid else [])))).all()
+    comm = {}
+    for j_, ex in comm_rows:
+        comm[j_] = comm.get(j_, 0) + ((ex or {}).get("commission") or 0)
+    pq = select(ShopPayment.jeweller_id, func.coalesce(func.sum(ShopPayment.amount), 0), func.max(ShopPayment.paid_on))
+    if jid:
+        pq = pq.where(ShopPayment.jeweller_id == jid)
+    paid = {r[0]: r for r in (await db.execute(pq.group_by(ShopPayment.jeweller_id))).all()}
+    jq = select(Jeweller) if not jid else select(Jeweller).where(Jeweller.id == jid)
+    out = []
+    for j in (await db.execute(jq.order_by(Jeweller.business_name))).scalars().all():
+        a = agg.get(j.id)
+        collected, gst = (a[2], a[3]) if a else (0, 0)
+        c = comm.get(j.id, 0)
+        due = r2(collected - c)
+        p = paid.get(j.id)
+        pd = r2(p[1]) if p else 0.0
+        out.append({"id": j.id, "shop": j.business_name, "orders": a[1] if a else 0, "collected": r2(collected), "gst": r2(gst),
+                    "commission": r2(c), "metal_value": r2(collected - gst - c), "payable": due, "paid": pd,
+                    "remaining": r2(due - pd), "last_paid_on": p[2] if p else ""})
+    return out
+
+
+async def _dues_detail(db, jid):
+    rows = (await db.execute(select(Transaction, Customer).join(Customer, Customer.id == Transaction.customer_id).where(
+        Transaction.jeweller_id == jid, Transaction.type.in_(BUY_TYPES), Transaction.status == "completed")
+        .order_by(desc(Transaction.created_at)).limit(500))).all()
+    pays = (await db.execute(select(ShopPayment).where(ShopPayment.jeweller_id == jid).order_by(desc(ShopPayment.created_at)))).scalars().all()
+    summary = (await _dues(db, jid))[0]
+    return {"summary": summary,
+            "transactions": [{"id": t.id, "invoice_no": t.invoice_no, "customer": _cname(c), "phone": c.phone, "wallet_id": c.wallet_id,
+                              "type": t.type, "metal": _txn_metal(t), "grams": r4(t.grams or 0), "total": r2(t.total or 0), "gst": r2(t.gst or 0),
+                              "commission": r2((t.extra or {}).get("commission") or 0),
+                              "payable": r2((t.total or 0) - ((t.extra or {}).get("commission") or 0)),
+                              "created_at": t.created_at.isoformat() if t.created_at else ""} for t, c in rows],
+            "payments": [{"id": p.id, "amount": r2(p.amount), "paid_on": p.paid_on, "reference": p.reference, "note": p.note,
+                          "created_by": p.created_by, "created_at": p.created_at.isoformat() if p.created_at else ""} for p in pays]}
+
+
+class ShopPaymentIn(BaseModel):
+    amount: float = Field(gt=0, le=1e9)
+    paid_on: str = Field(default="", max_length=20)
+    reference: str = Field(default="", max_length=120)
+    note: str = Field(default="", max_length=500)
+
+
+@api.get("/master/v3/dues")
+async def mp_dues(admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    out = await _dues(db)
+    return {"shops": out, "totals": {k: r2(sum(x[k] for x in out)) for k in ("collected", "gst", "commission", "payable", "paid", "remaining")}}
+
+
+@api.get("/master/v3/dues/{jid}")
+async def mp_dues_shop(jid: str, admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    if not (await db.execute(select(Jeweller.id).where(Jeweller.id == jid))).scalar_one_or_none():
+        raise HTTPException(404, "Shop not found")
+    return await _dues_detail(db, jid)
+
+
+@api.post("/master/v3/dues/{jid}/payments")
+async def mp_dues_pay(jid: str, body: ShopPaymentIn, admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    j = (await db.execute(select(Jeweller).where(Jeweller.id == jid))).scalar_one_or_none()
+    if not j:
+        raise HTTPException(404, "Shop not found")
+    p = ShopPayment(jeweller_id=jid, amount=r2(body.amount), paid_on=body.paid_on or now_utc().date().isoformat(),
+                    reference=body.reference.strip(), note=body.note.strip(), created_by=admin.username)
+    db.add(p)
+    await audit(db, "master", admin, "dues.payment", j.business_name, body.model_dump(), jid)
+    await db.commit()
+    return (await _dues(db, jid))[0]
+
+
+@api.delete("/master/v3/dues/payments/{pid}")
+async def mp_dues_pay_delete(pid: str, admin: MasterAdmin = Depends(get_master_admin), db: AsyncSession = Depends(get_db)):
+    p = (await db.execute(select(ShopPayment).where(ShopPayment.id == pid))).scalar_one_or_none()
+    if not p:
+        raise HTTPException(404, "Payment not found")
+    await audit(db, "master", admin, "dues.payment_removed", p.jeweller_id, {"amount": p.amount, "reference": p.reference}, p.jeweller_id)
+    await db.delete(p)
+    await db.commit()
+    return {"ok": True}
+
+
+@api.get("/jeweller/v3/dues")
+async def jp_dues(jeweller: Jeweller = Depends(get_current_jeweller), db: AsyncSession = Depends(get_db)):
+    return await _dues_detail(db, jeweller.id)
 
 
 # ═══════════════════ APP STUDIO (white-label apps) ══════════════════════════════
@@ -3545,6 +3696,7 @@ async def startup():
     if MT5_RATES_URL or METAAPI_TOKEN:
         RATE_FEED["source"] = "offline"  # never quote demo prices before the live feed answers
     asyncio.create_task(price_loop())
+    asyncio.create_task(sip_scheduler())
     logger.info("Vaultra DigiGold v2.0 started with PostgreSQL")
 
 

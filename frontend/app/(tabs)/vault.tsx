@@ -13,7 +13,6 @@ import { useToast } from "@/src/components/Toast";
 import { TxnRow } from "@/src/components/TxnRow";
 import { Button, Chip, ChipRow, Row, Sheet, StatusBadge } from "@/src/components/ui";
 import { dateTime, grams, inr, TENANT_NAME, TXN_LABEL } from "@/src/format";
-import { usesNativeTabs } from "@/src/navigation";
 import { useApp } from "@/src/store/AppContext";
 import { cardShadow, colors, fonts, radius } from "@/src/theme";
 
@@ -36,7 +35,7 @@ export default function VaultScreen() {
   const [gramsOpen, setGramsOpen] = useState(false);
   const [redeem, setRedeem] = useState<any>(null);
   const [invoice, setInvoice] = useState<any>(null);
-  const bottomChrome = usesNativeTabs ? insets.bottom : 0;
+  const bottomChrome = Math.max(insets.bottom, 12) + 72; // room for the floating glass tab bar
 
   const loadTxns = useCallback(async () => {
     if (!token) return;

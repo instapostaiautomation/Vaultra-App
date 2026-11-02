@@ -1,0 +1,48 @@
+{
+  "summary": "Iteration 25: tested MT5 0.1-lot booking (100g lots), fast rates, Master<->Shop dues, SIP UPI AutoPay mandate + scheduler, Shop/Master dues UI and the customer app glass UI. Backend 9/9 pytest pass. MT5 config is exactly {gold_lot_g:100, silver_lot_g:100, min_volume:0.1, step:0.1, max_volume:10} and was not changed. Real demo order placed: pending gold set to 24.7g in DB, then a ₹500 app buy (+0.0345g) made 24.7345g -> booked 0.2 lot = 20g (row b4edd8bc, GOLDDEC, ticket 55475930, price 140239, status booked), and 4.7345g stayed pending. Afterwards pending was put back to the real customer grams (now gold 0.4736g). /api/price updated_at changed 8 times in 8 polls 0.5s apart (source=mt5). Dues math is right (payable = collected - commission, remaining = payable - paid). Recording a payment lowers remaining by the exact amount. The Shop panel shows the same numbers. Deleting a payment restores the balance. A jeweller token gets 401/403 on master dues. SIP start returns UPIMD mandate, installments=1, last_status=debited, next_run +30d, grams credited at (500-15)/rate, notification created, sip txn has extra.commission; scheduler auto-debited a back-dated SIP within ~60s (installments 2, next_run +30d). The Master UI (Shop Dues table, drawer, Record payment modal, overview banner) and the Shop UI (shop-chip, dues-banner, Payments to Master page) work end to end. Customer app at 390x844: the menu button is a 44x44 frosted glass circle with a visible icon. The side menu is a readable glass panel. The tab bar floats (left/right 16, bottom 12, radius 32). Home, Vault, Jewellery and SIP content scrolls clear of the bar. SIP start shows a toast with 'UPI AutoPay set up · first ₹500 debited'. The card shows 'UPI AutoPay · Active', the mandate ref and 'Next auto-debit 02 Dec 2026'. 'Pay extra now' works (installments 1->2, toast). Problems found are minor or medium: tab label 'Jewellery' renders clipped as 'Jewellerv'; 'check' icon missing in panel icon map (blank green KPI icon on 'Paid so far' / 'Received'); dues drawer KPI cards truncated; 'Pay extra now' moves the next auto-debit date; SIP 'invested' includes GST while buy does not. No deprecated Expo packages found (expo-blur in use; no expo-av / expo-barcode-scanner / expo-background-fetch).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/sips/{id}/run ('Pay extra now')", "issue": "_sip_debit always sets next_run = now + frequency days, so an extra manual payment pushes the scheduled UPI AutoPay date forward (e.g. paying extra on day 29 of a monthly SIP moves the next debit ~30 days out). Manual runs should not change next_run, or should do so only if that is intended. server.py:1309 and 1326"},
+      {"endpoint": "SIP debit invested accounting", "issue": "SIP adds sip.amount (GST-inclusive, ₹500) to customer.invested (server.py:1295), but buy adds order.amount (ex-GST, ₹485) (server.py:1136). As a result avg cost and P&L differ between SIP and buy purchases."},
+      {"endpoint": "sip_scheduler", "issue": "mt5_cover() is fired for each SIP before db.commit() (server.py:1348-1349). If a later SIP in the same batch raises, the whole batch rolls back but the MT5 BUY tasks for the earlier SIPs were already queued, so the hedge goes out for metal that was never credited. Commit per SIP, or collect covers and fire them after commit. Also no row locking (FOR UPDATE SKIP LOCKED): with more than one worker/instance in production the same SIP could be debited twice. The preview runs --workers 1."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Floating glass tab bar label", "issue": "The 'Jewellery' tab label is clipped at the bottom and renders as 'Jewellerv' (descender cut off) in every screenshot at 390x844. Likely cause: tabBarStyle height 64 + paddingBottom 8 + tabBarItemStyle paddingTop 6 with fontSize 11 and no lineHeight. Add lineHeight ~14 or reduce the padding. app/(tabs)/_layout.tsx:33-42", "testID": "tab Jewellery", "priority": "medium"},
+      {"component": "Panel KPI icon 'check'", "issue": "kpi(..., 'check', 'green') is used for 'Paid so far' (Shop panel) and 'Received' (Master Shop Dues), but ICON in templates/panel.js has no 'check' key, so the green icon tile is empty. templates/panel_ext.js:231 and templates/master_ext.js:183", "testID": "n/a", "priority": "low"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Master > Shop Dues drawer", "issues": ["The 4-column KPI grid inside the narrow drawer truncates labels ('Paid so', 'Remain', 'Shop commis') and clips the values ('₹38,82,65', '₹38,81,8'). Use 2 columns inside the drawer.", "'1 entries' should read '1 entry'."]},
+      {"screen": "Shop panel Dashboard > Latest orders", "issues": ["SIP instalments (₹500, 0.0345g) are listed with type 'Buy'. The dues table correctly says 'SIP'."]},
+      {"screen": "Customer SIP card", "issues": ["When the SIP card is the last item, the 'Pay extra now' button sits under the floating tab bar until the user scrolls. That is expected, but make sure the bottom padding stays enough (currently OK after scroll)."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration25_mt5lots_dues_sip.py", "/app/test_reports/pytest/pytest_iter25.xml"],
+  "action_items": [
+    "Fix the clipped 'Jewellery' tab label (add lineHeight or adjust the padding in the (tabs)/_layout.tsx tabBar styles)",
+    "Add a 'check' icon to the ICON map in templates/panel.js (used by the dues KPIs)",
+    "Use 2 columns for the dues KPI grid inside the Master dues drawer so values are not clipped",
+    "Decide whether 'Pay extra now' (/sips/{id}/run) should keep next_run unchanged, and fix _sip_debit if so",
+    "Make SIP invested accounting match buy (add the ex-GST amount), or document the difference",
+    "sip_scheduler: commit per SIP before firing mt5_cover, and use SELECT ... FOR UPDATE SKIP LOCKED to prevent double debits with multiple workers",
+    "Shop dashboard latest orders: show SIP transactions as 'SIP', not 'Buy'"
+  ],
+  "critical_code_review_comments": [
+    "mt5_book volume math is correct: floor(pending/lot_g/step)*step, capped at max_volume; BUY only; pending reduced only on success; 5-min backoff on auto after a failure.",
+    "_dues runs two queries over all buy transactions (aggregate + a full scan of extra for commission). As volume grows, compute the commission sum in SQL (SUM((extra->>'commission')::float)).",
+    "Dues detail transactions are limited to 500 rows with no pagination, so shops with more orders will not see the full per-customer breakdown.",
+    "SIP GST is computed as 3% of the gross (₹15 on ₹500), not the inclusive 3/103 (₹14.56). This was accepted in earlier iterations; confirm the business intent.",
+    "server.py is 3694 lines; split it into routers (sip, dues, mt5, master, jeweller)."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration25_mt5lots_dues_sip.py"],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "~92% (all flows work; 1 label clipping bug, 1 missing icon, drawer KPI cramped)"},
+  "seed_data_creation": "Real demo MT5 BUY 0.2 lot GOLDDEC booked (ticket 55475930) using an injected 24.7g pending; pending then reset to real customer grams. Aarav (9876543210) got 3 test buys/SIP instalments of ₹500 each via API plus 2 SIP instalments via UI. The test SIPs were cancelled. All test shop payments (TEST_UTR123, TEST_UI_UTR) were deleted; shop_payments count = 0.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run the pytest file with '-c /dev/null --rootdir=/app/backend' (pytest.ini forces xdist -n). The MT5 volume test injects mt5_pending into the app_settings table and places a REAL demo BUY order; it restores pending afterwards. The SIP scheduler test back-dates sips.next_run via psycopg2 (DATABASE_URL_SYNC) and waits up to ~96s. Customer web token is in localStorage key 'vdg_user_token'. With force=True, 'Pay extra now' clicks get intercepted by the floating tab bar when the button sits under it, so scroll first.",
+  "rca_of_issue": "Tab label clip: fixed 64px bar height with paddingTop 6 + paddingBottom 8 leaves too little vertical room for a 22px icon plus an 11px label with default line height on web, so the descender is cut. Blank KPI icon: icon('check') returns an empty svg because ICON.check is undefined in panel.js."
+}

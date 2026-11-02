@@ -199,11 +199,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     };
     load();
-    let id: ReturnType<typeof setInterval> | null = setInterval(load, 3000);
+    let id: ReturnType<typeof setInterval> | null = setInterval(load, 1000);
     const sub = AppState.addEventListener("change", (s) => {
       if (s === "active" && !id) {
         load();
-        id = setInterval(load, 3000);
+        id = setInterval(load, 1000);
       } else if (s !== "active" && id) {
         clearInterval(id);
         id = null;

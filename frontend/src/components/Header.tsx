@@ -6,6 +6,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming, Easing } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { Glass } from "@/src/components/Glass";
 import { SideMenu } from "@/src/components/SideMenu";
 import { grams, inr } from "@/src/format";
 import { useApp } from "@/src/store/AppContext";
@@ -59,8 +60,10 @@ export function HomeHeader() {
   return (
     <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
       <View style={styles.headRow}>
-        <Pressable onPress={() => setMenu(true)} style={styles.menuBtn} hitSlop={6} testID="header-menu-button">
-          <Menu size={22} color={colors.onSurface} strokeWidth={1.9} />
+        <Pressable onPress={() => setMenu(true)} hitSlop={6} testID="header-menu-button">
+          <Glass radius={22} intensity={70} style={styles.menuBtn}>
+            <Menu size={20} color={colors.onSurface} strokeWidth={2} />
+          </Glass>
         </Pressable>
         <LogoMark size={34} />
         <View style={{ flex: 1 }}>
@@ -121,8 +124,10 @@ export function ScreenHeader({ title, subtitle, right, showBack = false }: { tit
     <View style={[styles.header, { paddingTop: insets.top + 8, paddingBottom: 12 }]}>
       <View style={styles.headRow}>
         {showBack ? (
-          <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))} style={styles.backBtn} testID="screen-back-button">
-            <ArrowLeft size={22} color={colors.onSurface} />
+          <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))} testID="screen-back-button">
+            <Glass radius={22} intensity={70} style={styles.backBtn}>
+              <ArrowLeft size={20} color={colors.onSurface} />
+            </Glass>
           </Pressable>
         ) : null}
         <View style={{ flex: 1 }}>
@@ -136,9 +141,8 @@ export function ScreenHeader({ title, subtitle, right, showBack = false }: { tit
 }
 
 const styles = StyleSheet.create({
-  header: { backgroundColor: colors.surface, paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.goldHairline },
   headRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  menuBtn: { width: 40, height: 44, alignItems: "flex-start", justifyContent: "center" },
+  menuBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   logoMark: { alignItems: "center", justifyContent: "center" },
   eyebrow: { fontFamily: fonts.semibold, fontSize: 10, letterSpacing: 1.2, color: colors.brandDeep, textTransform: "uppercase" },
   brand: { fontFamily: fonts.bold, fontSize: 16, lineHeight: 20, letterSpacing: -0.3, color: colors.onSurface },
@@ -200,4 +204,6 @@ const styles = StyleSheet.create({
   screenTitle: { fontFamily: fonts.black, fontSize: 26, letterSpacing: -0.8, color: colors.onSurface },
   screenSub: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted, marginTop: 2 },
   backBtn: { width: 44, height: 44, justifyContent: "center", alignItems: "center" },
+  // headers sit on a soft tinted backdrop so the glass controls read as frosted
+  header: { backgroundColor: colors.brandTertiary, paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.goldHairline },
 });

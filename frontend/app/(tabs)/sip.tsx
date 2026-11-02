@@ -10,7 +10,6 @@ import { ScreenHeader } from "@/src/components/Header";
 import { useToast } from "@/src/components/Toast";
 import { Button, Card, Sheet, StatusBadge } from "@/src/components/ui";
 import { grams, inr, shortDate } from "@/src/format";
-import { usesNativeTabs } from "@/src/navigation";
 import { useApp } from "@/src/store/AppContext";
 import { colors, fonts, radius } from "@/src/theme";
 
@@ -34,7 +33,7 @@ export default function SipScreen() {
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [cancelId, setCancelId] = useState<string | null>(null);
-  const bottomChrome = usesNativeTabs ? insets.bottom : 0;
+  const bottomChrome = Math.max(insets.bottom, 12) + 72; // room for the floating glass tab bar
 
   const load = useCallback(async () => {
     if (!token) return setSips([]);
@@ -54,9 +53,10 @@ export default function SipScreen() {
     if (!token) return router.push("/login");
     setBusy(true);
     try {
-      await api("/sips", { method: "POST", body: { amount, frequency: freq, metal, tenant } });
-      toast("success", `${metal === "silver" ? "Silver" : "Gold"} SIP activated`, `${inr(amount, 0)} ${freq} via UPI AutoPay`);
+      const r = await api("/sips", { method: "POST", body: { amount, frequency: freq, metal, tenant } });
+      toast("success", `${metal === "silver" ? "Silver" : "Gold"} SIP activated`, `UPI AutoPay set up · first ${inr(amount, 0)} debited · ${grams(r.grams_accumulated, 4)} added`);
       load();
+      refresh();
     } catch (e: any) {
       toast("error", "Could not start SIP", e.message);
     } finally {
@@ -136,12 +136,20 @@ export default function SipScreen() {
                 </View>
                 <StatusBadge status={s.status} testID={`sip-status-${s.id}`} />
               </View>
-              <Text style={styles.sipMeta}>Next debit {shortDate(s.next_run)}{s.mandate ? ` · ${s.mandate}` : ""}</Text>
+              <View style={styles.mandate} testID={`sip-mandate-${s.id}`}>
+                <Text style={styles.mandateTitle}>UPI AutoPay · {s.status === "active" ? "Active" : s.status === "paused" ? "Paused" : "Revoked"}</Text>
+                <Text style={styles.sipMeta}>Mandate {s.mandate_ref || "—"}</Text>
+                <Text style={styles.sipMeta}>
+                  {s.status === "active" ? `Next auto-debit ${shortDate(s.next_run)} · ${inr(s.amount, 0)}` : "Auto-debit paused"}
+                </Text>
+                {s.last_status === "waiting" ? <Text style={[styles.sipMeta, { color: colors.warning }]}>Debit waiting — will retry automatically</Text> : null}
+                {s.last_run ? <Text style={styles.sipMeta}>Last debit {shortDate(s.last_run)} · {s.metal === "silver" ? "silver" : "gold"} credited automatically</Text> : null}
+              </View>
               <View style={styles.sipActions}>
                 <Button
                   size="sm"
                   variant="gold"
-                  title="Pay now"
+                  title="Pay extra now"
                   disabled={s.status !== "active"}
                   onPress={() => act(`/sips/${s.id}/run`, "POST", "SIP installment paid")}
                   style={{ flex: 1 }}
@@ -206,6 +214,8 @@ const styles = StyleSheet.create({
   sipAmt: { fontFamily: fonts.black, fontSize: 20, color: colors.onSurface, letterSpacing: -0.5 },
   sipFreq: { fontFamily: fonts.medium, fontSize: 13, color: colors.muted },
   sipMeta: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted, marginTop: 2 },
+  mandate: { marginTop: 12, padding: 12, borderRadius: radius.md, backgroundColor: colors.brandTertiary, borderWidth: 1, borderColor: colors.goldHairline },
+  mandateTitle: { fontFamily: fonts.bold, fontSize: 13, color: colors.onBrandTertiary },
   sipActions: { flexDirection: "row", gap: 8, marginTop: 12, alignItems: "center" },
   trash: { width: 40, height: 40, borderRadius: radius.md, borderWidth: 1, borderColor: colors.errorTint, alignItems: "center", justifyContent: "center" },
 });

@@ -262,6 +262,10 @@ class SIP(Base):
     installments = Column(Integer, default=0)
     grams_accumulated = Column(Float, default=0.0)
     next_run = Column(DateTime(timezone=True), nullable=True)
+    mandate_ref = Column(String(40), default="")  # UPI AutoPay mandate (demo)
+    last_status = Column(String(20), default="")  # debited, waiting, failed
+    last_error = Column(Text, default="")
+    last_run = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow)
 
     customer = relationship("Customer", back_populates="sips")
@@ -432,4 +436,17 @@ class Mt5Booking(Base):
     price = Column(Float, default=0.0)
     error = Column(Text, default="")
     trigger = Column(String(20), default="auto")  # auto, retry
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+
+class ShopPayment(Base):
+    """Money a shop has paid to the platform (Master) against its metal + GST dues."""
+    __tablename__ = "shop_payments"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    jeweller_id = Column(String, ForeignKey("jewellers.id"), nullable=False)
+    amount = Column(Float, default=0.0)
+    paid_on = Column(String(20), default="")
+    reference = Column(String(120), default="")
+    note = Column(Text, default="")
+    created_by = Column(String(120), default="")
     created_at = Column(DateTime(timezone=True), default=utcnow)

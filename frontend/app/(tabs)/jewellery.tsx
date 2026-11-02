@@ -9,7 +9,6 @@ import { CATEGORIES } from "@/src/assets";
 import { LiveTicker, ScreenHeader } from "@/src/components/Header";
 import { Product, ProductCard, RedeemSheet } from "@/src/components/Product";
 import { Button, Chip, ChipRow } from "@/src/components/ui";
-import { usesNativeTabs } from "@/src/navigation";
 import { colors, fonts } from "@/src/theme";
 
 export default function Jewellery() {
@@ -21,7 +20,7 @@ export default function Jewellery() {
   const [products, setProducts] = useState<Product[] | null>(null);
   const [error, setError] = useState(false);
   const [target, setTarget] = useState<any>(null);
-  const bottomChrome = usesNativeTabs ? insets.bottom : 0;
+  const bottomChrome = Math.max(insets.bottom, 12) + 72; // room for the floating glass tab bar
   const cols = width > 700 ? 3 : 2;
   const cardW = Math.floor((Math.min(width, 960) - 32 - 12 * (cols - 1)) / cols);
 

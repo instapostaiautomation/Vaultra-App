@@ -7,6 +7,7 @@ import { Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "r
 import Animated, { FadeIn, SlideInLeft } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { Glass } from "@/src/components/Glass";
 import { maskPhone, TENANT_NAME } from "@/src/format";
 import { useApp } from "@/src/store/AppContext";
 import { colors, fonts, radius } from "@/src/theme";
@@ -45,6 +46,7 @@ export function SideMenu({ visible, onClose }: { visible: boolean; onClose: () =
           <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: colors.scrim }]} onPress={onClose} testID="side-menu-backdrop" />
         </Animated.View>
         <Animated.View entering={SlideInLeft.duration(260)} style={[styles.panel, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }]} testID="side-menu">
+          <Glass radius={0} intensity={80} style={[StyleSheet.absoluteFill, { zIndex: -1 }]} />
           <Pressable onPress={onClose} style={styles.close} hitSlop={8} testID="side-menu-close">
             <X size={20} color={colors.mutedLight} />
           </Pressable>
@@ -138,7 +140,7 @@ export function SideMenu({ visible, onClose }: { visible: boolean; onClose: () =
 
 const styles = StyleSheet.create({
   root: { flex: 1, flexDirection: "row" },
-  panel: { width: "82%", maxWidth: 340, backgroundColor: colors.surface, borderTopRightRadius: radius.lg, borderBottomRightRadius: radius.lg, overflow: "hidden" },
+  panel: { width: "82%", maxWidth: 340, backgroundColor: "transparent", borderTopRightRadius: 28, borderBottomRightRadius: 28, overflow: "hidden", borderRightWidth: StyleSheet.hairlineWidth * 1.5, borderColor: colors.glassBorder, zIndex: 0 },
   close: { position: "absolute", right: 12, top: 12, zIndex: 2, width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   profile: { flexDirection: "row", alignItems: "center", gap: 12, marginHorizontal: 16, marginTop: 40, padding: 16, borderRadius: radius.md, backgroundColor: colors.surfaceInverse, borderWidth: 1, borderColor: colors.goldHairline },
   avatar: { width: 52, height: 52, borderRadius: 26, backgroundColor: colors.inkSoft, borderWidth: 1.5, borderColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" },

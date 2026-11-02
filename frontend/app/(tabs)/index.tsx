@@ -15,7 +15,6 @@ import { KaratRates } from "@/src/components/KaratRates";
 import { PriceAlertBanner, PriceAlertCard } from "@/src/components/PriceAlert";
 import { PriceCards } from "@/src/components/PriceCards";
 import { Product, ProductCard, RedeemSheet } from "@/src/components/Product";
-import { usesNativeTabs } from "@/src/navigation";
 import { useApp } from "@/src/store/AppContext";
 import { homeLayout, type HomeSection } from "@/src/tenantConfig";
 import { colors, fonts } from "@/src/theme";
@@ -34,7 +33,7 @@ export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [target, setTarget] = useState<any>(null);
-  const bottomChrome = usesNativeTabs ? insets.bottom : 0;
+  const bottomChrome = Math.max(insets.bottom, 12) + 72; // room for the floating glass tab bar
 
   useEffect(() => {
     api<Product[]>(`/products?jeweller_id=${tenant}`, { auth: "none" }).then(setProducts).catch(() => {});

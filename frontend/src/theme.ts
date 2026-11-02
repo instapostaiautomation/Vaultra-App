@@ -69,6 +69,11 @@ const light = {
   goldSheen: "#F3E3A6",
   goldHairline: "rgba(212,175,55,0.35)",
   silverTone: "#E5E7EB",
+  glassFill: "rgba(255,255,255,0.55)",
+  glassFallback: "rgba(253,248,232,0.95)",
+  glassBorder: "rgba(255,255,255,0.75)",
+  glassHighlight: "rgba(255,255,255,0.18)",
+  glassTint: "light",
 };
 
 const dark: typeof light = {
@@ -133,6 +138,11 @@ const dark: typeof light = {
   goldSheen: "#F3E3A6",
   goldHairline: "rgba(212,175,55,0.35)",
   silverTone: "#E5E7EB",
+  glassFill: "rgba(17,24,39,0.55)",
+  glassFallback: "rgba(17,24,39,0.95)",
+  glassBorder: "rgba(255,255,255,0.15)",
+  glassHighlight: "rgba(255,255,255,0.05)",
+  glassTint: "dark",
 };
 
 export type ThemeColors = typeof light;

@@ -174,3 +174,41 @@ function vMt5() {
 async function mt5Save() { try { await api('/master/v3/mt5-bookings/config', { method: 'PUT', body: { enabled: $('#m5e').checked, gold_lot_g: Number($('#m5g').value), silver_lot_g: Number($('#m5s').value), min_volume: Number($('#m5v').value), step: Number($('#m5t').value), max_volume: Number($('#m5x').value) } }); toast('Saved'); loadMt5(); } catch (e) { toast(e.message, true); } }
 async function mt5Retry() { const b = $('#mt5-retry'); b.disabled = true; try { const r = await api('/master/v3/mt5-bookings/retry', { method: 'POST' }); const v = Object.values(r.result); toast(v.includes(true) ? 'Order booked on MT5' : v.includes(false) ? 'MT5 refused the order — see details' : 'Not enough grams waiting for a full lot yet', v.includes(false)); loadMt5(); } catch (e) { toast(e.message, true); b.disabled = false; } }
 async function mt5Positions() { try { const p = await api('/master/v3/mt5-positions'); openModal(`<div class="modal-h"><h3>Open MT5 positions</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-b">${Array.isArray(p) && p.length ? `<table><thead><tr><th>Ticket</th><th>Symbol</th><th>Type</th><th class="r">Volume</th><th class="r">Open price</th><th class="r">P/L</th></tr></thead><tbody>${p.map((x) => `<tr><td>${esc(x.ticket)}</td><td>${esc(x.symbol)}</td><td>${esc(x.type)}</td><td class="r">${x.volume}</td><td class="r">${x.price_open}</td><td class="r">${inr(x.profit)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">No open positions</div>'}</div>`, true); } catch (e) { toast(e.message, true); } }
+
+/* Shop dues (what each shop owes Master) */
+const loadDues = () => safe(async () => { S.dues = await api('/master/v3/dues'); }, 'dues');
+function vDues() {
+  const head = ph('Shop Dues', 'Each shop pays Master the metal value + GST of every customer purchase and keeps its commission. Record payments here — the balance updates on the shop panel too.');
+  const d = S.dues; if (!d) return head + loading; const t = d.totals;
+  return head + `<div class="grid g4">${kpi('Total payable by shops', inr0(t.payable), `collected ${inr0(t.collected)} − commission ${inr0(t.commission)}`, 'wallet')}${kpi('Received', inr0(t.paid), 'all payments entered', 'check', 'green')}${kpi('Remaining to receive', inr0(t.remaining), 'across all shops', 'invoice', t.remaining > 0 ? 'red' : 'green')}${kpi('GST inside dues', inr0(t.gst), 'payable by Master', 'commission', 'blue')}</div>
+    <div class="card section"><div class="table-wrap"><table><thead><tr><th>Shop</th><th class="r">Orders</th><th class="r">Collected</th><th class="r">Commission</th><th class="r">Payable</th><th class="r">Paid</th><th class="r">Remaining</th><th>Last paid</th><th></th></tr></thead><tbody>
+    ${d.shops.map((x) => `<tr class="click" onclick="openDues('${x.id}')" data-dues="${x.id}"><td><b>${esc(x.shop)}</b></td><td class="r num">${x.orders}</td><td class="r num">${inr0(x.collected)}</td><td class="r num">${inr0(x.commission)}</td><td class="r num">${inr0(x.payable)}</td><td class="r num">${inr0(x.paid)}</td>
+      <td class="r num"><b style="color:${x.remaining > 0 ? '#B42318' : 'inherit'}">${inr0(x.remaining)}</b></td><td>${esc(x.last_paid_on || '—')}</td><td class="r" onclick="event.stopPropagation()"><button class="btn sm primary" onclick="duesPayForm('${x.id}')" data-dues-pay="${x.id}">+ Record payment</button></td></tr>`).join('')}</tbody></table></div></div>`;
+}
+async function openDues(jid) {
+  openDrawer('<div class="drawer-b"><div class="skeleton"></div></div>');
+  try {
+    const d = await api('/master/v3/dues/' + jid); S.duesOpen = jid;
+    openDrawer(`<div class="drawer-h"><div style="flex:1"><h3 style="font-size:18px">${esc(d.summary.shop)} · Dues</h3><div style="font-size:13px;color:var(--mute)">Remaining ${inr(d.summary.remaining)}</div></div><button class="btn sm primary" onclick="duesPayForm('${jid}')">+ Record payment</button><button class="x" onclick="closeDrawer()">×</button></div>
+      <div class="drawer-b" data-testid="dues-drawer">${duesDetail(d, true)}</div>`);
+  } catch (e) { closeDrawer(); toast(e.message, true); }
+}
+function duesPayForm(jid) {
+  const x = (S.dues?.shops || []).find((s) => s.id === jid) || {};
+  openModal(`<div class="modal-h"><div><h3>Record payment</h3><p>${esc(x.shop || '')} · remaining ${inr(x.remaining || 0)}</p></div><button class="x" onclick="closeModal()">×</button></div>
+    <div class="modal-b" data-testid="dues-pay-modal"><div class="grid g2">
+      <div class="field"><label>Amount received (₹)</label><input class="input num" id="dpa" type="number" min="1" step="0.01" value="${x.remaining > 0 ? x.remaining : ''}"></div>
+      <div class="field"><label>Date</label><input class="input" id="dpd" type="date" value="${new Date().toISOString().slice(0, 10)}"></div>
+      <div class="field"><label>Reference / UTR</label><input class="input" id="dpr" maxlength="120" placeholder="e.g. UTR 4521…"></div>
+      <div class="field"><label>Note</label><input class="input" id="dpn" maxlength="500" placeholder="optional"></div></div></div>
+    <div class="modal-f"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" id="dp-save" onclick="duesPay('${jid}')">Save payment</button></div>`);
+}
+async function duesPay(jid) {
+  const amount = Number($('#dpa').value); if (!(amount > 0)) return toast('Enter the amount received', true);
+  $('#dp-save').disabled = true;
+  try {
+    const r = await api(`/master/v3/dues/${jid}/payments`, { method: 'POST', body: { amount, paid_on: $('#dpd').value, reference: $('#dpr').value, note: $('#dpn').value } });
+    closeModal(); toast(`Saved. Remaining ${inr(r.remaining)}`); await loadDues(); if (S.duesOpen === jid) openDues(jid);
+  } catch (e) { toast(e.message, true); $('#dp-save').disabled = false; }
+}
+async function duesDelPay(pid) { if (!confirm('Remove this payment entry?')) return; try { await api('/master/v3/dues/payments/' + pid, { method: 'DELETE' }); toast('Payment removed'); await loadDues(); if (S.duesOpen) openDues(S.duesOpen); } catch (e) { toast(e.message, true); } }

@@ -55,5 +55,9 @@ async def init_db():
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS purity VARCHAR(5) DEFAULT '22K'",
             "ALTER TABLE sips ADD COLUMN IF NOT EXISTS metal VARCHAR(10) DEFAULT 'gold'",
             "ALTER TABLE goals ADD COLUMN IF NOT EXISTS metal VARCHAR(10) DEFAULT 'gold'",
+            "ALTER TABLE sips ADD COLUMN IF NOT EXISTS mandate_ref VARCHAR(40) DEFAULT ''",
+            "ALTER TABLE sips ADD COLUMN IF NOT EXISTS last_status VARCHAR(20) DEFAULT ''",
+            "ALTER TABLE sips ADD COLUMN IF NOT EXISTS last_error TEXT DEFAULT ''",
+            "ALTER TABLE sips ADD COLUMN IF NOT EXISTS last_run TIMESTAMP WITH TIME ZONE",
         ):
             await conn.execute(text(stmt))

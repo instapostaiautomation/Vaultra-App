@@ -30,7 +30,12 @@
     "borderStrong": "#C5A028",
     "divider": "#E5E7EB",
     "muted": "#6B7280",
-    "onBrand": "#111827"
+    "onBrand": "#111827",
+    "glassFillLight": "rgba(255, 255, 255, 0.65)",
+    "glassFillDark": "rgba(17, 24, 39, 0.75)",
+    "glassBorderLight": "rgba(255, 255, 255, 0.5)",
+    "glassBorderDark": "rgba(255, 255, 255, 0.15)",
+    "glassHighlight": "rgba(212, 175, 55, 0.25)"
   },
   "typography": {
     "displayFontFamily": "Inter",
@@ -62,13 +67,72 @@
   "shadow_tier": "2",
   "navigation": "bottom_tabs_with_side_drawer",
   "icon_set": "lucide-react-native",
+  "liquid_glass": {
+    "spec": {
+      "intensity": {
+        "light": 50,
+        "dark": 70
+      },
+      "tint": {
+        "light": "light",
+        "dark": "dark"
+      },
+      "background_colors": {
+        "light": "rgba(255, 255, 255, 0.65)",
+        "dark": "rgba(17, 24, 39, 0.75)"
+      },
+      "border_hairline": {
+        "light": "rgba(255, 255, 255, 0.7)",
+        "dark": "rgba(255, 255, 255, 0.15)",
+        "width": 0.5
+      },
+      "radii": {
+        "menu_button": 999,
+        "cards_sheets": 24,
+        "tab_bar": 32,
+        "buy_widget": 24
+      },
+      "shadows": {
+        "light": "0px 8px 32px rgba(0, 0, 0, 0.08)",
+        "dark": "0px 8px 32px rgba(0, 0, 0, 0.3)"
+      },
+      "floating_tab_bar": {
+        "height": 64,
+        "bottom_inset": 24,
+        "margin_horizontal": 16,
+        "padding_horizontal": 12
+      },
+      "android_fallback": {
+        "reason": "Blur on Android is typically weaker or buggy depending on the view below.",
+        "fallback_background": {
+          "light": "rgba(253, 248, 232, 0.95)",
+          "dark": "rgba(17, 24, 39, 0.95)"
+        },
+        "elevation": 8
+      },
+      "apply_to": [
+        "top_left_3_dot_menu_button",
+        "floating_bottom_tab_bar",
+        "side_menu_drawer_panel",
+        "buy_gold_silver_widget",
+        "sip_screen_cards",
+        "bottom_sheets"
+      ]
+    },
+    "theme_keys_to_add": [
+      "glassFillLight",
+      "glassFillDark",
+      "glassBorderLight",
+      "glassBorderDark",
+      "glassHighlight"
+    ]
+  },
   "glassmorphism": {
     "enabled": true,
     "do's": [
-      "Use blur on sticky headers over scrolling content",
-      "Apply to the live gold/silver price hero cards for cinematic depth",
-      "Bottom tab bar needs frosted glass overlay",
-      "Drawer menu backdrop"
+      "Apply Liquid Glass strictly to user app elements: Top-left menu button, Tab bar, Side Menu Drawer, Cards, Sheets, Buy widget, and SIP screen.",
+      "Use BlurView with specific intensity and tint from liquid_glass spec.",
+      "Ensure a 0.5pt hairline border on all glass components."
     ],
     "dont's": [
       "Do not blur standard list rows or catalogue item backgrounds",
@@ -96,7 +160,7 @@
         "empty": "N/A",
         "error": "N/A"
       },
-      "layout": "Header: Ink (#111827) background, Profile Avatar (initials or photo), Name, Phone, Right Chevron for profile detail. Body: List of menu items on White background with Lucide icons colored Deep Gold (#8A6E1C). Only include: My Orders, My Wallet, Delivery, SIP, Offers, KYC Status, My Address, Logout. Footer: 'For any query contact on <phone>' and 'Powered by <brand>' centered at bottom."
+      "layout": "Use Liquid Glass frosted background (intensity 70 dark/50 light) for the drawer panel. Header: Profile Avatar, Name, Phone. Body: List of menu items with Lucide icons. Footer: Contact & Brand."
     },
     {
       "name": "Home",
@@ -106,7 +170,7 @@
         "empty": "N/A",
         "error": "Toast or inline banner for failed live price fetch"
       },
-      "layout": "Top Left: Hamburger menu icon opening drawer. Hero: Live gold/silver price cards in Ink (#111827) + Glass, highlighting premium values. Auth check: If logged in, show Wallet balance pill under header; if logged out, hide wallet balance. Categories: Replace circle photos with tinted icon containers (rounded square 'md' radius with Lucide icons) for a cleaner layout. Auto SIP Promo and Trending Banners follow with subtle gradient or cream backgrounds."
+      "layout": "Top Left: Floating liquid glass 3-dot menu icon opening drawer. Hero: Live gold/silver price cards in Liquid Glass. Buy Widget in glass. Floating Glass Tab Bar at the bottom."
     },
     {
       "name": "Catalogue (Jewellery Grid)",
@@ -116,7 +180,7 @@
         "empty": "Icon + 'No items found' + Clear Filters CTA",
         "error": "Failed to load catalogue inline error"
       },
-      "layout": "Two-column grid layout. Product image container: MUST use surfaceSecondary (#FDF8E8 Cream) with `objectFit: 'contain'` ensuring jewellery photos are never cut off. Avoid round images entirely here. Padding: md. Beneath image: Product name, specs, and price with Gold primary text."
+      "layout": "Two-column grid layout. Product image container: MUST use surfaceSecondary (#FDF8E8 Cream) with `objectFit: 'contain'`. Beneath image: Product name, specs, and price with Gold primary text."
     }
   ],
   "images": {
@@ -125,7 +189,7 @@
       "alt": "Digital Gold abstract reflections"
     },
     "catalogue_placeholder_1": {
-      "url": "https://images.unsplash.com/photo-1705326455036-0fab8ecba04d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1MDZ8MHwxfHNlYXJjaHwyfHxnb2xkJTIwcmluZyUyMGlzb2xhdGVkfGVufDB8fHx8MTc5MzI3MTYwNXww&ixlib=rb-4.1.0&q=85",
+      "url": "https://images.unsplash.com/photo-1705326455036-0fab8ecba04d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1MDZ8MHwxfHNlYXJjaHwyfHxsdXh1cnklMjBnb2xkJTIwamV3ZWxsZXJ5fGVufDB8fHx8MTc5MzI3MTYwNXww&ixlib=rb-4.1.0&q=85",
       "alt": "Gold Ring on white surface"
     },
     "catalogue_placeholder_2": {
@@ -134,13 +198,13 @@
     }
   },
   "instructions_to_main_agent": [
-    "Drawer Menu specific setup: Ensure left side drawer navigation matches exact user request: Profile block at top (Avatar, name, phone, right chevron), EXACT menu list (My Orders, My Wallet, Delivery, SIP, Offers, KYC Status, My Address, Logout), and Footer with contact number and 'Powered by' branding.",
-    "Remove 'Sell' feature from Drawer menu, only include explicitly requested features.",
-    "Strictly follow the user's color palette (Gold #D4AF37, Cream #FDF8E8, Deep Gold #8A6E1C, Ink #111827).",
-    "Replace ALL circular category photos with tinted square/squircle blocks using lucide-react-native icons.",
-    "CRITICAL FIX: On the catalogue grid or detail screens, images MUST use `contentFit=\"contain\"` on a Cream (#FDF8E8) background. Never use `cover` that crops out parts of the jewellery.",
-    "Wallet Balance Logic: Add conditional rendering to the wallet balance pill. It must only be visible when the user is signed in.",
-    "Apply Glassmorphism (expo-blur) on the live price cards and the bottom tab bar to maintain a premium Luxe feel.",
+    "Drawer Menu specific setup: Ensure left side drawer navigation matches exact user request with Liquid Glass UI applied to the entire drawer panel.",
+    "Implement Liquid Glass for the Top-Left 3-dot Menu Button (pill radius, frosted effect, 0.5 hairline border).",
+    "Implement Floating Tab Bar using Liquid Glass UI (margin bottom 24, horizontal margin 16, radius 32, frosted background with 0.5 pt border).",
+    "Apply Liquid Glass to Cards, Sheets, Buy Widget, and SIP Screen.",
+    "Ensure theme.ts is updated with new keys: glassFillLight, glassFillDark, glassBorderLight, glassBorderDark, glassHighlight.",
+    "For Android fallback where blur may fail, use a 95% opacity solid background of the surface color to mimic depth without visual glitches.",
+    "Strictly follow the user's color palette (Gold #D4AF37, Cream #FDF8E8, Deep Gold #8A6E1C, Ink #111827) and keep the luxe feeling.",
     "Use 'Inter' font for all typography as explicitly requested, ensuring standard hierarchical sizing (sm to 2xl) without using heavy weights."
   ]
 }

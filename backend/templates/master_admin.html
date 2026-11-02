@@ -20,7 +20,7 @@ const S = { tab: localStorage.getItem('mp_tab') || 'overview', me: JSON.parse(lo
 <script>
 const NAV = [
   ['Platform', [['overview', 'Overview', 'dashboard'], ['jewellers', 'Shops', 'store'], ['studio', 'App Studio', 'image'], ['pricing', 'Pricing', 'commission'], ['rates', 'Market & Feed', 'rate'], ['catalogue', 'Catalogue', 'catalogue'], ['content', 'App Content', 'image']]],
-  ['Business', [['orders', 'Orders', 'orders'], ['customers', 'Customers', 'customers'], ['kyc', 'KYC', 'kyc'], ['transactions', 'Transactions', 'invoice'], ['settlement', 'Settlement', 'wallet']]],
+  ['Business', [['orders', 'Orders', 'orders'], ['customers', 'Customers', 'customers'], ['kyc', 'KYC', 'kyc'], ['transactions', 'Transactions', 'invoice'], ['settlement', 'Settlement', 'wallet'], ['dues', 'Shop Dues', 'invoice']]],
   ['Engagement', [['sips', 'SIP', 'refresh'], ['referrals', 'Referrals', 'referral'], ['redemptions', 'Redemptions', 'redeem'], ['goals', 'Goals', 'target']]],
   ['Treasury', [['mt5', 'MT5 Bookings', 'rate'], ['pool', 'Gold Pool', 'pool'], ['invoices', 'Invoices', 'invoice'], ['security', 'Security & Controls', 'shield'], ['audit', 'Audit Log', 'log']]],
 ];
@@ -62,7 +62,7 @@ async function safe(fn, tab) { try { await fn(); } catch (e) { if (e.status === 
 
 /* overview */
 const rq = (r) => r.range === 'custom' ? `range=custom&start=${r.from || ''}&end=${r.to || ''}` : `range=${r.range}`;
-const loadOv = () => safe(async () => { S.ov = await api('/master/v3/overview?' + rq(S.r)); S.price = {...S.ov.price, feed: S.ov.feed}; S.feed = S.ov.feed; }, 'overview');
+const loadOv = () => safe(async () => { const [ov, du] = await Promise.all([api('/master/v3/overview?' + rq(S.r)), api('/master/v3/dues').catch(() => null)]); S.ov = ov; if (du) S.dues = du; S.price = {...S.ov.price, feed: S.ov.feed}; S.feed = S.ov.feed; }, 'overview');
 function onRange(k, apply) { if (k === 'custom' && apply) { S.r.from = $('#r_from').value; S.r.to = $('#r_to').value; if (!S.r.from) return toast('Choose a start date', true); }
   S.r.range = k; if (k !== 'custom' || apply) { S.ov = null; render(); loadOv(); } else render(); }
 function vOverview() {
@@ -72,6 +72,7 @@ function vOverview() {
     <div style="display:flex;gap:36px;flex-wrap:wrap"><div><div class="hv num">${inr0(t.amount)}</div><div class="hl">Gross sales</div></div><div><div class="hv num">${g4(t.hold_gold_g)}</div><div class="hl">Gold in vaults</div></div><div><div class="hv num">${t.customers}</div><div class="hl">Customers</div></div></div></div>` + head + `<div class="grid g4">
     ${kpi('Gross sales', inr0(t.amount), `${t.orders} orders`, 'trend', 'green')}${kpi('Gold booked', g4(t.gold_g), 'in this period', 'coin')}
     ${kpi('Silver booked', g4(t.silver_g), 'in this period', 'coin', 'gray')}${kpi('Partner stores', `${t.active_jewellers}<small>/${t.jewellers}</small>`, `${t.customers} customers`, 'store', 'blue')}</div>
+    ${S.dues ? `<div class="card pad section" onclick="go('dues')" data-testid="master-dues-banner" style="cursor:pointer;display:flex;gap:20px;align-items:center;flex-wrap:wrap"><div style="flex:1;min-width:200px"><div style="font-size:12px;color:var(--mute)">Remaining to receive from shops</div><div class="num" style="font-size:26px;font-weight:700;color:${S.dues.totals.remaining > 0 ? '#B42318' : 'inherit'}">${inr0(S.dues.totals.remaining)}</div></div><div class="kv" style="min-width:170px"><span>Total payable</span><b>${inr0(S.dues.totals.payable)}</b></div><div class="kv" style="min-width:150px"><span>Received</span><b>${inr0(S.dues.totals.paid)}</b></div><span class="btn sm">Shop dues →</span></div>` : ''}
     <div class="grid section" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr)">
       <div class="card"><div class="card-h"><div><h3>Daily sales</h3><p>All stores combined</p></div></div>${barChart(o.series, 'amount', inr0)}<div style="height:16px"></div></div>
       <div class="card"><div class="card-h"><h3>Market feed</h3>${o.feed.source === 'mt5' ? '<span class="badge green">Live</span>' : o.feed.source === 'offline' ? '<span class="badge red">Feed down</span>' : '<span class="badge amber">Indicative</span>'}</div><div style="padding:8px 20px 16px">
@@ -186,8 +187,8 @@ function vCustomers() {
     </tbody></table></div></div>`;
 }
 
-const VIEWS = { overview: vOverview, jewellers: vJewellers, studio: vStudio, security: vSecurity, rates: vRates, pool: vPool, invoices: vInvoices, transactions: vTransactions, customers: vCustomers, pricing: vPricing, catalogue: vMCatalogue, content: vMContent, orders: vMOrders, kyc: vMKyc, settlement: vSettlement, sips: vMSips, referrals: vMRefs, gifts: vMGifts, redemptions: vMRed, goals: vMGoals, audit: vAudit, mt5: vMt5 };
-const LOAD = { overview: loadOv, jewellers: loadJ, studio: loadStudio, security: loadCtl, rates: loadRate, pool: loadPool, invoices: loadInv, transactions: loadTx, customers: loadC, pricing: loadPricing, catalogue: loadMCat, content: loadMContent, orders: loadMOrders, kyc: loadMKyc, settlement: loadSettle, sips: loadMSips, referrals: loadMRefs, gifts: loadMGifts, redemptions: loadMRed, goals: loadMGoals, audit: loadAudit, mt5: loadMt5 };
+const VIEWS = { dues: vDues, overview: vOverview, jewellers: vJewellers, studio: vStudio, security: vSecurity, rates: vRates, pool: vPool, invoices: vInvoices, transactions: vTransactions, customers: vCustomers, pricing: vPricing, catalogue: vMCatalogue, content: vMContent, orders: vMOrders, kyc: vMKyc, settlement: vSettlement, sips: vMSips, referrals: vMRefs, gifts: vMGifts, redemptions: vMRed, goals: vMGoals, audit: vAudit, mt5: vMt5 };
+const LOAD = { dues: loadDues, overview: loadOv, jewellers: loadJ, studio: loadStudio, security: loadCtl, rates: loadRate, pool: loadPool, invoices: loadInv, transactions: loadTx, customers: loadC, pricing: loadPricing, catalogue: loadMCat, content: loadMContent, orders: loadMOrders, kyc: loadMKyc, settlement: loadSettle, sips: loadMSips, referrals: loadMRefs, gifts: loadMGifts, redemptions: loadMRed, goals: loadMGoals, audit: loadAudit, mt5: loadMt5 };
 function boot() { if (!VIEWS[S.tab]) S.tab = 'overview'; render(); LOAD[S.tab](); if (S.tab !== 'jewellers') api('/master/jewellers').then((j) => { S.jewellers = j; }).catch(() => {}); }
 function feedAlert(p) {
   const f = p?.feed || S.feed;
@@ -214,7 +215,7 @@ async function pollRate() {
     const a = $('#feedalert'); if (a) a.innerHTML = '<div class="feed-alert" id="feed-down-alert" role="alert"><span class="fa-dot"></span><div><b>Server not reachable</b><p>The platform backend is not responding. Rates and orders are unavailable.</p></div></div>';
   }
 }
-pollRate(); setInterval(pollRate, 5000);
+pollRate(); setInterval(pollRate, 1500);
 if (localStorage.getItem('master_token')) boot(); else render();
 </script>
 </body>
