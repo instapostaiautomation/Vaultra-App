@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
-import { Coins, Timer, Scale, Check } from "lucide-react-native";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Coins, Scale, Check } from "lucide-react-native";
+import React, { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import Animated, { ZoomIn } from "react-native-reanimated";
 
@@ -12,7 +12,6 @@ import { useApp } from "@/src/store/AppContext";
 import { colors, fonts, radius } from "@/src/theme";
 
 const QUICK = [500, 1000, 2000, 5000];
-const LOCK_SECONDS = 2 * 60;
 
 export function BuyWidget() {
   const router = useRouter();
@@ -22,62 +21,33 @@ export function BuyWidget() {
   const [metal, setMetal] = useState<"gold" | "silver">("gold");
   const [val, setVal] = useState("2000");
   const [quote, setQuote] = useState<any>(null);
-  const [secs, setSecs] = useState(0);
-  const iv = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const [showPay, setShowPay] = useState(false);
   const [payStage, setPayStage] = useState<"select" | "processing" | "success">("select");
   const [lastTxn, setLastTxn] = useState<any>(null);
 
   const liveRate = price?.has_live === false ? 0 : metal === "gold" ? price?.buy ?? 0 : price?.silver?.buy ?? 0;
   const paused = !!price?.offline || price?.booking_enabled === false || !!price?.rates_hidden;
-  const priceReady = !!price;
 
-  const lock = useCallback(async () => {
-    if (!priceReady || paused) { setQuote(null); return; }
-    try {
-      const q = await api(metal === "gold" ? "/quote" : "/quote/silver", { method: "POST", body: { tenant }, auth: "none" });
-      setQuote(q);
-      setSecs(q.lock_seconds || LOCK_SECONDS);
-    } catch (e: any) {
-      setQuote(null);
-      if (e?.status !== 503) toast("error", e?.message || "Could not lock price. Please retry");
-    }
-  }, [metal, tenant, toast, paused, priceReady]);
-
-  useEffect(() => { lock(); }, [lock]);
-
-  useEffect(() => {
-    clearInterval(iv.current);
-    if (secs <= 0) return;
-    iv.current = setInterval(() => {
-      setSecs((s) => { if (s <= 1) { clearInterval(iv.current); lock(); return 0; } return s - 1; });
-    }, 1000);
-    return () => clearInterval(iv.current);
-  }, [secs, lock]);
-
-  const rate = quote?.buy ?? liveRate;
+  // Screen always shows the live rate; the price is locked on the server only when the customer taps Proceed
+  const rate = showPay && quote ? quote.buy : liveRate;
   const n = parseFloat(val) || 0;
   // GST-inclusive: customer pays exactly the amount; 3% GST is taken out of the grams
   const total = mode === "rupees" ? n : n * rate;
-  const gst = total * 0.03;
-  const amt = total - gst;
+  const amt = total * 0.97;
   const g = rate ? Math.floor((amt / rate) * 10000) / 10000 : 0;
   const minInv = price?.min_investment ?? 500;
-  const mm = Math.floor(secs / 60);
-  const ss = secs % 60;
   const metalLabel = metal === "gold" ? "24K Gold" : "Silver";
 
   const proceedToBuy = async () => {
     if (!token) { router.push("/login"); return; }
-    if (n <= 0 || !quote) { toast("info", "Enter an amount first"); return; }
+    if (n <= 0 || !liveRate) { toast("info", "Enter an amount first"); return; }
     if (total < minInv) { toast("info", `Minimum investment is ₹${minInv.toLocaleString("en-IN")}`); return; }
     // Freeze a fresh price at the moment the customer taps Proceed (2 minutes)
     try {
       const q = await api(metal === "gold" ? "/quote" : "/quote/silver", { method: "POST", body: { tenant }, auth: "none" });
       setQuote(q);
-      setSecs(q.lock_seconds || LOCK_SECONDS);
     } catch (e: any) {
-      toast("error", e?.message || "Could not lock price. Please retry");
+      toast("error", e?.message || "Could not get the price. Please retry");
       return;
     }
     setShowPay(true);
@@ -98,6 +68,7 @@ export function BuyWidget() {
       await refresh();
     } catch (e: any) {
       toast("error", "Purchase failed", e.message);
+      setShowPay(false);
       setPayStage("select");
     }
   };
@@ -108,14 +79,8 @@ export function BuyWidget() {
         <View>
           <Text style={styles.headLabel}>{price?.offline ? (liveRate > 0 ? "LAST" : "") : paused ? "" : "LIVE"} {metal === "gold" ? "24K" : "SILVER"} BUY RATE</Text>
           <Text style={styles.headRate} testID="buy-rate">{rate > 0 ? inr(rate) : "—"}<Text style={styles.perG}>/g</Text></Text>
-          <Text style={styles.gstNote}>{price?.offline ? (rate > 0 ? "Showing last live rate" : "Waiting for live rates") : paused ? "Booking is paused by the store" : "Price frozen for 2 minutes · GST included"}</Text>
+          <Text style={styles.gstNote}>{price?.offline ? (rate > 0 ? "Showing last live rate" : "Waiting for live rates") : paused ? "Booking is paused by the store" : "GST included"}</Text>
         </View>
-        {paused ? null : (
-          <View style={styles.timerBox}>
-            <Timer size={14} color={colors.onBrandTertiary} />
-            <Text style={styles.timerText}>{String(mm).padStart(2, "0")}:{String(ss).padStart(2, "0")}</Text>
-          </View>
-        )}
       </View>
 
       {/* Metal Toggle */}
@@ -165,7 +130,6 @@ export function BuyWidget() {
       {liveRate > 0 ? (
       <View style={styles.breakdown}>
         <View style={styles.row}><Text style={styles.bk}>You pay</Text><Text style={styles.bkr}>{inr(total)}</Text></View>
-        <View style={styles.row}><Text style={styles.bk}>GST 3% (deducted from grams)</Text><Text style={styles.bkr}>− {inr(gst)}</Text></View>
         <View style={styles.divider} />
         <View style={styles.row}><Text style={styles.total}>You get</Text><Text style={styles.totalR} testID="buy-net-grams">{grams(g)}</Text></View>
       </View>
@@ -192,9 +156,8 @@ export function BuyWidget() {
               <Text style={styles.payRate}>@ {inr(rate)}/g</Text>
             </View>
             <Row label="You pay" value={inr(total)} />
-            <Row label="GST (3%, deducted from grams)" value={`− ${inr(gst)}`} />
             <Row label={`${metalLabel} credited`} value={grams(g)} bold />
-            <Text style={styles.payNote}>Paid via UPI · {metalLabel} is credited to your vault instantly</Text>
+            <Text style={styles.payNote}>Price includes GST · Paid via UPI · {metalLabel} is credited to your vault instantly</Text>
             <Button testID="confirm-buy-button" title={`Pay ${inr(total)} & Buy ${metalLabel}`} size="lg" onPress={confirmPurchase} style={{ marginTop: 16 }} />
           </View>
         ) : payStage === "processing" ? (
@@ -233,8 +196,6 @@ const styles = StyleSheet.create({
   headRate: { fontFamily: fonts.black, fontSize: 28, color: colors.onSurface, letterSpacing: -1, marginTop: 4 },
   perG: { fontFamily: fonts.regular, fontSize: 14, color: colors.muted },
   gstNote: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted, marginTop: 4 },
-  timerBox: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.brandTertiary, borderRadius: radius.pill, paddingHorizontal: 12, height: 32 },
-  timerText: { fontFamily: fonts.bold, fontSize: 14, color: colors.onBrandTertiary },
   toggleRow: { flexDirection: "row", gap: 8, paddingHorizontal: 16, marginBottom: 10 },
   toggleBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, height: 40, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   toggleActive: { borderColor: colors.brandPrimary, backgroundColor: colors.brandTertiary },
