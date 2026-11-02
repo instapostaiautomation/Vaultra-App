@@ -10,7 +10,7 @@ import { useApp } from "@/src/store/AppContext";
 import { colors, fonts, radius } from "@/src/theme";
 
 type Banner = { id: string; image?: string; image_url?: string; eyebrow?: string; title?: string; subtitle?: string; link?: string };
-const LINK_ROUTES: Record<string, string> = { buy: "/", sip: "/sip", jewellery: "/jewellery", gift: "/gift", refer: "/referral" };
+const LINK_ROUTES: Record<string, string> = { buy: "/", sip: "/sip", jewellery: "/jewellery", refer: "/referral" };
 const BASE = process.env.EXPO_PUBLIC_BACKEND_URL || "";
 
 export function BannerCarousel() {

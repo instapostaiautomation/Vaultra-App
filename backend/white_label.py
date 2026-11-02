@@ -79,7 +79,6 @@ def default_store_text(j):
         "• Every gram is backed by physical metal held in insured vaults\n"
         "• Start an Auto SIP from ₹100 and grow your savings in gold\n"
         "• Redeem as coins or jewellery at our store\n"
-        "• Gift gold to family and friends in seconds\n"
         "• Live 24K, 22K and 18K rates for jewellery shopping\n"
         "• Secure OTP login, KYC verified and tax invoices for every purchase\n\n"
         f"Visit {j.business_name} or contact us at {j.phone} for any help."
@@ -259,7 +258,7 @@ def make_screenshot(kind, name, p, rates, logo=None):
         d.text((120, y + 160), "12.5000 g", font=_font(120), fill=(255, 255, 255))
         d.text((120, y + 340), "≈ " + (_inr(12.5 * rates.get("24K", 0)) if rates.get("24K") else "—"), font=_font(60, 600), fill=(229, 231, 235))
         y += 640
-        for i, (t, s) in enumerate([("Auto SIP", "₹500 every month"), ("Redeem", "Coins & jewellery at store"), ("Gift Gold", "Send grams to anyone")]):
+        for i, (t, s) in enumerate([("Auto SIP", "₹500 every month"), ("Redeem", "Coins & jewellery at store"), ("Live rates", "24K · 22K · 18K every second")]):
             d.rounded_rectangle([60, y, W - 60, y + 220], r, fill=(255, 255, 255), outline=pri, width=3)
             d.ellipse([110, y + 50, 230, y + 170], fill=pri)
             d.text((280, y + 50), t, font=_font(58), fill=acc)

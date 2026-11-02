@@ -28,7 +28,7 @@ function phone(small) {
     buy: `<div style="background:#fff;border-radius:${r * .6}px;padding:8px;border:1px solid ${P.primaryColor}33"><div style="font-size:8px;color:#6b7280">Buy gold</div><div style="font-size:12px;font-weight:700;color:${P.accentColor}">₹ 1,000</div><div style="margin-top:5px;background:${P.primaryColor};color:#fff;border-radius:${r * .5}px;text-align:center;font-size:9px;padding:5px;font-weight:700">Proceed to Buy →</div></div>`,
     categories: `<div style="display:flex;gap:5px">${['Rings', 'Bangles', 'Chains', 'Kadas'].map((c) => `<div style="flex:1;text-align:center"><div style="height:26px;border-radius:${r * .5}px;background:${P.backgroundColor};border:1px solid ${P.primaryColor}55"></div><div style="font-size:7px;margin-top:2px;color:${P.accentColor}">${c}</div></div>`).join('')}</div>`,
     trending: `<div style="display:flex;gap:5px">${[1, 2].map(() => `<div style="flex:1;height:46px;border-radius:${r * .6}px;background:#fff;border:1px solid ${P.primaryColor}33"></div>`).join('')}</div>`,
-    promos: `<div style="background:#fff;border-radius:${r * .6}px;padding:7px;font-size:9px;color:${P.accentColor};border:1px solid ${P.primaryColor}33">🎁 Gift Gold · Refer & Earn</div>`,
+    promos: `<div style="background:#fff;border-radius:${r * .6}px;padding:7px;font-size:9px;color:${P.accentColor};border:1px solid ${P.primaryColor}33">Refer & Earn · FAQs</div>`,
   }[s] || '');
   const sections = small ? P.homeLayout.slice(0, 4) : P.homeLayout;
   return `<div class="phone ${small ? 'sm' : ''}" style="background:${P.backgroundColor}">
@@ -113,4 +113,27 @@ async function studioKit(id) {
     toast('App Kit downloaded'); render();
   } catch (e) { toast(e.message, true); }
   b.disabled = false;
+}
+
+/* Master console: Security & Controls — live-rate visibility, booking switch, minimum investment */
+S.ctl = null;
+const loadCtl = () => safe(async () => { S.ctl = await api('/master/v3/controls'); }, 'security');
+const sw = (id, on, onchange) => `<label class="switch"><input type="checkbox" id="${id}" ${on ? 'checked' : ''} onchange="${onchange}"><span></span></label>`;
+function vSecurity() {
+  const head = ph('Security & Controls', 'Turn live rates and booking on or off for all shops, or only for one shop\'s customers.');
+  const c = S.ctl; if (!c) return head + loading;
+  const g = c.global;
+  return head + `<div class="card pad"><h3 class="card-t">All shops <span class="sub">applies to every shop owner and all their customers</span></h3>
+    <div class="ctl-row"><div><b>Show live rates</b><div class="sub">Off hides every price in all customer apps</div></div>${sw('g_rates', g.rates, 'ctlSet()')}</div>
+    <div class="ctl-row"><div><b>Allow booking</b><div class="sub">Off stops all new buys and SIP payments on every shop</div></div>${sw('g_booking', g.booking, 'ctlSet()')}</div>
+    <div class="ctl-row"><div><b>Minimum investment (gold & silver)</b><div class="sub">Smallest buy or SIP amount a customer can place</div></div><div class="prefix" style="width:140px"><span>₹</span><input class="input num" id="g_min" type="number" min="10" step="50" value="${g.min_investment}"></div></div>
+    <div style="margin-top:12px"><button class="btn primary" onclick="ctlSave()" id="ctl-save">Save controls</button></div></div>
+    <div class="card section"><div class="card-h"><h3>Per shop <span class="sub" style="font-weight:400">only that shop's customers are affected</span></h3></div><div class="table-wrap"><table><thead><tr><th>Shop</th><th>Live rates</th><th>Booking</th><th>Customers see</th></tr></thead><tbody>
+    ${c.shops.map((s) => `<tr><td><b>${esc(s.name)}</b><div class="sub">${statusBadge(s.status)}</div></td><td>${sw('r_' + s.id, s.rates, 'ctlSet()')}</td><td>${sw('b_' + s.id, s.booking, 'ctlSet()')}</td>
+      <td>${s.effective.rates ? '<span class="badge green">Rates on</span>' : '<span class="badge red">Rates hidden</span>'} ${s.effective.booking && s.effective.rates ? '<span class="badge green">Booking on</span>' : '<span class="badge red">Booking off</span>'}</td></tr>`).join('')}</tbody></table></div></div>`;
+}
+function ctlSet() { const b = $('#ctl-save'); if (b) b.textContent = 'Save controls · unsaved changes'; }
+async function ctlSave() {
+  const shops = {}; S.ctl.shops.forEach((s) => { shops[s.id] = { rates: $('#r_' + s.id).checked, booking: $('#b_' + s.id).checked }; });
+  try { await api('/master/v3/controls', { method: 'PUT', body: { rates: $('#g_rates').checked, booking: $('#g_booking').checked, min_investment: Number($('#g_min').value || 500), shops } }); toast('Controls saved'); loadCtl(); } catch (e) { toast(e.message, true); }
 }

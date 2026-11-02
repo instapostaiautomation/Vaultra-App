@@ -1,0 +1,40 @@
+{
+  "summary": "Retest of the iteration 23 fixes. 6 of the 7 new backend tests pass, plus a regression of the iteration 23 redemption, catalogue and holdings tests. All 5 app and panel UI checks pass. Fixed: product redemption takes 24K fine gold (the Tanmaniya Mangalsutra, 7.1g 22K, needs 6.51g; Classic Solitaire Ring redeemed for 3.1167g of 3.4g). /api/products and /api/products/{id} return fine_grams. The product detail CTA reads 'or 6.51g vault gold (24K)' and the redeem sheet shows '24K gold required 6.5085g'. Coin redemption still takes the full grams. avg_silver in the list and the detail match (184.67) and now include GST. MT5: max_volume is saved, 0 and 5000 are rejected with 422, and a pending amount of about 159 lots was capped to 1. After a failed order, 2 purchases added no failed rows, and a manual retry still tried at once. The Master 'Largest volume per order' input (#m5x) saves. The silver goal's Start SIP opens /sip?metal=silver with 'Start Silver SIP' selected. The Jewellery subtitle no longer says 24K. Only 'Heritage 24K Necklace' has 24K in its name, and it is 24K; no other description says 24K. NOT FIXED: the catalogue commission_per_g is still negative (-0.46/g) for 22K products, and the Shop Catalogue KPI 'Your commission' shows ₹-0.46/g.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/jeweller/v3/catalogue", "issue": "commission_per_g is still -0.46 for every 22K product with a zero 22K margin. Root cause: karat_rates() prices 22K at base*22/24 (0.916667), but _catalogue subtracts live*PURITY_PCT['22K']/100 (0.9167). The gap is 13880*0.0000333 = ₹0.46. Reference: server.py:95 vs server.py:2804."},
+      {"endpoint": "22K purity factor", "issue": "22K uses different factors in different places. Pricing uses 22/24 (91.6667%). Redemption fine_grams and commission use 91.67. The app badge says '91.6% Pure' and the panel says 91.67%. Use one constant everywhere."},
+      {"endpoint": "MT5 bookings (environment)", "issue": "MT5 now rejects orders with 'AutoTrading disabled in MT5 terminal!' (the message is in Hinglish). The user must turn on Algo Trading in the MT5 terminal. The panel shows the raw Hinglish error. Also, mt5_cover's asyncio.create_task still keeps no reference to the task (server.py mt5_cover)."},
+      {"endpoint": "mt5_book volume cap", "issue": "Edge case: if max_volume < step, the cap expression falls back to the raw max_volume, which is not a step multiple. If max_volume < min_volume, the order goes below min_volume. Consider checking that max_volume >= min_volume in Mt5Cfg."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Shop panel Catalogue KPI 'Your commission'", "issue": "Shows ₹-0.46/g. It also uses p0 (the first product, which is 22K), so the shop's 24K commission (₹100/g) is never shown. Reference: templates/panel_ext.js:39", "testID": "n/a (panel)", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Auto SIP (silver selected)", "issues": ["The header subtitle still says 'Build your gold savings on autopilot' when Silver SIP is selected."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration24_retest.py", "/app/test_reports/pytest/pytest_iteration24.xml"],
+  "action_items": [
+    "MEDIUM: Fix commission_per_g (server.py:2804). Subtract the karat base with the same factor karat_rates uses (base*22/24, base*18/24), or return m['gold22_comm'] / m['gold18_comm'] directly. Make panel_ext.js:39 show the 24K commission, or one value per purity, instead of p0's.",
+    "LOW: Use one 22K purity constant everywhere: PURITY_PCT, karat_rates, the app badge (91.6) and the panel (91.67).",
+    "LOW: Change the SIP screen subtitle to fit the selected metal.",
+    "LOW: MT5: keep a reference to the create_task. Check that max_volume >= min_volume. Tell the user that MT5 AutoTrading must be on."
+  ],
+  "critical_code_review_comments": [
+    "Redemption: the txn stores grams 3.1166 while the pickup stores 3.1167 for the same redemption (float/Numeric rounding). Harmless.",
+    "sip.tsx sets metal from params only when params.metal changes. Tested: going back to the vault and tapping the silver goal's Start SIP still showed Silver (OK)."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration24_retest.py"],
+  "success_rate": {"backend": "86% (6/7 new tests; 1 failure = commission)", "frontend": "100% of the retested app flows; the panel commission KPI still shows a negative value"},
+  "seed_data_creation": "Aarav (9876543210) bought gold, redeemed 1 Classic Solitaire Ring (pickup pending) and 1g coin. Created silver goal 'TEST_Silver Goal' (id 5abd313c-0c80-4a5f-8887-f7ef827d0c54). 2 failed MT5 retry rows (AutoTrading disabled). MT5 config restored to {enabled:true,gold_lot_g:10,silver_lot_g:1000,min_volume:1,step:1,max_volume:10}.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run with -n 0. The live feed can briefly return 'Live rates are temporarily unavailable', so _buy retries the quote. MT5 failures now say AutoTrading is disabled. MT5 auto-backoff is 5 minutes in memory (MT5_LAST_FAIL); a backend restart resets it. Inject the app token with localStorage 'vdg_user_token'. Product detail route: /product-detail?id=<id>.",
+  "rca_of_issue": "Negative commission: karat_rates() uses 22/24 = 0.916667, and _catalogue subtracts live*0.9167. With a zero 22K margin, the result is -live*0.0000333 = -₹0.46/g."
+}

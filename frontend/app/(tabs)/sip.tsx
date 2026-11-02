@@ -1,4 +1,4 @@
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { CalendarClock, Pause, Play, Repeat, Trash2, Zap } from "lucide-react-native";
 import React, { useCallback, useEffect, useState } from "react";
 import { Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
@@ -14,7 +14,7 @@ import { usesNativeTabs } from "@/src/navigation";
 import { useApp } from "@/src/store/AppContext";
 import { colors, fonts, radius } from "@/src/theme";
 
-const AMOUNTS = [100, 500, 1000, 2500, 5000];
+const AMOUNTS = [500, 1000, 2500, 5000, 10000];
 const FREQS = ["daily", "weekly", "monthly"] as const;
 const PER_YEAR = { daily: 365, weekly: 52, monthly: 12 };
 
@@ -25,6 +25,11 @@ export default function SipScreen() {
   const { token, tenant, price, refresh } = useApp();
   const [amount, setAmount] = useState(1000);
   const [freq, setFreq] = useState<(typeof FREQS)[number]>("monthly");
+  const [metal, setMetal] = useState<"gold" | "silver">("gold");
+  const params = useLocalSearchParams<{ metal?: string }>();
+  useEffect(() => {
+    if (params.metal === "silver" || params.metal === "gold") setMetal(params.metal);
+  }, [params.metal]);
   const [sips, setSips] = useState<any[]>([]);
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -42,14 +47,15 @@ export default function SipScreen() {
   }, [load]);
 
   const yearly = amount * PER_YEAR[freq];
-  const yearlyGrams = price ? yearly / price.buy : 0;
+  const rate = metal === "silver" ? price?.silver?.buy : price?.buy;
+  const yearlyGrams = rate ? (yearly * 0.97) / rate : 0; // after 3% GST
 
   const start = async () => {
     if (!token) return router.push("/login");
     setBusy(true);
     try {
-      await api("/sips", { method: "POST", body: { amount, frequency: freq, tenant } });
-      toast("success", "Auto SIP activated", `${inr(amount, 0)} ${freq} via UPI AutoPay`);
+      await api("/sips", { method: "POST", body: { amount, frequency: freq, metal, tenant } });
+      toast("success", `${metal === "silver" ? "Silver" : "Gold"} SIP activated`, `${inr(amount, 0)} ${freq} via UPI AutoPay`);
       load();
     } catch (e: any) {
       toast("error", "Could not start SIP", e.message);
@@ -71,12 +77,19 @@ export default function SipScreen() {
 
   return (
     <View style={styles.root} testID="sip-screen">
-      <ScreenHeader title="Auto SIP" subtitle="Build your gold savings on autopilot" showBack />
+      <ScreenHeader title="Auto SIP" subtitle={`Build your ${metal} savings on autopilot`} showBack />
       <KeyboardAwareScrollView
         contentContainerStyle={{ padding: 16, paddingBottom: bottomChrome + 24, gap: 16 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} />}
       >
         <Card testID="sip-create-card">
+          <View style={[styles.seg, { marginTop: 0, marginBottom: 16 }]}>
+            {(["gold", "silver"] as const).map((m) => (
+              <Pressable key={m} onPress={() => setMetal(m)} style={[styles.segBtn, metal === m && styles.segOn]} testID={`sip-metal-${m}`}>
+                <Text style={[styles.segText, metal === m && { color: colors.onSurface }]}>{m === "gold" ? "Gold SIP" : "Silver SIP"}</Text>
+              </Pressable>
+            ))}
+          </View>
           <Text style={styles.label}>Installment amount</Text>
           <Text style={styles.big} testID="sip-amount">{inr(amount, 0)}</Text>
           <View style={styles.wrapRow}>
@@ -97,10 +110,10 @@ export default function SipScreen() {
           <View style={styles.proj}>
             <CalendarClock size={18} color={colors.onBrandTertiary} />
             <Text style={styles.projText}>
-              In 1 year you&apos;ll save {inr(yearly, 0)} ≈ <Text style={{ fontFamily: fonts.bold }}>{grams(yearlyGrams, 3)}</Text> of 24K gold
+              In 1 year you&apos;ll save {inr(yearly, 0)} ≈ <Text style={{ fontFamily: fonts.bold }}>{grams(yearlyGrams, 3)}</Text> of {metal === "silver" ? "999 silver" : "24K gold"}
             </Text>
           </View>
-          <Button title={token ? "Start Auto SIP" : "Sign in to start SIP"} loading={busy} onPress={start} icon={<Zap size={18} color={colors.onBrandPrimary} />} testID="sip-start-button" />
+          <Button title={token ? `Start ${metal === "silver" ? "Silver" : "Gold"} SIP` : "Sign in to start SIP"} loading={busy} onPress={start} icon={<Zap size={18} color={colors.onBrandPrimary} />} testID="sip-start-button" />
         </Card>
 
         <Text style={styles.section}>Your SIPs</Text>
@@ -115,7 +128,7 @@ export default function SipScreen() {
               <View style={styles.sipHead}>
                 <View>
                   <Text style={styles.sipAmt}>
-                    {inr(s.amount, 0)} <Text style={styles.sipFreq}>/ {s.frequency}</Text>
+                    {inr(s.amount, 0)} <Text style={styles.sipFreq}>/ {s.frequency} · {s.metal === "silver" ? "Silver" : "Gold"}</Text>
                   </Text>
                   <Text style={styles.sipMeta}>
                     {s.installments} {s.installments === 1 ? "installment" : "installments"} · {grams(s.grams_accumulated)} saved

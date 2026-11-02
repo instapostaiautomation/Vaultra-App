@@ -136,3 +136,20 @@ Multi-tenant white-label digital gold platform. Vaultra onboards jewellery shop 
 - Alembic revision 7a1c2e9b4d10.
 - Iter 18 fixes: store picker in side menu (base mode), FreeSans fonts in backend/fonts for ₹ in kit images, locked tenant header from first request, per-tenant URL scheme, export saves draft first, status steps back if logo removed.
 - OTP request honours X-Tenant-ID (picked store); panel inr shows 2 decimals.
+
+## Phase 1 of big change list (iteration 21-22) — DONE
+- Gift removed everywhere (app route deleted, panels nav, POST /api/gifts → 410).
+- QUOTE_SECONDS=120; fresh quote locked on Proceed. GST-inclusive: grams = (paid − 3%)/rate for buy & SIP.
+- CONTROLS (app_settings.platform_controls): global+per-shop rates/booking switches, min_investment (500). Master tab "Security & Controls" (app_studio.js vSecurity). Rates hidden → price/products zeroed.
+- Redeem grams requests: POST /api/redeem-requests (≥ max(1g, shop min), KYC approved); Shop pop-up Accept/Decline (/jeweller/v3/redeem-requests).
+- Referral reward per shop: app_settings referral_reward:{jid}; Shop Referral tab; app reads /api/referral-reward.
+## Phase 2 (iteration 23-24) — DONE
+- Shop: KPI info pop-ups (dashInfo); holdings gold/silver value + avg gold/silver buy (GST-incl); shared customerDrawer + kycDetails (panel_ext.js); KYC photo (POST /api/kyc/photo, Upload.owner=kyc:<cid>, served only via /jeweller|master/v3/kyc/{cid}/photo; /api/files refuses kyc uploads).
+- Silver SIP (Sip.metal) and silver goals (Goal.metal) in app + panels. Redeem grams form coin|bar.
+- Product.purity 24K/22K/18K (PURITY_PCT = 22/24, 18/24). Price = grams × karat rate × (1+making%). Product redemption deducts fine 24K grams (fine_grams). Making % free 0-40.
+- Master: shop name → catalogue drawer; Customers → full detail (/master/v3/customers/{cid}); MT5 Bookings tab.
+- MT5 cover: purchases accumulate in app_settings mt5_pending; BUY POST {base}/order {symbol,type,volume} when ≥ min lot. Config mt5_booking_cfg (gold_lot_g 10, silver_lot_g 1000, min 1, step 1, max 10). Failed auto attempt → 5 min cooldown; manual retry. Table mt5_bookings. Migration b3d9e1f0a2c4.
+- Security audit: per-object tenant scoping PASS. Referral lookup scoped to store. Known demo risks: OTP echoed, seeded demo passwords (must change before launch).
+## Next
+- User must enable Algo Trading in MT5 (orders refused "AutoTrading disabled"); confirm real lot sizes.
+- Real SMS OTP + payments before launch; replace seeded passwords.

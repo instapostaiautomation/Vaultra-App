@@ -39,6 +39,7 @@ async def init_db():
             "CREATE TABLE IF NOT EXISTS app_settings (key VARCHAR(100) PRIMARY KEY, value TEXT)",
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS making_pct DOUBLE PRECISION DEFAULT 12",
             "ALTER TABLE jewellers ADD COLUMN IF NOT EXISTS silver_commission_per_g DOUBLE PRECISION DEFAULT 0",
+            "ALTER TABLE pickups ALTER COLUMN transaction_id DROP NOT NULL",
             "ALTER TABLE jewellers ADD COLUMN IF NOT EXISTS gold22_commission_per_g DOUBLE PRECISION DEFAULT 0",
             "ALTER TABLE jewellers ADD COLUMN IF NOT EXISTS gold18_commission_per_g DOUBLE PRECISION DEFAULT 0",
             "ALTER TABLE jewellers ADD COLUMN IF NOT EXISTS app_name VARCHAR(60) DEFAULT ''",
@@ -51,5 +52,8 @@ async def init_db():
             "ALTER TABLE jewellers ADD COLUMN IF NOT EXISTS store_long TEXT DEFAULT ''",
             "ALTER TABLE jewellers ADD COLUMN IF NOT EXISTS store_keywords VARCHAR(100) DEFAULT ''",
             "ALTER TABLE jewellers ADD COLUMN IF NOT EXISTS support_email VARCHAR(200) DEFAULT ''",
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS purity VARCHAR(5) DEFAULT '22K'",
+            "ALTER TABLE sips ADD COLUMN IF NOT EXISTS metal VARCHAR(10) DEFAULT 'gold'",
+            "ALTER TABLE goals ADD COLUMN IF NOT EXISTS metal VARCHAR(10) DEFAULT 'gold'",
         ):
             await conn.execute(text(stmt))

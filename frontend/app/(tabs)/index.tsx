@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { ArrowRight, CircleDot, Crown, Diamond, Disc3, Gem, Gift, HelpCircle, Link2, Users, Watch } from "lucide-react-native";
+import { ArrowRight, CircleDot, Crown, Diamond, Disc3, Gem, HelpCircle, Link2, Users, Watch } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
@@ -58,7 +58,7 @@ export default function Home() {
         <View style={styles.sipGlow} />
         <View style={{ flex: 1, zIndex: 1 }}>
           <Text style={styles.sipEyebrow}>AUTO SIP</Text>
-          <Text style={styles.sipTitle}>Save in gold daily from ₹100</Text>
+          <Text style={styles.sipTitle}>Save in gold every month from ₹500</Text>
           <Text style={styles.sipSub}>UPI AutoPay · Pause or cancel anytime</Text>
         </View>
         <View style={styles.sipArrow}>
@@ -125,16 +125,6 @@ export default function Home() {
     ),
     promos: (
       <>
-        <Pressable style={styles.giftPromo} onPress={() => router.push("/gift")} testID="home-gift-promo">
-          <View style={styles.giftIcon}>
-            <Gift size={22} color={colors.giftDiwaliAccent} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.giftTitle}>Gift Gold</Text>
-            <Text style={styles.giftSub}>Send grams to any phone with a greeting card</Text>
-          </View>
-          <ArrowRight size={18} color={colors.giftDiwaliAccent} />
-        </Pressable>
         <Pressable style={styles.referPromo} onPress={() => router.push("/referral")} testID="home-refer-promo">
           <View style={styles.referIcon}>
             <Users size={22} color={colors.brandPrimary} />

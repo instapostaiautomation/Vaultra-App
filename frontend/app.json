@@ -38,7 +38,14 @@
       "expo-image",
       "expo-secure-store",
       "expo-web-browser",
-      "expo-status-bar"
+      "expo-status-bar",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Add your photo to complete KYC verification",
+          "cameraPermission": "Take a photo to complete KYC verification"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

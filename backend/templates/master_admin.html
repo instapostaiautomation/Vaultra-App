@@ -21,8 +21,8 @@ const S = { tab: localStorage.getItem('mp_tab') || 'overview', me: JSON.parse(lo
 const NAV = [
   ['Platform', [['overview', 'Overview', 'dashboard'], ['jewellers', 'Shops', 'store'], ['studio', 'App Studio', 'image'], ['pricing', 'Pricing', 'commission'], ['rates', 'Market & Feed', 'rate'], ['catalogue', 'Catalogue', 'catalogue'], ['content', 'App Content', 'image']]],
   ['Business', [['orders', 'Orders', 'orders'], ['customers', 'Customers', 'customers'], ['kyc', 'KYC', 'kyc'], ['transactions', 'Transactions', 'invoice'], ['settlement', 'Settlement', 'wallet']]],
-  ['Engagement', [['sips', 'SIP', 'refresh'], ['referrals', 'Referrals', 'referral'], ['gifts', 'Gifts', 'gifts'], ['redemptions', 'Redemptions', 'redeem'], ['goals', 'Gold Goals', 'target']]],
-  ['Treasury', [['pool', 'Gold Pool', 'pool'], ['invoices', 'Invoices', 'invoice'], ['audit', 'Audit Log', 'log']]],
+  ['Engagement', [['sips', 'SIP', 'refresh'], ['referrals', 'Referrals', 'referral'], ['redemptions', 'Redemptions', 'redeem'], ['goals', 'Goals', 'target']]],
+  ['Treasury', [['mt5', 'MT5 Bookings', 'rate'], ['pool', 'Gold Pool', 'pool'], ['invoices', 'Invoices', 'invoice'], ['security', 'Security & Controls', 'shield'], ['audit', 'Audit Log', 'log']]],
 ];
 const TITLES = Object.fromEntries(NAV.flatMap(([, i]) => i.map(([k, l]) => [k, l])));
 const loading = '<div class="grid g4"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>';
@@ -89,7 +89,7 @@ function vJewellers() {
   const head = `<div class="page-head"><div><h2>Shops</h2><p>Partner jewellers running their own branded app.</p></div><button class="btn primary" onclick="onboard()" id="onboard-btn">${icon('plus')} Onboard shop</button></div>`;
   if (!S.jewellers) return head + loading;
   return head + `<div class="card"><div class="table-wrap"><table><thead><tr><th>Store</th><th>Owner</th><th class="r">Customers</th><th class="r">Gold held</th><th>Commission</th><th>Domains</th><th>Status</th><th></th></tr></thead><tbody>
-    ${S.jewellers.map((j) => `<tr><td><div style="display:flex;gap:10px;align-items:center"><div class="avatar" style="background:${esc(j.primary_color || '#FBF6EA')}22">${esc(initials(j.business_name))}</div><div><b>${esc(j.business_name)}</b><div class="sub">${esc(j.city || '')}</div></div></div></td>
+    ${S.jewellers.map((j) => `<tr><td><div style="display:flex;gap:10px;align-items:center"><div class="avatar" style="background:${esc(j.primary_color || '#FBF6EA')}22">${esc(initials(j.business_name))}</div><div><b class="link" style="cursor:pointer;text-decoration:underline dotted" onclick="shopCatalogue('${j.id}')" data-shop-cat="${j.id}">${esc(j.business_name)}</b><div class="sub">${esc(j.city || '')} · click name for catalogue</div></div></div></td>
       <td>${esc(j.owner_name)}<div class="sub">${esc(j.email)}</div></td><td class="r num">${j.customer_count}</td><td class="r num">${g4(j.total_grams)}</td>
       <td class="num">${inr(j.gold_commission_per_g)}/g gold<div class="sub">${inr(j.silver_commission_per_g)}/g silver</div></td>
       <td style="font-size:13px">${esc(j.domain || '—')}<div class="sub">${esc(j.admin_domain || '')}</div></td><td>${statusBadge(j.status)}</td>
@@ -181,13 +181,13 @@ const loadC = () => safe(async () => { if (!S.jewellers) S.jewellers = await api
 function vCustomers() {
   const head = `<div class="page-head"><div><h2>Customers</h2><p>All app users across stores.</p></div><div class="toolbar">${jSelect(S.cj, "S.cj=this.value;loadC()")}<input class="input search" placeholder="Name or phone" value="${esc(S.cs)}" oninput="S.cs=this.value;clearTimeout(cT);cT=setTimeout(loadC,300)"></div></div>`;
   if (!S.customers) return head + loading;
-  return head + `<div class="card"><div class="table-wrap"><table><thead><tr><th>Customer</th><th>Store</th><th>Wallet ID</th><th class="r">Gold</th><th class="r">Silver</th><th>KYC</th><th>Joined</th></tr></thead><tbody>
-    ${S.customers.length ? S.customers.map((c) => `<tr><td><b>${esc(c.name)}</b><div class="sub">${phoneFmt(c.phone)}</div></td><td>${esc(jname(c.jeweller_id))}</td><td><code>${esc(c.wallet_id)}</code></td><td class="r num">${g4(c.gold_grams)}</td><td class="r num">${g4(c.silver_grams)}</td><td>${statusBadge(c.kyc_status)}</td><td>${dOnly(c.created_at)}</td></tr>`).join('') : emptyRow(7, 'No customers')}
+  return head + `<div class="card"><div class="table-wrap"><table><thead><tr><th>Customer</th><th>Store</th><th>Wallet ID</th><th class="r">Gold</th><th class="r">Silver</th><th>KYC</th><th>Joined</th><th></th></tr></thead><tbody>
+    ${S.customers.length ? S.customers.map((c) => `<tr><td><b>${esc(c.name)}</b><div class="sub">${phoneFmt(c.phone)}</div></td><td>${esc(jname(c.jeweller_id))}</td><td><code>${esc(c.wallet_id)}</code></td><td class="r num">${g4(c.gold_grams)}</td><td class="r num">${g4(c.silver_grams)}</td><td>${statusBadge(c.kyc_status)}</td><td>${dOnly(c.created_at)}</td><td class="r"><button class="btn sm" onclick="mCustomer('${c.id}')" data-mcust="${c.id}">${icon('eye')} Full details</button></td></tr>`).join('') : emptyRow(8, 'No customers')}
     </tbody></table></div></div>`;
 }
 
-const VIEWS = { overview: vOverview, jewellers: vJewellers, studio: vStudio, rates: vRates, pool: vPool, invoices: vInvoices, transactions: vTransactions, customers: vCustomers, pricing: vPricing, catalogue: vMCatalogue, content: vMContent, orders: vMOrders, kyc: vMKyc, settlement: vSettlement, sips: vMSips, referrals: vMRefs, gifts: vMGifts, redemptions: vMRed, goals: vMGoals, audit: vAudit };
-const LOAD = { overview: loadOv, jewellers: loadJ, studio: loadStudio, rates: loadRate, pool: loadPool, invoices: loadInv, transactions: loadTx, customers: loadC, pricing: loadPricing, catalogue: loadMCat, content: loadMContent, orders: loadMOrders, kyc: loadMKyc, settlement: loadSettle, sips: loadMSips, referrals: loadMRefs, gifts: loadMGifts, redemptions: loadMRed, goals: loadMGoals, audit: loadAudit };
+const VIEWS = { overview: vOverview, jewellers: vJewellers, studio: vStudio, security: vSecurity, rates: vRates, pool: vPool, invoices: vInvoices, transactions: vTransactions, customers: vCustomers, pricing: vPricing, catalogue: vMCatalogue, content: vMContent, orders: vMOrders, kyc: vMKyc, settlement: vSettlement, sips: vMSips, referrals: vMRefs, gifts: vMGifts, redemptions: vMRed, goals: vMGoals, audit: vAudit, mt5: vMt5 };
+const LOAD = { overview: loadOv, jewellers: loadJ, studio: loadStudio, security: loadCtl, rates: loadRate, pool: loadPool, invoices: loadInv, transactions: loadTx, customers: loadC, pricing: loadPricing, catalogue: loadMCat, content: loadMContent, orders: loadMOrders, kyc: loadMKyc, settlement: loadSettle, sips: loadMSips, referrals: loadMRefs, gifts: loadMGifts, redemptions: loadMRed, goals: loadMGoals, audit: loadAudit, mt5: loadMt5 };
 function boot() { if (!VIEWS[S.tab]) S.tab = 'overview'; render(); LOAD[S.tab](); if (S.tab !== 'jewellers') api('/master/jewellers').then((j) => { S.jewellers = j; }).catch(() => {}); }
 function feedAlert(p) {
   const f = p?.feed || S.feed;

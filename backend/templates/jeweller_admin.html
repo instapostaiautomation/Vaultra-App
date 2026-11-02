@@ -21,8 +21,8 @@ const S = {
 };
 const NAV = [
   ['Overview', [['dashboard', 'Dashboard', 'dashboard'], ['commission', 'Commission', 'commission'], ['orders', 'Orders', 'orders'], ['holdings', 'Wallet & Holdings', 'wallet'], ['sips', 'SIP', 'refresh']]],
-  ['Customers', [['customers', 'Customers', 'customers'], ['kyc', 'KYC', 'kyc'], ['redemptions', 'Redemptions', 'redeem'], ['goals', 'Gold Goals', 'target']]],
-  ['Store', [['catalogue', 'Catalogue', 'catalogue'], ['content', 'App Content', 'image'], ['gifts', 'Gifts', 'gifts'], ['referral', 'Referral', 'referral'], ['settings', 'Settings', 'settings']]],
+  ['Customers', [['customers', 'Customers', 'customers'], ['kyc', 'KYC', 'kyc'], ['redemptions', 'Redemptions', 'redeem'], ['goals', 'Goals', 'target']]],
+  ['Store', [['catalogue', 'Catalogue', 'catalogue'], ['content', 'App Content', 'image'], ['referral', 'Referral', 'referral'], ['settings', 'Settings', 'settings']]],
 ];
 const TITLES = Object.fromEntries(NAV.flatMap(([, items]) => items.map(([k, l]) => [k, l])));
 
@@ -83,7 +83,7 @@ function render() {
 }
 function go(tab) { S.tab = tab; localStorage.setItem('jp_tab', tab); $('#side')?.classList.remove('open'); render(); LOAD[tab]?.(); }
 const loading = '<div class="grid g4"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>';
-const kpi = (label, value, foot, ic, tone = '', id = '') => `<div class="card kpi" ${id ? `id="${id}"` : ''}><div class="icon ${tone}">${icon(ic)}</div><div class="label">${label}</div><div class="value num">${value}</div>${foot ? `<div class="foot">${foot}</div>` : ''}</div>`;
+const kpi = (label, value, foot, ic, tone = '', id = '', info = '') => `<div class="card kpi ${info ? 'click' : ''}" ${id ? `id="${id}"` : ''} ${info ? `onclick="dashInfo('${info}')" title="Tap for details" style="cursor:pointer"` : ''}><div class="icon ${tone}">${icon(ic)}</div><div class="label">${label}${info ? ' <span style="font-size:11px;color:var(--mute);border:1px solid var(--line,#E7E2D6);border-radius:9px;padding:0 5px">i</span>' : ''}</div><div class="value num">${value}</div>${foot ? `<div class="foot">${foot}</div>` : ''}</div>`;
 const emptyRow = (cols, t, s = '') => `<tr><td colspan="${cols}"><div class="empty"><b>${t}</b>${s}</div></td></tr>`;
 
 /* ── dashboard ────────────────────────── */
@@ -106,16 +106,16 @@ function vDashboard() {
   const b = d.booked, c = d.customers;
   return head + `
   <div class="grid g4">
-    ${kpi('Gold booked', g4(b.gold_g), inr0(b.gold_amt) + ' collected', 'coin', '', 'kpi-gold-booked')}
-    ${kpi('Silver booked', g4(b.silver_g), inr0(b.silver_amt) + ' collected', 'coin', 'gray', 'kpi-silver-booked')}
-    ${kpi('Orders', b.orders, `${b.redemptions} redemptions · ${g4(b.redeemed_g)}`, 'orders', 'blue')}
-    ${kpi('Total sales', inr0(b.gold_amt + b.silver_amt), `GST ${inr0(b.gst)}`, 'trend', 'green')}
+    ${kpi('Gold booked', g4(b.gold_g), inr0(b.gold_amt) + ' collected', 'coin', '', 'kpi-gold-booked', 'gold')}
+    ${kpi('Silver booked', g4(b.silver_g), inr0(b.silver_amt) + ' collected', 'coin', 'gray', 'kpi-silver-booked', 'silver')}
+    ${kpi('Orders', b.orders, `${b.redemptions} redemptions · ${g4(b.redeemed_g)}`, 'orders', 'blue', 'kpi-orders', 'orders')}
+    ${kpi('Total sales', inr0(b.gold_amt + b.silver_amt), `GST ${inr0(b.gst)}`, 'trend', 'green', 'kpi-sales', 'sales')}
   </div>
   <div class="grid g4 section">
-    ${kpi('Total customers', c.total, `${c.new} new ${rangeLabel(S.dr)}`, 'customers')}
-    ${kpi('Active customers', c.active, 'transacted ' + rangeLabel(S.dr), 'users', 'green', 'kpi-active')}
-    ${kpi('Inactive customers', c.inactive, 'no activity ' + rangeLabel(S.dr), 'usersOff', 'gray', 'kpi-inactive')}
-    ${kpi('Gold in customer vaults', g4(d.holdings.gold_g), `Silver ${g4(d.holdings.silver_g)}`, 'wallet')}
+    ${kpi('Total customers', c.total, `${c.new} new ${rangeLabel(S.dr)}`, 'customers', '', 'kpi-total', 'total')}
+    ${kpi('Active customers', c.active, 'transacted ' + rangeLabel(S.dr), 'users', 'green', 'kpi-active', 'active')}
+    ${kpi('Inactive customers', c.inactive, 'no activity ' + rangeLabel(S.dr), 'usersOff', 'gray', 'kpi-inactive', 'inactive')}
+    ${kpi('Metal in customer vaults', g4(d.holdings.gold_g), `Silver ${g4(d.holdings.silver_g)}`, 'wallet', '', 'kpi-vault', 'vault')}
   </div>
   <div class="grid section" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr)">
     <div class="card"><div class="card-h"><div><h3>Daily bookings</h3><p>Amount collected per day</p></div></div>${barChart(d.series, 'amount', inr0)}<div style="height:16px"></div></div>
@@ -131,6 +131,21 @@ function vDashboard() {
       <td>${o.side === 'buy' ? '<span class="badge green plain">Buy</span>' : '<span class="badge amber plain">Redeem</span>'}</td><td>${metalTag(o.metal)}</td>
       <td class="r num">${g4(o.grams)}</td><td class="r num"><b>${inr(o.total)}</b></td><td>${statusBadge(o.status)}</td></tr>`).join('') : emptyRow(7, 'No orders yet')}
     </tbody></table></div></div>`;
+}
+
+function dashInfo(k) {
+  const d = S.dash; if (!d) return; const b = d.booked, c = d.customers, r = rangeLabel(S.dr), p = d.price;
+  const M = {
+    gold: ['Gold booked', `Digital gold your customers bought ${r} (one-time buys + SIP instalments), after 3% GST was taken out of the grams.`, [['Gold grams', g4(b.gold_g)], ['Amount collected', inr(b.gold_amt)], ['Your gold rate now', rv(p, p.buy) + '/g']]],
+    silver: ['Silver booked', `Digital silver your customers bought ${r}, after 3% GST.`, [['Silver grams', g4(b.silver_g)], ['Amount collected', inr(b.silver_amt)], ['Your silver rate now', rv(p, p.silver?.buy) + '/g']]],
+    orders: ['Orders', `Every buy, SIP instalment and redemption ${r}.`, [['Buy orders', b.orders], ['Redemptions', b.redemptions], ['Grams redeemed', g4(b.redeemed_g)]]],
+    sales: ['Total sales', `Money collected from customers ${r}, including GST.`, [['Gold', inr(b.gold_amt)], ['Silver', inr(b.silver_amt)], ['GST inside this', inr(b.gst)], ['Your commission', inr(b.commission)]]],
+    total: ['Total customers', 'Everyone who has signed up in your app.', [['All customers', c.total], [`New ${r}`, c.new]]],
+    active: ['Active customers', `Customers who bought, ran a SIP or redeemed ${r}.`, [['Active', c.active], ['Share of all customers', c.total ? Math.round(c.active / c.total * 100) + '%' : '0%']]],
+    inactive: ['Inactive customers', `Signed-up customers with no activity ${r}. A good list for a call or WhatsApp offer.`, [['Inactive', c.inactive], ['Total customers', c.total]]],
+    vault: ['Metal in customer vaults', 'Gold and silver your customers hold with you right now (not yet redeemed).', [['Gold', g4(d.holdings.gold_g)], ['Silver', g4(d.holdings.silver_g)], ['Pickups waiting', d.pending.pickups]]],
+  }[k];
+  infoModal(...M);
 }
 
 /* ── commission ───────────────────────── */
@@ -253,43 +268,24 @@ function vHoldings() {
   if (!h) return head + loading;
   const t = h.totals;
   return head + `<div class="grid g4">
-      ${kpi('Gold held', g4(t.gold_g), `${t.customers} customers`, 'coin')}
-      ${kpi('Silver held', g4(t.silver_g), '999 fine', 'coin', 'gray')}
-      ${kpi('Value at your rate', inr0(t.value), 'gold + silver', 'wallet', 'green')}
+      ${kpi('Gold held', g4(t.gold_g), `Value ${inr0(t.gold_value)} · ${t.customers} customers`, 'coin', '', 'kpi-gold-held')}
+      ${kpi('Silver held', g4(t.silver_g), `Value ${inr0(t.silver_value)} · 999 fine`, 'coin', 'gray', 'kpi-silver-held')}
+      ${kpi('Total value at your rate', inr0(t.value), `gold ${inr0(t.gold_value)} + silver ${inr0(t.silver_value)}`, 'wallet', 'green')}
       ${kpi('Redeemed so far', g4(t.redeemed_g), 'collected from store', 'redeem', 'blue')}
     </div>
     <div class="card section"><div class="card-h"><div><h3>Customer holdings</h3><p>Sorted by gold held</p></div>
       <input class="input search" placeholder="Name, phone or wallet ID" value="${esc(S.hsearch)}" id="hold-search" oninput="S.hsearch=this.value;clearTimeout(hTimer);hTimer=setTimeout(loadHold,300)"></div>
-      <div class="table-wrap"><table><thead><tr><th>Customer</th><th>Wallet ID</th><th class="r">Gold</th><th class="r">Silver</th><th class="r">Value</th><th class="r">Invested</th><th class="r">Redeemed</th><th>Last activity</th></tr></thead><tbody>
+      <div class="table-wrap"><table><thead><tr><th>Customer</th><th>Wallet ID</th><th class="r">Gold</th><th class="r">Gold value</th><th class="r">Avg gold buy</th><th class="r">Silver</th><th class="r">Silver value</th><th class="r">Avg silver buy</th><th class="r">Invested</th><th class="r">Redeemed</th><th>Last activity</th></tr></thead><tbody>
       ${h.customers.length ? h.customers.map((c) => `<tr class="click" onclick="openHolding('${c.id}')" data-holding="${c.id}"><td><div style="display:flex;gap:10px;align-items:center"><div class="avatar">${esc(initials(c.name))}</div><div><b>${esc(c.name)}</b><div class="sub">${phoneFmt(c.phone)}</div></div></div></td>
-        <td><code>${esc(c.wallet_id)}</code></td><td class="r num"><b>${g4(c.gold_g)}</b></td><td class="r num">${g4(c.silver_g)}</td><td class="r num">${inr0(c.value)}</td><td class="r num">${inr0(c.invested)}</td><td class="r num">${g4(c.redeemed_g)}</td><td>${c.last_activity ? dt(c.last_activity) : '<span style="color:var(--mute)">No activity</span>'}</td></tr>`).join('') : emptyRow(8, 'No customers found')}
+        <td><code>${esc(c.wallet_id)}</code></td><td class="r num"><b>${g4(c.gold_g)}</b></td><td class="r num">${inr0(c.gold_value)}</td><td class="r num">${c.avg_gold ? inr(c.avg_gold) + '/g' : '—'}</td><td class="r num">${g4(c.silver_g)}</td><td class="r num">${inr0(c.silver_value)}</td><td class="r num">${c.avg_silver ? inr(c.avg_silver) + '/g' : '—'}</td><td class="r num">${inr0(c.invested)}</td><td class="r num">${g4(c.redeemed_g)}</td><td>${c.last_activity ? dt(c.last_activity) : '<span style="color:var(--mute)">No activity</span>'}</td></tr>`).join('') : emptyRow(12, 'No customers found')}
       </tbody></table></div></div>`;
 }
 async function openHolding(id) {
   openDrawer('<div class="drawer-b"><div class="skeleton"></div><div class="skeleton"></div></div>');
   try {
-    const d = await api('/jeweller/v3/holdings/' + id); const c = d.customer;
-    const evIc = (o) => o.side === 'redeem' ? '<div class="ic out">↗</div>' : o.type.startsWith('gift') ? '<div class="ic gift">♦</div>' : '<div class="ic">+</div>';
-    const lbl = { buy: 'Bought', buy_silver: 'Bought', sip: 'SIP purchase', redemption: 'Redeemed', gift_sent: 'Gift sent', gift_received: 'Gift received', referral_bonus: 'Referral bonus' };
-    openDrawer(`<div class="drawer-h"><div class="avatar" style="width:46px;height:46px;font-size:16px">${esc(initials(c.name))}</div><div style="flex:1;min-width:0"><h3 style="font-size:18px">${esc(c.name)}</h3><div style="font-size:13px;color:var(--mute)">${phoneFmt(c.phone)} · ${esc(c.wallet_id)}</div></div><button class="x" onclick="closeDrawer()">×</button></div>
-      <div class="drawer-b">
-        <div class="card" style="background:linear-gradient(135deg,#1A1710,#2E2614);color:#fff;border:0;padding:20px">
-          <div style="font-size:12px;color:#CDBF98">Current holdings</div>
-          <div style="display:flex;gap:28px;margin-top:8px;flex-wrap:wrap"><div><div style="font-size:26px;font-weight:700" class="num">${g4(c.gold_grams)}</div><div style="font-size:12px;color:#CDBF98">Gold 24K</div></div>
-          <div><div style="font-size:26px;font-weight:700" class="num">${g4(c.silver_grams)}</div><div style="font-size:12px;color:#CDBF98">Silver 999</div></div>
-          <div><div style="font-size:26px;font-weight:700;color:var(--gold2)" class="num">${inr0(d.value)}</div><div style="font-size:12px;color:#CDBF98">Value today</div></div></div></div>
-        <div class="grid g2"><div class="card pad"><div style="font-size:12px;color:var(--mute)">Purchased</div><div style="font-size:18px;font-weight:700;margin-top:4px" class="num">${g4(d.purchased.gold_g)} <span style="font-size:13px;color:var(--mute)">gold</span></div><div style="font-size:13px;color:var(--mute)" class="num">${g4(d.purchased.silver_g)} silver · ${inr0(d.purchased.amount)} · ${d.purchased.count} orders</div></div>
-          <div class="card pad"><div style="font-size:12px;color:var(--mute)">Redeemed</div><div style="font-size:18px;font-weight:700;margin-top:4px" class="num">${g4(d.redeemed.gold_g)} <span style="font-size:13px;color:var(--mute)">gold</span></div><div style="font-size:13px;color:var(--mute)" class="num">${g4(d.redeemed.silver_g)} silver · ${d.redeemed.count} redemptions</div></div></div>
-        <div class="card pad"><div class="kv"><span>KYC</span><b>${statusBadge(c.kyc_status)}</b></div><div class="kv"><span>Account</span><b>${statusBadge(c.status || 'active')}</b></div><div class="kv"><span>Average buy price</span><b class="num">${inr(c.avg_buy_price)}/g</b></div><div class="kv"><span>Customer since</span><b>${dOnly(c.created_at)}</b></div></div>
-        ${d.pickups.length ? `<div class="card"><div class="card-h"><h3>Store pickups</h3></div><div class="list">${d.pickups.map((p) => `<div class="item"><div class="grow"><div class="t">${esc(p.item)}</div><div class="s">${g4(p.grams)} · ${dt(p.created_at)}</div></div>${statusBadge(p.status)}</div>`).join('')}</div></div>` : ''}
-        <div class="card"><div class="card-h"><h3>Activity</h3><span style="font-size:12px;color:var(--mute)">${d.timeline.length} entries</span></div><div class="timeline">
-          ${d.timeline.length ? d.timeline.map((o) => `<div class="ev">${evIc(o)}<div class="grow"><div style="font-weight:600">${lbl[o.type] || o.type} · ${metalTag(o.metal)}</div><div style="font-size:12px;color:var(--mute)">${dt(o.created_at)} · ${esc(o.invoice_no)}</div></div>
-            <div style="text-align:right"><div class="num" style="font-weight:600">${o.side === 'redeem' || o.type === 'gift_sent' ? '−' : '+'}${g4(o.grams)}</div><div style="font-size:12px;color:var(--mute)" class="num">${inr(o.total)}</div></div></div>`).join('') : '<div class="empty">No activity yet</div>'}
-        </div></div>
-      </div>`);
+    customerDrawer(await api('/jeweller/v3/holdings/' + id), false);
   } catch (e) { closeDrawer(); toast(e.message, true); }
 }
-
 /* ── customers ────────────────────────── */
 async function loadCustomers() { try { S.customers = await api('/jeweller/customers?search=' + encodeURIComponent(S.csearch)); } catch (e) { toast(e.message, true); } if (S.tab === 'customers') render(); }
 let cTimer;
@@ -310,12 +306,17 @@ function vKyc() {
   const head = `<div class="page-head"><div><h2>KYC</h2><p>Verify customer identity before they redeem metal.</p></div></div>`;
   if (!S.kyc) return head + loading;
   return head + `<div class="card"><div class="card-h"><h3>Pending review</h3><span class="badge amber">${S.kyc.length} waiting</span></div>
-    <div class="table-wrap"><table><thead><tr><th>Customer</th><th>PAN</th><th>Aadhaar</th><th>Submitted details</th><th></th></tr></thead><tbody>
+    <div class="table-wrap"><table><thead><tr><th>Customer</th><th>PAN</th><th>Aadhaar</th><th>Submitted details</th><th>Photo</th><th></th></tr></thead><tbody>
     ${S.kyc.length ? S.kyc.map((c) => { const k = c.kyc || {}; return `<tr><td><b>${esc(c.name)}</b><div class="sub">${phoneFmt(c.phone)}</div></td>
       <td><code>${esc(k.pan || '—')}</code></td><td><code>${esc(k.aadhaar ? 'XXXX XXXX ' + String(k.aadhaar).slice(-4) : '—')}</code></td>
       <td>${esc(k.name || k.full_name || c.name)}<div class="sub">${esc(k.dob || c.dob || '')}</div></td>
-      <td class="r" style="white-space:nowrap"><button class="btn sm danger" onclick="decideKyc('${c.id}',false)">Reject</button> <button class="btn sm primary" onclick="decideKyc('${c.id}',true)">Approve</button></td></tr>`; }).join('') : emptyRow(5, 'All caught up', 'No KYC requests are waiting.')}
+      <td>${k.photo_id ? '<span class="badge green plain">Added</span>' : '<span class="badge plain">None</span>'}</td>
+      <td class="r" style="white-space:nowrap"><button class="btn sm" onclick="kycView('${c.id}')" data-kyc-view="${c.id}">${icon('eye')} Full details</button> <button class="btn sm danger" onclick="decideKyc('${c.id}',false)">Reject</button> <button class="btn sm primary" onclick="decideKyc('${c.id}',true)">Approve</button></td></tr>`; }).join('') : emptyRow(6, 'All caught up', 'No KYC requests are waiting.')}
     </tbody></table></div></div>`;
+}
+function kycView(id) {
+  const c = S.kyc.find((x) => x.id === id);
+  kycDetails(c, `/jeweller/v3/kyc/${id}/photo`, 'jeweller_token', `<button class="btn danger" onclick="closeModal();decideKyc('${id}',false)">Reject</button><button class="btn primary" onclick="closeModal();decideKyc('${id}',true)">Approve</button>`);
 }
 async function decideKyc(id, ok) { try { await api(`/jeweller/kyc/${id}/decide?approve=${ok}`, { method: 'POST' }); toast(ok ? 'KYC approved' : 'KYC rejected'); loadKyc(); loadDash(); } catch (e) { toast(e.message, true); } }
 
@@ -384,12 +385,14 @@ function vGifts() {
       <td class="r num">${g4(g.grams)}</td><td class="r num">${inr(g.amount)}</td><td style="text-transform:capitalize">${esc(g.theme)}</td><td>${g.seen ? '<span class="badge green">Opened</span>' : '<span class="badge plain">Delivered</span>'}</td></tr>`).join('') : emptyRow(7, 'No gifts yet')}
     </tbody></table></div></div>`;
 }
-async function loadRefs() { try { S.refs = await api('/jeweller/v3/referrals'); } catch (e) { toast(e.message, true); } if (S.tab === 'referral') render(); }
+async function loadRefs() { try { const [refs, rw] = await Promise.all([api('/jeweller/v3/referrals'), api('/jeweller/v3/referral-reward')]); S.refs = refs; S.refReward = rw.amount; } catch (e) { toast(e.message, true); } if (S.tab === 'referral') render(); }
+async function saveRefReward() { try { const r = await api('/jeweller/v3/referral-reward', { method: 'PUT', body: { amount: Number($('#ref-reward').value || 0) } }); S.refReward = r.amount; toast('Referral reward updated'); } catch (e) { toast(e.message, true); } }
 function vReferral() {
   const head = `<div class="page-head"><div><h2>Referral</h2><p>Customers who brought their friends to your store.</p></div></div>`;
   if (!S.refs) return head + loading;
   const r = S.refs;
-  return head + `<div class="grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1.6fr)">
+  return head + `<div class="card pad section" style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap"><div class="field" style="margin:0;flex:1;min-width:220px"><label>Referral reward (₹) — given to both the new customer and the referrer in the app</label><div class="prefix"><span>₹</span><input class="input num" id="ref-reward" type="number" min="0" max="10000" step="1" value="${S.refReward ?? 50}"></div></div><button class="btn primary" onclick="saveRefReward()" id="ref-reward-save">Save reward</button></div>
+  <div class="grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1.6fr)">
     <div class="card"><div class="card-h"><h3>Top referrers</h3></div><div class="list">${r.top.length ? r.top.map((t, i) => `<div class="item"><div class="avatar">${i + 1}</div><div class="grow"><div class="t">${esc(t.name)}</div><div class="s">${esc(t.code)} · ${phoneFmt(t.phone)}</div></div><div style="text-align:right"><b>${t.count}</b><div class="s">${inr(t.earned)} earned</div></div></div>`).join('') : '<div class="empty">No referrals yet</div>'}</div></div>
     <div class="card"><div class="card-h"><h3>All referrals</h3><span class="badge plain">${r.referrals.length}</span></div><div class="table-wrap"><table><thead><tr><th>Referred by</th><th>New customer</th><th>Joined</th><th>Status</th></tr></thead><tbody>
     ${r.referrals.length ? r.referrals.map((x) => `<tr><td><b>${esc(x.referrer)}</b><div class="sub">${esc(x.code)}</div></td><td><b>${esc(x.referred)}</b><div class="sub">${phoneFmt(x.referred_phone)}</div></td><td>${dOnly(x.joined)}</td><td>${x.has_gold ? '<span class="badge green">Bought gold</span>' : '<span class="badge plain">Signed up</span>'}</td></tr>`).join('') : emptyRow(4, 'No referrals yet')}
@@ -434,6 +437,27 @@ setInterval(async () => {
   if (!S.me) return;
   try { S.price = await api('/price?jeweller_id=' + S.me.id); const chip = $('#ratechip'); if (chip) chip.outerHTML = rateChip(S.price); refreshLiveRates(); } catch {}
 }, 5000);
+// Customer redeem requests → Accept / Decline pop-up
+S.rrSeen = S.rrSeen || {};
+async function pollRedeemRequests() {
+  if (!S.me || $('#rr-modal')) return;
+  try {
+    const list = await api('/jeweller/v3/redeem-requests');
+    const r = list.find((x) => !S.rrSeen[x.id]); if (!r) return;
+    const m = document.createElement('div'); m.id = 'rr-modal'; m.className = 'overlay';
+    m.innerHTML = `<div class="modal" style="max-width:420px" role="dialog" data-testid="redeem-request-modal"><div class="modal-h"><h3>Redeem request</h3><button class="btn ghost sm" id="rr-x" aria-label="Close">✕</button></div>
+      <div style="padding:4px 20px 20px"><div class="kv"><span>Wallet ID</span><b class="num">${esc(r.wallet_id)}</b></div><div class="kv"><span>Customer</span><b>${esc(r.name || '—')}</b></div>
+      <div class="kv"><span>Mobile</span><b>${esc(r.phone)}</b></div><div class="kv"><span>Wants</span><b>${esc(r.item || '24K Gold')}</b></div><div class="kv"><span>Grams requested</span><b class="num" style="font-size:20px">${Number(r.grams).toFixed(4)} g</b></div>
+      <div class="kv"><span>Vault balance</span><b class="num">${Number(r.balance).toFixed(4)} g</b></div>
+      <div style="display:flex;gap:10px;margin-top:16px"><button class="btn" style="flex:1" id="rr-no">Decline</button><button class="btn primary" style="flex:2" id="rr-yes">Accept</button></div></div></div>`;
+    document.body.appendChild(m);
+    const done = () => { S.rrSeen[r.id] = 1; m.remove(); };
+    $('#rr-x').onclick = done;
+    const act = async (a) => { try { const res = await api(`/jeweller/v3/redeem-requests/${r.id}/${a}`, { method: 'POST' }); toast(a === 'accept' ? 'Accepted · customer gets a pickup OTP in the app' : 'Request declined'); m.remove(); loadPickups(); loadDash?.(); } catch (e) { toast(e.message, true); done(); } };
+    $('#rr-yes').onclick = () => act('accept'); $('#rr-no').onclick = () => act('reject');
+  } catch {}
+}
+setInterval(pollRedeemRequests, 8000);
 (async () => {
   try { const r = await fetch(`${API}/tenant/resolve?host=${encodeURIComponent(location.hostname)}`); if (r.ok) { S.tenant = (await r.json()).jeweller; document.title = S.tenant.business_name + ' · Shop Panel'; } } catch {}
   if (localStorage.getItem('jeweller_token')) boot(); else render();

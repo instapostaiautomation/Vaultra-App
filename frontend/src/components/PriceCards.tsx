@@ -8,7 +8,7 @@ import { colors, fonts, cardShadow } from "@/src/theme";
 export function PriceCards() {
   const { price } = useApp();
   const live = !!price?.live;
-  const paused = !!price?.offline;
+  const paused = !!price?.offline || !!price?.rates_hidden;
   const liveLabel = live ? "Live Rate" : paused ? "Rates Paused" : "Indicative Rate";
   const goldUp = (price?.change_pct ?? 0) >= 0;
   const silverUp = (price?.silver?.change_pct ?? 0) >= 0;

@@ -27,10 +27,10 @@ const loadMCat = () => safe(async () => { await needJ(); S.mcat = await api('/ma
 function vMCatalogue() {
   const head = ph('Catalogue', 'Every product across all shops, priced at live rate + shop commission + making %.', shopSel(S.catJ, "S.catJ=this.value;loadMCat()"));
   const c = S.mcat; if (!c) return head + loading;
-  return head + `<div class="card"><div class="table-wrap"><table><thead><tr><th>Image</th><th>Product</th><th>Shop</th><th class="r">Weight</th><th class="r">Rate / g</th><th class="r">Making</th><th class="r">Price</th><th></th></tr></thead><tbody>
+  return head + `<div class="card"><div class="table-wrap"><table><thead><tr><th>Image</th><th>Product</th><th>Shop</th><th class="r">Weight</th><th>Purity</th><th class="r">Rate / g</th><th class="r">Making</th><th class="r">Price</th><th></th></tr></thead><tbody>
     ${c.products.length ? c.products.map((p) => `<tr><td><div class="thumb" style="background-image:url('${esc(p.image_url)}')"></div></td><td><b>${esc(p.name)}</b><div class="sub"><code>${esc(p.sku)}</code></div></td><td>${esc(p.shop)}</td>
-      <td class="r num">${g4(p.grams)}</td><td class="r num">${inr(p.buy_rate)}</td><td class="r num">${p.making_pct}%</td><td class="r num"><b>${inr0(p.total_price)}</b></td>
-      <td class="r"><button class="btn sm danger" onclick="mDel('products','${p.id}',loadMCat)">Remove</button></td></tr>`).join('') : emptyRow(8, 'No products')}</tbody></table></div></div>`;
+      <td class="r num">${g4(p.grams)}</td><td>${esc(p.purity)} · ${p.purity_pct}%</td><td class="r num">${inr(p.buy_rate)}</td><td class="r num">${p.making_pct}%<div class="sub">${inr0(p.making_amount)}</div></td><td class="r num"><b>${inr0(p.total_price)}</b></td>
+      <td class="r"><button class="btn sm danger" onclick="mDel('products','${p.id}',loadMCat)">Remove</button></td></tr>`).join('') : emptyRow(9, 'No products')}</tbody></table></div></div>`;
 }
 async function mDel(kind, id, after) { if (!confirm('Remove this item?')) return; try { await api(`/master/v3/${kind}/${id}`, { method: 'DELETE' }); toast('Removed'); after(); } catch (e) { toast(e.message, true); } }
 
@@ -79,9 +79,9 @@ const loadMKyc = () => safe(async () => { S.mkyc = await api('/master/v3/kyc?sta
 function vMKyc() {
   const head = ph('KYC', 'Identity checks across all shops.', `<div class="seg">${[['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['all', 'All']].map(([k, l]) => `<button class="${S.mk === k ? 'on' : ''}" onclick="S.mk='${k}';loadMKyc()">${l}</button>`).join('')}</div>`);
   const k = S.mkyc; if (!k) return head + loading;
-  return head + `<div class="card"><div class="table-wrap"><table><thead><tr><th>Customer</th><th>Shop</th><th>PAN</th><th>Status</th><th></th></tr></thead><tbody>
-    ${k.length ? k.map((c) => `<tr><td><b>${esc(c.name)}</b><div class="sub">${phoneFmt(c.phone)}</div></td><td>${esc(c.shop)}</td><td><code>${esc((c.kyc || {}).pan || '—')}</code></td><td>${statusBadge(c.kyc_status)}</td>
-      <td class="r" style="white-space:nowrap">${c.kyc_status === 'pending' ? `<button class="btn sm danger" onclick="mKyc('${c.id}',false)">Reject</button> <button class="btn sm primary" onclick="mKyc('${c.id}',true)">Approve</button>` : ''}</td></tr>`).join('') : emptyRow(5, 'Nothing here')}</tbody></table></div></div>`;
+  return head + `<div class="card"><div class="table-wrap"><table><thead><tr><th>Customer</th><th>Shop</th><th>PAN</th><th>Photo</th><th>Status</th><th></th></tr></thead><tbody>
+    ${k.length ? k.map((c) => `<tr><td><b>${esc(c.name)}</b><div class="sub">${phoneFmt(c.phone)}</div></td><td>${esc(c.shop)}</td><td><code>${esc((c.kyc || {}).pan || '—')}</code></td><td>${(c.kyc || {}).photo_id ? '<span class="badge green plain">Added</span>' : '<span class="badge plain">None</span>'}</td><td>${statusBadge(c.kyc_status)}</td>
+      <td class="r" style="white-space:nowrap"><button class="btn sm" onclick="mKycView('${c.id}')">${icon('eye')} Full details</button> ${c.kyc_status === 'pending' ? `<button class="btn sm danger" onclick="mKyc('${c.id}',false)">Reject</button> <button class="btn sm primary" onclick="mKyc('${c.id}',true)">Approve</button>` : ''}</td></tr>`).join('') : emptyRow(6, 'Nothing here')}</tbody></table></div></div>`;
 }
 async function mKyc(id, ok) { try { await api(`/master/v3/kyc/${id}/decide?approve=${ok}`, { method: 'POST' }); toast(ok ? 'Approved' : 'Rejected'); loadMKyc(); } catch (e) { toast(e.message, true); } }
 
@@ -114,11 +114,63 @@ const vMGifts = () => tableView('Gifts', 'Gold gifted between customers.', S.mgi
   (g) => `<tr><td>${dt(g.created_at)}</td><td>${esc(g.sender)}</td><td>${esc(g.recipient)}</td><td>${esc(g.shop)}</td><td class="r num">${g4(g.grams)}</td><td class="r num">${inr(g.amount)}</td><td>${g.seen ? '<span class="badge green">Opened</span>' : '<span class="badge plain">Delivered</span>'}</td></tr>`);
 const vMRed = () => tableView('Redemptions', 'Physical coins and jewellery handed over at shops.', S.mred, ['Requested', 'Customer', 'Shop', 'Item', '>Grams', '>Making', 'Status'],
   (p) => `<tr><td>${dt(p.created_at)}</td><td><b>${esc(p.customer)}</b><div class="sub">${phoneFmt(p.phone)}</div></td><td>${esc(p.shop)}</td><td>${esc(p.item)}</td><td class="r num">${g4(p.grams)}</td><td class="r num">${inr(p.making_charges)}</td><td>${statusBadge(p.status)}</td></tr>`);
-const vMGoals = () => ph('Gold Goals', 'What customers are saving towards.') + (S.mgoals ? goalsTable(S.mgoals, true) : loading);
+const vMGoals = () => ph('Gold & Silver Goals', 'What customers are saving towards.') + (S.mgoals ? goalsTable(S.mgoals, true) : loading);
 const vAudit = () => tableView('Audit Log', 'Every important change made by shops and admins.', S.audit, ['When', 'By', 'Action', 'Target', 'Details'],
   (a) => `<tr><td>${dt(a.created_at)}</td><td><b>${esc(a.actor)}</b><div class="sub" style="text-transform:capitalize">${esc(a.actor_type)}</div></td><td><span class="badge gold plain">${esc(AUDIT_LABEL[a.action] || a.action.replace('.', ' · '))}</span></td><td>${esc(a.target)}</td><td class="sub">${esc(Object.entries(a.detail || {}).map(([k, v]) => k + ': ' + v).join(' · '))}</td></tr>`);
 S.msf = { status: 'all', search: '' }; let msT;
 const loadMSips = () => safe(async () => { S.msips = await api(`/master/v3/sips?status=${S.msf.status}&search=${encodeURIComponent(S.msf.search)}`); }, 'sips');
 function mSipStatus(k) { S.msf.status = k; loadMSips(); }
 function mSipSearch(v) { S.msf.search = v; clearTimeout(msT); msT = setTimeout(loadMSips, 300); }
-const vMSips = () => ph('SIP', 'Systematic gold savings across every shop.') + (S.msips ? sipView(S.msips, S.msf, 'mSipStatus', 'mSipSearch', true) : loading);
+const vMSips = () => ph('SIP', 'Gold and silver SIPs across every shop.') + (S.msips ? sipView(S.msips, S.msf, 'mSipStatus', 'mSipSearch', true) : loading);
+
+/* shop catalogue drawer, customer details, KYC details */
+async function shopCatalogue(jid) {
+  openDrawer('<div class="drawer-b"><div class="skeleton"></div></div>');
+  try {
+    const c = await api('/master/v3/catalogue?jeweller_id=' + jid); const name = jname(jid);
+    openDrawer(`<div class="drawer-h"><div style="flex:1"><h3 style="font-size:18px">${esc(name)} · Catalogue</h3><div style="font-size:13px;color:var(--mute)">${c.products.length} products · live prices</div></div><button class="x" onclick="closeDrawer()">×</button></div>
+      <div class="drawer-b" data-testid="shop-catalogue-drawer">${c.products.length ? c.products.map((p) => `<div class="card" style="display:flex;gap:14px;padding:14px;align-items:flex-start">
+        <div class="thumb" style="width:84px;height:84px;flex-shrink:0;background-image:url('${esc(p.image_url)}')"></div>
+        <div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(p.name)}</b><b class="num">${inr0(p.total_price)}</b></div>
+          <div class="sub"><code>${esc(p.sku)}</code> · <span style="text-transform:capitalize">${esc(p.category.replace('-', ' '))}</span>${p.tag ? ' · ' + esc(p.tag) : ''}</div>
+          <div class="kv"><span>Weight</span><b>${g4(p.grams)}</b></div><div class="kv"><span>Purity</span><b>${esc(p.purity)} (${p.purity_pct}%)</b></div>
+          <div class="kv"><span>Rate</span><b>${inr(p.buy_rate)}/g</b></div><div class="kv"><span>Metal value</span><b>${inr0(p.metal_value)}</b></div><div class="kv"><span>Making ${p.making_pct}%</span><b>${inr0(p.making_amount)}</b></div>
+          ${p.description ? `<div class="sub" style="margin-top:6px">${esc(p.description)}</div>` : ''}</div></div>`).join('') : '<div class="empty"><b>No products</b>This shop has not added any products yet.</div>'}</div>`);
+  } catch (e) { closeDrawer(); toast(e.message, true); }
+}
+async function mCustomer(id) {
+  openDrawer('<div class="drawer-b"><div class="skeleton"></div></div>');
+  try { const d = await api('/master/v3/customers/' + id); customerDrawer(d, true);
+    const c = d.customer; if (c.kyc_status !== 'not_submitted') $('#drawer .drawer-b').insertAdjacentHTML('afterbegin', `<button class="btn" onclick='mKycOpen(${JSON.stringify(c).replace(/'/g, '&#39;')})'>${icon('kyc')} View KYC details</button>`);
+  } catch (e) { closeDrawer(); toast(e.message, true); }
+}
+function mKycOpen(c) { kycDetails(c, `/master/v3/kyc/${c.id}/photo`, 'master_token'); }
+function mKycView(id) {
+  const c = S.mkyc.find((x) => x.id === id);
+  kycDetails(c, `/master/v3/kyc/${id}/photo`, 'master_token', c.kyc_status === 'pending' ? `<button class="btn danger" onclick="closeModal();mKyc('${id}',false)">Reject</button><button class="btn primary" onclick="closeModal();mKyc('${id}',true)">Approve</button>` : '');
+}
+
+/* MT5 bookings */
+const loadMt5 = () => safe(async () => { S.mt5 = await api('/master/v3/mt5-bookings'); }, 'mt5');
+function vMt5() {
+  const head = ph('MT5 Bookings', 'Every app purchase is added up. When the total reaches the minimum lot, a BUY order is placed on your MT5 account automatically.', `<button class="btn" onclick="mt5Positions()">${icon('eye')} Open positions</button> <button class="btn primary" onclick="mt5Retry()" id="mt5-retry">${icon('refresh')} Book now / retry</button>`);
+  const m = S.mt5; if (!m) return head + loading; const c = m.config;
+  const ok = m.bookings.filter((b) => b.status === 'booked'), bad = m.bookings.filter((b) => b.status === 'failed');
+  return head + `${!m.configured ? '<div class="note">MT5 server link is not set, so orders cannot be placed.</div>' : ''}
+    <div class="grid g4">${kpi('Gold waiting', g4(m.pending.gold), `books at ${g4(c.gold_lot_g * c.min_volume)} (${m.symbols.gold})`, 'coin')}${kpi('Silver waiting', g4(m.pending.silver), `books at ${g4(c.silver_lot_g * c.min_volume)} (${m.symbols.silver})`, 'coin', 'gray')}
+      ${kpi('Orders booked', ok.length, g4(ok.reduce((a, b) => a + b.grams, 0)) + ' covered', 'orders', 'green')}${kpi('Failed attempts', bad.length, bad[0] ? esc(bad[0].error.slice(0, 60)) : 'none', 'shield', bad.length ? 'red' : '')}</div>
+    <div class="card pad section"><div style="font-weight:600;margin-bottom:12px">Booking settings</div><div class="grid g4" style="align-items:end">
+      <div class="field"><label>Gold: grams in 1 lot</label><input class="input num" id="m5g" type="number" step="0.01" min="0.01" value="${c.gold_lot_g}"></div>
+      <div class="field"><label>Silver: grams in 1 lot</label><input class="input num" id="m5s" type="number" step="1" min="1" value="${c.silver_lot_g}"></div>
+      <div class="field"><label>Smallest volume</label><input class="input num" id="m5v" type="number" step="0.01" min="0.01" value="${c.min_volume}"></div>
+      <div class="field"><label>Volume step</label><input class="input num" id="m5t" type="number" step="0.01" min="0.01" value="${c.step}"></div>
+      <div class="field"><label>Largest volume per order</label><input class="input num" id="m5x" type="number" step="0.01" min="0.01" value="${c.max_volume}"></div>
+      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="m5e" ${c.enabled ? 'checked' : ''}> Auto-booking on</label>
+      <div><button class="btn primary" onclick="mt5Save()" id="mt5-save">Save settings</button></div></div></div>
+    <div class="card section"><div class="table-wrap"><table><thead><tr><th>When</th><th>Metal</th><th>Symbol</th><th class="r">Volume</th><th class="r">Grams</th><th>Ticket</th><th>Status</th><th>Details</th></tr></thead><tbody>
+    ${m.bookings.length ? m.bookings.map((b) => `<tr><td>${dt(b.created_at)}<div class="sub">${esc(b.trigger)}</div></td><td>${metalTag(b.metal)}</td><td><code>${esc(b.symbol)}</code></td><td class="r num">${b.volume}</td><td class="r num">${g4(b.grams)}</td><td><code>${esc(b.ticket || '—')}</code></td>
+      <td>${b.status === 'booked' ? '<span class="badge green">Booked</span>' : '<span class="badge red">Failed</span>'}</td><td class="sub" style="max-width:320px">${esc(b.error || (b.price ? 'at ' + b.price : ''))}</td></tr>`).join('') : emptyRow(8, 'No MT5 orders yet')}</tbody></table></div></div>`;
+}
+async function mt5Save() { try { await api('/master/v3/mt5-bookings/config', { method: 'PUT', body: { enabled: $('#m5e').checked, gold_lot_g: Number($('#m5g').value), silver_lot_g: Number($('#m5s').value), min_volume: Number($('#m5v').value), step: Number($('#m5t').value), max_volume: Number($('#m5x').value) } }); toast('Saved'); loadMt5(); } catch (e) { toast(e.message, true); } }
+async function mt5Retry() { const b = $('#mt5-retry'); b.disabled = true; try { const r = await api('/master/v3/mt5-bookings/retry', { method: 'POST' }); const v = Object.values(r.result); toast(v.includes(true) ? 'Order booked on MT5' : v.includes(false) ? 'MT5 refused the order — see details' : 'Not enough grams waiting for a full lot yet', v.includes(false)); loadMt5(); } catch (e) { toast(e.message, true); b.disabled = false; } }
+async function mt5Positions() { try { const p = await api('/master/v3/mt5-positions'); openModal(`<div class="modal-h"><h3>Open MT5 positions</h3><button class="x" onclick="closeModal()">×</button></div><div class="modal-b">${Array.isArray(p) && p.length ? `<table><thead><tr><th>Ticket</th><th>Symbol</th><th>Type</th><th class="r">Volume</th><th class="r">Open price</th><th class="r">P/L</th></tr></thead><tbody>${p.map((x) => `<tr><td>${esc(x.ticket)}</td><td>${esc(x.symbol)}</td><td>${esc(x.type)}</td><td class="r">${x.volume}</td><td class="r">${x.price_open}</td><td class="r">${inr(x.profit)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">No open positions</div>'}</div>`, true); } catch (e) { toast(e.message, true); } }

@@ -12,7 +12,7 @@ import { useApp } from "@/src/store/AppContext";
 import { colors, fonts, radius } from "@/src/theme";
 
 const QUICK = [500, 1000, 2000, 5000];
-const LOCK_SECONDS = 5 * 60;
+const LOCK_SECONDS = 2 * 60;
 
 export function BuyWidget() {
   const router = useRouter();
@@ -29,7 +29,7 @@ export function BuyWidget() {
   const [lastTxn, setLastTxn] = useState<any>(null);
 
   const liveRate = price?.has_live === false ? 0 : metal === "gold" ? price?.buy ?? 0 : price?.silver?.buy ?? 0;
-  const paused = !!price?.offline;
+  const paused = !!price?.offline || price?.booking_enabled === false || !!price?.rates_hidden;
   const priceReady = !!price;
 
   const lock = useCallback(async () => {
@@ -57,10 +57,12 @@ export function BuyWidget() {
 
   const rate = quote?.buy ?? liveRate;
   const n = parseFloat(val) || 0;
-  const g = mode === "rupees" ? (rate ? Math.floor((n / rate) * 10000) / 10000 : 0) : n;
-  const amt = mode === "rupees" ? n : n * rate;
-  const gst = amt * 0.03;
-  const total = amt + gst;
+  // GST-inclusive: customer pays exactly the amount; 3% GST is taken out of the grams
+  const total = mode === "rupees" ? n : n * rate;
+  const gst = total * 0.03;
+  const amt = total - gst;
+  const g = rate ? Math.floor((amt / rate) * 10000) / 10000 : 0;
+  const minInv = price?.min_investment ?? 500;
   const mm = Math.floor(secs / 60);
   const ss = secs % 60;
   const metalLabel = metal === "gold" ? "24K Gold" : "Silver";
@@ -68,6 +70,16 @@ export function BuyWidget() {
   const proceedToBuy = async () => {
     if (!token) { router.push("/login"); return; }
     if (n <= 0 || !quote) { toast("info", "Enter an amount first"); return; }
+    if (total < minInv) { toast("info", `Minimum investment is ₹${minInv.toLocaleString("en-IN")}`); return; }
+    // Freeze a fresh price at the moment the customer taps Proceed (2 minutes)
+    try {
+      const q = await api(metal === "gold" ? "/quote" : "/quote/silver", { method: "POST", body: { tenant }, auth: "none" });
+      setQuote(q);
+      setSecs(q.lock_seconds || LOCK_SECONDS);
+    } catch (e: any) {
+      toast("error", e?.message || "Could not lock price. Please retry");
+      return;
+    }
     setShowPay(true);
     setPayStage("select");
   };
@@ -94,9 +106,9 @@ export function BuyWidget() {
     <View style={styles.root} testID="buy-widget">
       <View style={styles.head}>
         <View>
-          <Text style={styles.headLabel}>{paused ? (liveRate > 0 ? "LAST" : "") : "LIVE"} {metal === "gold" ? "24K" : "SILVER"} BUY RATE</Text>
+          <Text style={styles.headLabel}>{price?.offline ? (liveRate > 0 ? "LAST" : "") : paused ? "" : "LIVE"} {metal === "gold" ? "24K" : "SILVER"} BUY RATE</Text>
           <Text style={styles.headRate} testID="buy-rate">{rate > 0 ? inr(rate) : "—"}<Text style={styles.perG}>/g</Text></Text>
-          <Text style={styles.gstNote}>{paused ? (rate > 0 ? "Showing last live rate" : "Waiting for live rates") : "Price locked for 5 minutes · excl. 3% GST"}</Text>
+          <Text style={styles.gstNote}>{price?.offline ? (rate > 0 ? "Showing last live rate" : "Waiting for live rates") : paused ? "Booking is paused by the store" : "Price frozen for 2 minutes · GST included"}</Text>
         </View>
         {paused ? null : (
           <View style={styles.timerBox}>
@@ -136,7 +148,7 @@ export function BuyWidget() {
         <TextInput testID="buy-input" value={val} onChangeText={(t) => setVal(t.replace(/[^0-9.]/g, ""))} keyboardType="decimal-pad" style={styles.input} />
         <View style={styles.equiv}>
           <Text style={styles.eqLabel}>{mode === "rupees" ? "You get" : "You pay"}</Text>
-          <Text style={styles.eqVal} testID="buy-equivalent">{mode === "rupees" ? grams(g) : inr(amt)}</Text>
+          <Text style={styles.eqVal} testID="buy-equivalent">{mode === "rupees" ? grams(g) : inr(total)}</Text>
         </View>
       </View>
 
@@ -152,22 +164,22 @@ export function BuyWidget() {
       {/* Breakdown */}
       {liveRate > 0 ? (
       <View style={styles.breakdown}>
-        <View style={styles.row}><Text style={styles.bk}>Base Price ({grams(g)})</Text><Text style={styles.bkr}>{inr(amt)}</Text></View>
-        <View style={styles.row}><Text style={styles.bk}>GST (3%)</Text><Text style={styles.bkr}>{inr(gst)}</Text></View>
+        <View style={styles.row}><Text style={styles.bk}>You pay</Text><Text style={styles.bkr}>{inr(total)}</Text></View>
+        <View style={styles.row}><Text style={styles.bk}>GST 3% (deducted from grams)</Text><Text style={styles.bkr}>− {inr(gst)}</Text></View>
         <View style={styles.divider} />
-        <View style={styles.row}><Text style={styles.total}>Total Payable</Text><Text style={styles.totalR}>{inr(total)}</Text></View>
+        <View style={styles.row}><Text style={styles.total}>You get</Text><Text style={styles.totalR} testID="buy-net-grams">{grams(g)}</Text></View>
       </View>
       ) : null}
 
       {/* CTA */}
       {paused ? (
         <View style={styles.pausedBox} testID="rates-paused-notice">
-          <Text style={styles.pausedTitle}>Live rates paused</Text>
-          <Text style={styles.pausedSub}>Buying will resume automatically as soon as live rates are back.</Text>
+          <Text style={styles.pausedTitle}>{price?.rates_hidden ? "Rates not available" : price?.booking_enabled === false ? "Booking turned off" : "Live rates paused"}</Text>
+          <Text style={styles.pausedSub}>{price?.booking_enabled === false || price?.rates_hidden ? "The store has paused new bookings for now. Please check back later." : "Buying will resume automatically as soon as live rates are back."}</Text>
         </View>
       ) : null}
       <Pressable testID="buy-proceed-button" disabled={paused} onPress={proceedToBuy} style={({ pressed }) => [styles.cta, paused && { opacity: 0.45 }, pressed && { opacity: 0.85 }]}>
-        <Text style={styles.ctaText} testID="buy-proceed-text">{paused ? "Rates paused" : `Proceed to Buy ${metalLabel}  →`}</Text>
+        <Text style={styles.ctaText} testID="buy-proceed-text">{price?.offline ? "Rates paused" : paused ? "Booking paused" : `Proceed to Buy ${metalLabel}  →`}</Text>
       </Pressable>
 
       {/* Payment Sheet - Inline */}
@@ -179,9 +191,9 @@ export function BuyWidget() {
               <Text style={styles.payGrams}>{grams(g)} of {metalLabel}</Text>
               <Text style={styles.payRate}>@ {inr(rate)}/g</Text>
             </View>
-            <Row label={`${metalLabel} value`} value={inr(amt)} />
-            <Row label="GST (3%)" value={inr(gst)} />
-            <Row label="Total" value={inr(total)} bold />
+            <Row label="You pay" value={inr(total)} />
+            <Row label="GST (3%, deducted from grams)" value={`− ${inr(gst)}`} />
+            <Row label={`${metalLabel} credited`} value={grams(g)} bold />
             <Text style={styles.payNote}>Paid via UPI · {metalLabel} is credited to your vault instantly</Text>
             <Button testID="confirm-buy-button" title={`Pay ${inr(total)} & Buy ${metalLabel}`} size="lg" onPress={confirmPurchase} style={{ marginTop: 16 }} />
           </View>

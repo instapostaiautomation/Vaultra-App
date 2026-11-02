@@ -218,6 +218,7 @@ class Product(Base):
     grams = Column(Float, default=0.0)
     making_charges = Column(Float, default=0.0)
     making_pct = Column(Float, default=12.0)
+    purity = Column(String(5), default="22K")  # 24K / 22K / 18K — priced from live 24K by purity
     image_url = Column(String(500), default="")
     tag = Column(String(50), default="")
     description = Column(Text, default="")
@@ -234,7 +235,7 @@ class Pickup(Base):
     id = Column(String, primary_key=True, default=gen_uuid)
     customer_id = Column(String, ForeignKey("customers.id"), nullable=False)
     jeweller_id = Column(String, ForeignKey("jewellers.id"), nullable=False)
-    transaction_id = Column(String, ForeignKey("transactions.id"), nullable=False)
+    transaction_id = Column(String, ForeignKey("transactions.id"), nullable=True)  # null while a redeem request awaits the store
     item = Column(String(200), nullable=False)
     grams = Column(Float, default=0.0)
     making_charges = Column(Float, default=0.0)
@@ -256,6 +257,7 @@ class SIP(Base):
     jeweller_id = Column(String, ForeignKey("jewellers.id"), nullable=False)
     amount = Column(Float, default=0.0)
     frequency = Column(String(10), default="monthly")  # daily, weekly, monthly
+    metal = Column(String(10), default="gold")
     status = Column(String(20), default="active")  # active, paused, cancelled
     installments = Column(Integer, default=0)
     grams_accumulated = Column(Float, default=0.0)
@@ -292,6 +294,7 @@ class Goal(Base):
     customer_id = Column(String, ForeignKey("customers.id"), nullable=False)
     name = Column(String(100), nullable=False)
     occasion = Column(String(50), default="custom")
+    metal = Column(String(10), default="gold")
     target_grams = Column(Float, default=0.0)
     months = Column(Integer, default=12)
     deadline = Column(DateTime(timezone=True), nullable=True)
@@ -414,3 +417,19 @@ class AuditLog(Base):
     target = Column(String(200), default="")
     detail = Column(JSON, default=dict)
     created_at = Column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class Mt5Booking(Base):
+    """BUY orders placed on the MT5 account to cover metal customers bought in the app."""
+    __tablename__ = "mt5_bookings"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    metal = Column(String(10), default="gold")
+    symbol = Column(String(40), default="")
+    volume = Column(Float, default=0.0)
+    grams = Column(Float, default=0.0)
+    status = Column(String(20), default="booked")  # booked, failed
+    ticket = Column(String(40), default="")
+    price = Column(Float, default=0.0)
+    error = Column(Text, default="")
+    trigger = Column(String(20), default="auto")  # auto, retry
+    created_at = Column(DateTime(timezone=True), default=utcnow)

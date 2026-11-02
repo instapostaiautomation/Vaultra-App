@@ -1,0 +1,37 @@
+{
+  "summary": "Retest of iteration 21 issues. All 3 HIGH and 2 MEDIUM items are fixed and verified via API + UI. HIGH1: with Master rates OFF, /api/products and /api/products/{id} return gold_value/total_price/live_rate=0 (global and per-shop); restored afterwards. HIGH2: SIP run ₹500 -> total=500, gst=15, amount=485, grams=485/rate. HIGH3: reward set to ₹75 in Shop panel -> customer Refer & Earn shows ₹75 everywhere (hero, sub, steps); restored 50. MEDIUM4: SIP presets 500/1000/2500/5000/10000; home promo 'from ₹500'; share text 'from ₹500'. MEDIUM5: Proceed to Buy fires exactly 1 POST /api/quote and the timer resets 1:53 -> 1:59. LOW: no Gifts chip; booking-only-off label has no 'LAST'; rates hidden -> red 'HIDDEN' ticker; Accept toast has no OTP; redeem-requests: KYC pending -> 403, <1g -> 422. Regression: ₹1450 buy works in UI (0.1008g, GST ₹43.50 deducted); Security tab loads; redeem pop-up appears in Shop panel (polls every 8s) and Accept works. Backend 24/24 pass when run serially. Remaining: 3 minor UI copy/display issues.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "ProductCard (Jewellery tab)", "issue": "When rates are hidden the product cards show 'Price ₹0' instead of '—'. RCA: src/components/Product.tsx:44 falls back to inr(p.grams * price.buy), and price.buy is 0 when rates are hidden. Show '—' when total_price is 0 and price.buy is 0 (or when price.rates_hidden is true).", "testID": "n/a", "priority": "LOW"},
+      {"component": "BuyWidget booking-only-off copy", "issue": "When booking is off but rates are live, the subtext says 'Showing last live rate' and the CTA says 'Rates paused'. Both are misleading because rates are live. Suggest 'Live rate · booking paused' and 'Booking paused'. Reference: src/components/BuyWidget.tsx:111,182", "testID": "buy-proceed-text", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Home / Header (rates hidden)", "issues": ["The ticker pill still shows a green live dot next to the red 'HIDDEN'. The home rate cards show '▲ 0.00% since yesterday' with 'INDICATIVE RATE' while prices are hidden. Hide the change % and use a neutral dot."]},
+      {"screen": "SIP", "issues": ["The 1-year projection (yearly / price.buy) does not deduct 3% GST. For example, ₹6,000/yr shows 0.430g, but the user actually gets about 0.417g. Use yearly*0.97/price.buy. Reference: app/(tabs)/sip.tsx:45"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration22_retest.py", "/app/backend/tests/test_iteration21_phase1.py", "/app/test_reports/pytest/iteration22.xml"],
+  "action_items": [
+    "LOW: Product.tsx:44: show '—' instead of ₹0 when rates are hidden (total_price is 0 and price.buy is 0).",
+    "LOW: BuyWidget: when only booking is off with live rates, change the subtext from 'Showing last live rate' and the CTA from 'Rates paused' to booking-specific copy.",
+    "LOW: Rates hidden: use a neutral or red ticker dot and hide '▲ 0.00% since yesterday' on the home rate cards.",
+    "LOW: SIP yearly grams projection should deduct 3% GST."
+  ],
+  "critical_code_review_comments": [
+    "Shop-panel redeem pop-up shows the OLDEST pending request first and polls every 8s. With several pending requests the shop accepts them one at a time; this is acceptable.",
+    "rr_create checks min grams before KYC, so a non-KYC user with <1g gets 422/400 rather than 403. This is fine."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration22_retest.py (new)", "/app/backend/tests/test_iteration21_phase1.py (redeem accept now asserts no 'otp' in response; duplicate-409 test made self-contained using Meera)"],
+  "success_rate": {"backend": "100% (24/24 serial)", "frontend": "100% of retest items; 3 minor cosmetic issues"},
+  "seed_data_creation": "Aarav (9876543210): bought ₹1450 (+0.1008g). His seeded pending 1g redeem request was ACCEPTED through the Shop pop-up, so he no longer has a pending request and his balance is about 0.456g. Meera went through redeem request/accept cycles. Controls restored (all on, min 500) and referral reward restored to 50.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -n 0 (serial). These tests toggle the global Master controls, so parallel xdist workers interfere and cause spurious 403s. The OTP endpoint is rate-limited per phone ('Too many requests. Try again in a minute'), so sleep about 60s between repeated runs or you get KeyError challenge_id/id. The Shop redeem pop-up is #rr-modal / data-testid=redeem-request-modal; wait up to 20s (8s poll); accept is #rr-yes. Master security checkboxes (#g_rates etc.) are hidden inputs under styled switches; use is_checked without waiting for visibility.",
+  "rca_of_issue": "Product card ₹0: Product.tsx fallback multiplies grams by price.buy, which is 0 when rates are hidden."
+}

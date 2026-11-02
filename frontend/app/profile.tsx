@@ -1,11 +1,14 @@
+import { Image } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
-import { ArrowLeft, ArrowRight, BadgeCheck, Gift, HelpCircle, LogOut, Moon, ShieldCheck, Sun, User, Users, Wallet } from "lucide-react-native";
+import { ArrowLeft, ArrowRight, BadgeCheck, Camera, HelpCircle, LogOut, Moon, ShieldCheck, Sun, User, Users, Wallet } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api } from "@/src/api";
+import { api, apiUpload } from "@/src/api";
+import { uploadForm } from "@/src/utils/upload";
 import { LogoMark } from "@/src/components/Header";
 import { useToast } from "@/src/components/Toast";
 import { Button, Card, Row, StatusBadge } from "@/src/components/ui";
@@ -24,6 +27,33 @@ export default function Profile() {
   const [pan, setPan] = useState("");
   const [dob, setDob] = useState("");
   const [busy, setBusy] = useState(false);
+  const [photo, setPhoto] = useState<{ uri: string; id: string } | null>(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoBlocked, setPhotoBlocked] = useState(false);
+
+  const pickPhoto = async (useCamera: boolean) => {
+    const perm = useCamera ? await ImagePicker.getCameraPermissionsAsync() : await ImagePicker.getMediaLibraryPermissionsAsync();
+    let granted = perm.granted;
+    if (!granted && perm.canAskAgain) {
+      const req = useCamera ? await ImagePicker.requestCameraPermissionsAsync() : await ImagePicker.requestMediaLibraryPermissionsAsync();
+      granted = req.granted;
+      if (!granted && !req.canAskAgain) setPhotoBlocked(true);
+    } else if (!granted) setPhotoBlocked(true);
+    if (!granted) return toast("info", "Permission needed", "Allow access to add your KYC photo, or open Settings");
+    setPhotoBlocked(false);
+    const opts = { mediaTypes: ["images"] as ImagePicker.MediaType[], quality: 0.6, allowsEditing: true, aspect: [3, 4] as [number, number] };
+    const res = useCamera ? await ImagePicker.launchCameraAsync(opts) : await ImagePicker.launchImageLibraryAsync(opts);
+    if (res.canceled || !res.assets?.[0]) return;
+    setPhotoBusy(true);
+    try {
+      const up = await apiUpload<{ id: string }>("/kyc/photo", await uploadForm(res.assets[0].uri, "file", "kyc.jpg"));
+      setPhoto({ uri: res.assets[0].uri, id: up.id });
+    } catch (e: any) {
+      toast("error", "Photo upload failed", e.message);
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (user && !fullName) setFullName(user.name);
@@ -32,7 +62,7 @@ export default function Profile() {
   const submitKyc = async () => {
     setBusy(true);
     try {
-      await api("/kyc/submit", { method: "POST", body: { full_name: fullName.trim(), aadhaar, pan, dob } });
+      await api("/kyc/submit", { method: "POST", body: { full_name: fullName.trim(), aadhaar, pan, dob, photo_id: photo?.id ?? "" } });
       await refresh();
       toast("success", "KYC submitted", "A store officer will review it shortly");
     } catch (e: any) {
@@ -42,7 +72,7 @@ export default function Profile() {
     }
   };
 
-  const canSubmit = fullName.trim().length > 1 && aadhaar.length === 12 && /^[A-Z]{5}\d{4}[A-Z]$/.test(pan);
+  const canSubmit = fullName.trim().length > 1 && aadhaar.length === 12 && /^[A-Z]{5}\d{4}[A-Z]$/.test(pan) && !!photo;
   const kyc = user?.kyc_status ?? "not_submitted";
 
   if (!token) {
@@ -130,6 +160,18 @@ export default function Profile() {
               <TextInput testID="kyc-pan-input" value={pan} onChangeText={(t) => setPan(t.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10))} autoCapitalize="characters" style={styles.input} placeholder="ABCDE1234F" placeholderTextColor={colors.mutedLight} />
               <Text style={styles.label}>Date of birth</Text>
               <TextInput testID="kyc-dob-input" value={dob} onChangeText={setDob} style={styles.input} placeholder="YYYY-MM-DD" placeholderTextColor={colors.mutedLight} />
+              <Text style={styles.label}>Your photo</Text>
+              <Text style={styles.meta}>A clear face photo helps the store confirm it is you when you collect gold.</Text>
+              <View style={styles.photoRow}>
+                <View style={styles.photoBox} testID="kyc-photo-preview">
+                  {photo ? <Image source={{ uri: photo.uri }} style={{ width: "100%", height: "100%" }} contentFit="cover" /> : photoBusy ? <ActivityIndicator color={colors.brandPrimary} /> : <Camera size={22} color={colors.mutedLight} />}
+                </View>
+                <View style={{ flex: 1, gap: 8 }}>
+                  <Button title="Take photo" size="sm" variant="outline" onPress={() => pickPhoto(true)} disabled={photoBusy} testID="kyc-photo-camera" />
+                  <Button title="Choose from gallery" size="sm" variant="outline" onPress={() => pickPhoto(false)} disabled={photoBusy} testID="kyc-photo-gallery" />
+                  {photoBlocked ? <Button title="Open Settings" size="sm" variant="gold" onPress={() => Linking.openSettings()} testID="kyc-photo-settings" /> : null}
+                </View>
+              </View>
               <Button title="Submit KYC" loading={busy} disabled={!canSubmit} onPress={submitKyc} style={{ marginTop: 16 }} testID="kyc-submit-button" icon={<ShieldCheck size={18} color={colors.onBrandPrimary} />} />
             </>
           )}
@@ -139,11 +181,6 @@ export default function Profile() {
           <Pressable style={styles.link} onPress={() => router.push("/referral")} testID="profile-referral-link">
             <Users size={20} color={colors.brandSecondary} />
             <Text style={styles.linkText}>Refer & Earn</Text>
-            <ArrowRight size={16} color={colors.muted} />
-          </Pressable>
-          <Pressable style={styles.link} onPress={() => router.push("/gift")} testID="profile-gift-link">
-            <Gift size={20} color={colors.onSurfaceTertiary} />
-            <Text style={styles.linkText}>Gift Gold</Text>
             <ArrowRight size={16} color={colors.muted} />
           </Pressable>
           <Pressable style={[styles.link, { borderBottomWidth: 0 }]} onPress={() => router.push("/faq")} testID="profile-faq-link">
@@ -177,6 +214,8 @@ const styles = StyleSheet.create({
   label: { fontFamily: fonts.semibold, fontSize: 12, color: colors.onSurfaceTertiary, marginTop: 12, marginBottom: 6 },
   input: { height: 48, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14, fontFamily: fonts.medium, fontSize: 15, color: colors.onSurface, backgroundColor: colors.surface },
   themeRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  photoRow: { flexDirection: "row", gap: 12, marginTop: 10, alignItems: "center" },
+  photoBox: { width: 84, height: 108, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceTertiary, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   themeLabel: { flex: 1, fontFamily: fonts.semibold, fontSize: 15, color: colors.onSurface },
   links: { backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
   link: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderBottomWidth: 1, borderBottomColor: colors.divider, minHeight: 56 },

@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { Coins, Download, Gift, Lock, Store, TrendingUp, Vault as VaultIcon, Wallet } from "lucide-react-native";
+import { Coins, Download, Lock, Store, TrendingUp, Vault as VaultIcon, Wallet } from "lucide-react-native";
 import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Share, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -8,6 +8,7 @@ import { api } from "@/src/api";
 import { ScreenHeader } from "@/src/components/Header";
 import { GoalsSection } from "@/src/components/Goals";
 import { RedeemSheet } from "@/src/components/Product";
+import { RedeemGramsSheet } from "@/src/components/RedeemGramsSheet";
 import { useToast } from "@/src/components/Toast";
 import { TxnRow } from "@/src/components/TxnRow";
 import { Button, Chip, ChipRow, Row, Sheet, StatusBadge } from "@/src/components/ui";
@@ -21,7 +22,6 @@ const FILTERS = [
   { id: "buy", label: "Buy" },
   { id: "sip", label: "SIP" },
   { id: "redemption", label: "Redemption" },
-  { id: "gift", label: "Gifts" },
 ];
 
 export default function VaultScreen() {
@@ -33,6 +33,7 @@ export default function VaultScreen() {
   const [txns, setTxns] = useState<any[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [coinOpen, setCoinOpen] = useState(false);
+  const [gramsOpen, setGramsOpen] = useState(false);
   const [redeem, setRedeem] = useState<any>(null);
   const [invoice, setInvoice] = useState<any>(null);
   const bottomChrome = usesNativeTabs ? insets.bottom : 0;
@@ -128,10 +129,10 @@ export default function VaultScreen() {
 
         <View style={styles.actions}>
           {[
+            { id: "redeem-grams", label: "Redeem Gold (grams)", Icon: Coins, onPress: () => setGramsOpen(true) },
             { id: "redeem", label: "Redeem Physical Coins", Icon: Coins, onPress: () => setCoinOpen(true) },
             { id: "buy", label: "Buy More Gold", Icon: TrendingUp, onPress: () => router.push("/") },
             { id: "invoice", label: "Download Invoice", Icon: Download, onPress: openInvoice },
-            { id: "gift", label: "Gift Gold", Icon: Gift, onPress: () => router.push("/gift") },
           ].map(({ id, label, Icon, onPress }) => (
             <Pressable key={id} testID={`vault-action-${id}`} onPress={onPress} style={({ pressed }) => [styles.action, pressed && { transform: [{ scale: 0.97 }] }]}>
               <View style={styles.actionIcon}>
@@ -199,6 +200,7 @@ export default function VaultScreen() {
         </View>
       </Sheet>
       <RedeemSheet target={redeem} onClose={() => setRedeem(null)} />
+      <RedeemGramsSheet visible={gramsOpen} onClose={() => setGramsOpen(false)} />
       <InvoiceSheet t={invoice} onClose={() => setInvoice(null)} />
     </View>
   );

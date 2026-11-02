@@ -69,7 +69,9 @@ export default function ProductDetailScreen() {
   }
 
   const imgW = Math.min(width, 600);
-  const goldValue = price ? product.grams * price.buy : product.gold_value;
+  const purity = ((product as any).purity as "24K" | "22K" | "18K") || "22K";
+  const karatRate = price ? (purity === "24K" ? price.buy : (price as any).karats?.[purity] ?? 0) : 0;
+  const goldValue = karatRate ? product.grams * karatRate : product.gold_value;
   const pct = (product as any).making_pct as number | undefined;
   const making = pct != null ? goldValue * pct / 100 : product.making_charges;
   const totalPrice = goldValue + making;
@@ -113,7 +115,7 @@ export default function ProductDetailScreen() {
               <Text style={styles.categoryText}>{product.category.toUpperCase()}</Text>
             </View>
             <View style={styles.purityBadge}>
-              <Text style={styles.purityText}>24K · 99.9% Pure</Text>
+              <Text style={styles.purityText}>{purity} · {{ "24K": "99.9", "22K": "91.67", "18K": "75" }[purity]}% Pure</Text>
             </View>
           </View>
 
@@ -126,7 +128,7 @@ export default function ProductDetailScreen() {
               <Text style={styles.priceValue}>{grams(product.grams, 1)}</Text>
             </View>
             <View style={styles.priceRow}>
-              <Text style={styles.priceLabel}>Gold Value (Live Rate)</Text>
+              <Text style={styles.priceLabel}>Gold Value ({purity} Live Rate)</Text>
               <Text style={styles.priceValue}>{inr(goldValue, 0)}</Text>
             </View>
             <View style={styles.priceRow}>
@@ -139,7 +141,7 @@ export default function ProductDetailScreen() {
               <Text style={styles.totalValue}>{inr(totalPrice, 0)}</Text>
             </View>
             <Text style={styles.rateHint}>
-              Live 24K rate: {price ? inr(price.buy) : "—"}/g
+              Live {purity} rate: {karatRate ? inr(karatRate) : "—"}/g
             </Text>
           </View>
 
@@ -176,7 +178,7 @@ export default function ProductDetailScreen() {
       <View style={[styles.bottomCta, { paddingBottom: insets.bottom + 16 }]}>
         <View style={{ flex: 1 }}>
           <Text style={styles.ctaPrice}>{inr(totalPrice, 0)}</Text>
-          <Text style={styles.ctaSub}>or {grams(product.grams, 1)} vault gold</Text>
+          <Text style={styles.ctaSub}>or {grams((product as any).fine_grams ?? product.grams, 2)} vault gold (24K)</Text>
         </View>
         <Button
           title="Redeem Now"

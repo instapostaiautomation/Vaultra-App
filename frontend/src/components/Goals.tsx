@@ -11,7 +11,10 @@ import { grams, inr, shortDate } from "@/src/format";
 import { useApp } from "@/src/store/AppContext";
 import { cardShadow, colors, fonts, radius } from "@/src/theme";
 
-export type Goal = { id: string; name: string; occasion: string; target_grams: number; months: number; deadline: string; created_at: string };
+export type Goal = { id: string; name: string; occasion: string; target_grams: number; months: number; deadline: string; created_at: string; metal?: "gold" | "silver" };
+
+const heldFor = (g: Goal, vault: any) => (g.metal === "silver" ? vault?.user.silver_grams : vault?.user.gold_grams) ?? 0;
+const rateFor = (g: Goal, price: any, vault: any) => (g.metal === "silver" ? price?.silver?.buy : price?.buy ?? vault?.buy_rate) ?? 0;
 
 export const OCCASIONS = [
   { id: "wedding", label: "Wedding", Icon: Heart },
@@ -82,9 +85,6 @@ export function GoalsSection() {
   const { goals, load } = useGoals();
   const [open, setOpen] = useState(false);
   const [del, setDel] = useState<Goal | null>(null);
-  const held = vault?.user.gold_grams ?? 0;
-  const rate = price?.buy ?? vault?.buy_rate ?? 0;
-
   const remove = async () => {
     if (!del) return;
     await api(`/goals/${del.id}`, { method: "DELETE" }).catch(() => {});
@@ -96,7 +96,7 @@ export function GoalsSection() {
   return (
     <View style={styles.section} testID="goals-section">
       <View style={styles.head}>
-        <Text style={styles.title}>Gold Goals</Text>
+        <Text style={styles.title}>Gold & Silver Goals</Text>
         <Pressable onPress={() => setOpen(true)} style={styles.addBtn} testID="goal-add-button">
           <Plus size={16} color={colors.onSurfaceInverse} />
           <Text style={styles.addText}>New goal</Text>
@@ -114,7 +114,8 @@ export function GoalsSection() {
         </Pressable>
       ) : null}
       {(goals || []).map((g) => {
-        const s = stats(g, held, rate);
+        const held = heldFor(g, vault);
+        const s = stats(g, held, rateFor(g, price, vault));
         const O = occ(g.occasion);
         return (
           <View key={g.id} style={styles.card} testID={`goal-card-${g.id}`}>
@@ -126,6 +127,7 @@ export function GoalsSection() {
                   <Text style={styles.name} numberOfLines={1} testID={`goal-name-${g.id}`}>
                     {g.name}
                   </Text>
+                  <Text style={styles.meta}>{g.metal === "silver" ? "· Silver" : "· Gold"}</Text>
                 </View>
                 <Text style={styles.gramsLine} testID={`goal-progress-${g.id}`}>
                   {grams(Math.min(held, g.target_grams), 3)} <Text style={styles.meta}>of {grams(g.target_grams, 2)}</Text>
@@ -149,7 +151,7 @@ export function GoalsSection() {
                 <Text style={[styles.meta, { flex: 1 }]} testID={`goal-plan-${g.id}`}>
                   Save <Text style={styles.strong}>{inr(s.perMonth, 0)}/month</Text> for {s.monthsLeft} mo to reach it
                 </Text>
-                <Pressable onPress={() => router.push("/sip")} style={styles.sipBtn} testID={`goal-sip-${g.id}`}>
+                <Pressable onPress={() => router.push({ pathname: "/sip", params: { metal: g.metal ?? "gold" } })} style={styles.sipBtn} testID={`goal-sip-${g.id}`}>
                   <Text style={styles.sipText}>Start SIP</Text>
                 </Pressable>
               </View>
@@ -185,16 +187,18 @@ function GoalSheet({ visible, onClose, onCreated }: { visible: boolean; onClose:
   const [name, setName] = useState("");
   const [target, setTarget] = useState("10");
   const [months, setMonths] = useState(12);
+  const [metal, setMetal] = useState<"gold" | "silver">("gold");
   const [busy, setBusy] = useState(false);
   const t = parseFloat(target) || 0;
-  const held = vault?.user.gold_grams ?? 0;
-  const perMonth = (Math.max(0, t - held) / months) * (price?.buy ?? 0);
+  const held = (metal === "silver" ? vault?.user.silver_grams : vault?.user.gold_grams) ?? 0;
+  const rate = (metal === "silver" ? price?.silver?.buy : price?.buy) ?? 0;
+  const perMonth = (Math.max(0, t - held) / months) * rate;
 
   const create = async () => {
     setBusy(true);
     try {
       const label = name.trim() || occ(occasion).label + " Fund";
-      await api("/goals", { method: "POST", body: { name: label, occasion, target_grams: t, months } });
+      await api("/goals", { method: "POST", body: { name: label, occasion, target_grams: t, months, metal } });
       toast("success", "Goal created", `${label} · ${grams(t, 2)}`);
       setName("");
       onCreated();
@@ -207,7 +211,15 @@ function GoalSheet({ visible, onClose, onCreated }: { visible: boolean; onClose:
   };
 
   return (
-    <Sheet visible={visible} onClose={onClose} title="New gold goal" testID="goal-sheet">
+    <Sheet visible={visible} onClose={onClose} title="New goal" testID="goal-sheet">
+      <Text style={styles.label}>Save in</Text>
+      <View style={styles.wrap}>
+        {(["gold", "silver"] as const).map((m) => (
+          <Pressable key={m} onPress={() => setMetal(m)} style={[styles.chip, metal === m && styles.chipOn]} testID={`goal-metal-${m}`}>
+            <Text style={[styles.chipText, metal === m && { color: colors.onSurfaceInverse }]}>{m === "gold" ? "Gold" : "Silver"}</Text>
+          </Pressable>
+        ))}
+      </View>
       <Text style={styles.label}>Occasion</Text>
       <View style={styles.wrap}>
         {OCCASIONS.map(({ id, label, Icon }) => (
@@ -235,7 +247,7 @@ function GoalSheet({ visible, onClose, onCreated }: { visible: boolean; onClose:
           keyboardType="decimal-pad"
           style={[styles.input, { flex: 1 }]}
         />
-        <Text style={styles.approx}>≈ {inr(t * (price?.buy ?? 0), 0)}</Text>
+        <Text style={styles.approx}>≈ {inr(t * rate, 0)}</Text>
       </View>
       <View style={[styles.wrap, { marginTop: 8 }]}>
         {GRAM_CHIPS.map((g) => (
@@ -260,7 +272,7 @@ function GoalSheet({ visible, onClose, onCreated }: { visible: boolean; onClose:
               Save about <Text style={styles.strong}>{inr(perMonth, 0)}/month</Text> to reach {grams(t, 2)} in {months} months
             </>
           ) : (
-            "You already hold enough gold for this goal!"
+            `You already hold enough ${metal} for this goal!`
           )}
         </Text>
       </View>
@@ -277,16 +289,16 @@ export function HomeGoalCard() {
   const { goals } = useGoals();
   if (!token || !goals) return null;
   const g = goals[0];
-  const held = vault?.user.gold_grams ?? 0;
+  const held = g ? heldFor(g, vault) : 0;
   return (
     <Pressable onPress={() => router.push("/vault")} style={styles.homeCard} testID="home-goal-card">
       {g ? <ProgressRing pct={held / g.target_grams} size={52} stroke={5} done={held >= g.target_grams} /> : <View style={styles.emptyIcon}><Target size={22} color={colors.brandSecondary} /></View>}
       <View style={{ flex: 1 }}>
         <Text style={styles.name} numberOfLines={1}>
-          {g ? g.name : "Gold Goals"}
+          {g ? g.name : "Gold & Silver Goals"}
         </Text>
         <Text style={styles.meta} numberOfLines={1}>
-          {g ? `${grams(Math.min(held, g.target_grams), 3)} of ${grams(g.target_grams, 2)} · ${inr(stats(g, held, price?.buy ?? 0).perMonth, 0)}/mo` : "Set a savings goal and track your progress"}
+          {g ? `${grams(Math.min(held, g.target_grams), 3)} of ${grams(g.target_grams, 2)} · ${inr(stats(g, held, rateFor(g, price, vault)).perMonth, 0)}/mo` : "Set a savings goal and track your progress"}
         </Text>
       </View>
       <View style={styles.addBtn}>

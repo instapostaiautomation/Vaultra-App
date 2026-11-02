@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import {
-  BadgeCheck, Bell, ChevronRight, Gem, Gift, HelpCircle, LogIn, Phone, Power, RefreshCw, Users, Vault, X,
+  BadgeCheck, Bell, ChevronRight, Gem, HelpCircle, LogIn, Phone, Power, RefreshCw, Users, Vault, X,
 } from "lucide-react-native";
 import React from "react";
 import { Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -27,7 +27,6 @@ export function SideMenu({ visible, onClose }: { visible: boolean; onClose: () =
     { key: "vault", label: "My Vault & Redeem", icon: Vault, to: "/vault" },
     { key: "jewellery", label: "Jewellery Catalogue", icon: Gem, to: "/jewellery" },
     { key: "sip", label: "Auto SIP", icon: RefreshCw, to: "/sip" },
-    { key: "gift", label: "Gift Gold", icon: Gift, to: "/gift" },
     { key: "refer", label: "Refer & Earn", icon: Users, to: "/referral" },
     { key: "notifs", label: "Notifications", icon: Bell, to: "/notifications", auth: true },
     { key: "kyc", label: "KYC Status", icon: BadgeCheck, to: "/profile", auth: true, hint: kyc === "approved" ? "Verified" : kyc === "pending" ? "In review" : "Pending" },

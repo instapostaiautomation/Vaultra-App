@@ -35,3 +35,14 @@ export async function api<T = any>(path: string, { method = "GET", body, auth = 
   }
   return data as T;
 }
+
+/** POST a multipart form (file upload). Content-Type is left to the runtime so the boundary is set. */
+export async function apiUpload<T = any>(path: string, form: FormData): Promise<T> {
+  const headers: Record<string, string> = {};
+  if (tenantHeader) headers["X-Tenant-ID"] = tenantHeader;
+  if (tokens.user) headers.Authorization = `Bearer ${tokens.user}`;
+  const res = await fetch(`${BASE}${path}`, { method: "POST", headers, body: form as any });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(typeof (data as any)?.detail === "string" ? (data as any).detail : "Upload failed");
+  return data as T;
+}

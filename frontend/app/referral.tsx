@@ -23,7 +23,11 @@ export default function ReferralScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const toast = useToast();
-  const { token, tenantName } = useApp();
+  const { token, tenantName, tenant } = useApp();
+  const [reward, setReward] = useState(50);
+  useEffect(() => {
+    api<{ amount: number }>(`/referral-reward?tenant=${tenant}`, { auth: "none" }).then((r) => setReward(r.amount)).catch(() => {});
+  }, [tenant]);
   const [data, setData] = useState<ReferralData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -45,7 +49,7 @@ export default function ReferralScreen() {
     if (!data) return;
     try {
       await Share.share({
-        message: `Join ${tenantName || "us"} and get ₹50 reward! Use my referral code: ${data.referral_code}\n\nBuy & save 24K gold from just ₹10.`,
+        message: `Join ${tenantName || "us"} and get ₹${reward} reward! Use my referral code: ${data.referral_code}\n\nBuy & save 24K gold from ₹500.`,
         title: `Invite to ${tenantName || "Digital Gold"}`,
       });
     } catch {}
@@ -64,7 +68,7 @@ export default function ReferralScreen() {
         <View style={styles.center}>
           <Users size={48} color={colors.brandSecondary} />
           <Text style={styles.emptyTitle}>Sign in to start earning</Text>
-          <Text style={styles.emptySub}>Invite friends and earn ₹50 for each successful referral.</Text>
+          <Text style={styles.emptySub}>Invite friends and earn ₹{reward} for each successful referral.</Text>
           <Button title="Sign In" onPress={() => router.push("/login")} style={{ alignSelf: "stretch", marginTop: 16 }} />
         </View>
       </View>
@@ -91,9 +95,9 @@ export default function ReferralScreen() {
               <View style={styles.heroIconWrap}>
                 <Gift size={32} color={colors.onBrandPrimary} />
               </View>
-              <Text style={styles.heroTitle}>Invite Friends, Earn ₹50 Each!</Text>
+              <Text style={styles.heroTitle}>Invite Friends, Earn ₹{reward} Each!</Text>
               <Text style={styles.heroSub}>
-                Share your unique code. When your friend signs up, you both get ₹50 reward!
+                Share your unique code. When your friend signs up, you both get ₹{reward} reward!
               </Text>
             </View>
 
@@ -136,7 +140,7 @@ export default function ReferralScreen() {
               {[
                 { step: "1", title: "Share your code", desc: "Send your unique referral code or link to friends" },
                 { step: "2", title: "Friend signs up", desc: "Your friend enters your code during registration" },
-                { step: "3", title: "You both earn ₹50", desc: "₹50 reward credited to both accounts instantly" },
+                { step: "3", title: `You both earn ₹${reward}`, desc: `₹${reward} reward credited to both accounts instantly` },
               ].map((item) => (
                 <View key={item.step} style={styles.stepRow}>
                   <View style={styles.stepCircle}>
@@ -163,7 +167,7 @@ export default function ReferralScreen() {
                       <Text style={styles.refName}>{r.name}</Text>
                       <Text style={styles.refDate}>Joined {shortDate(r.joined)}</Text>
                     </View>
-                    <Text style={styles.refReward}>+₹50</Text>
+                    <Text style={styles.refReward}>+₹{reward}</Text>
                   </View>
                 ))}
               </Card>

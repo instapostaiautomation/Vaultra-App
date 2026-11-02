@@ -36,12 +36,12 @@ export function ProductCard({ p, width, onRedeem }: { p: Product; width: number;
           {p.name}
         </Text>
         <Text style={styles.meta} numberOfLines={1}>
-          {p.grams}g · 24K · Making {p.making_pct ?? 12}%
+          {p.grams}g · {(p as any).purity || "22K"} · Making {p.making_pct ?? 12}%
         </Text>
         <View style={styles.valueRow}>
           <Text style={styles.valueLabel}>Price</Text>
           <Text style={styles.value} numberOfLines={1}>
-            {p.total_price ? inr(p.total_price, 0) : price ? inr(p.grams * price.buy, 0) : "—"}
+            {p.total_price ? inr(p.total_price, 0) : "—"}
           </Text>
         </View>
         <View style={styles.cta}>
@@ -65,7 +65,7 @@ export function RedeemSheet({ target, onClose }: { target: Target | null; onClos
   const [done, setDone] = useState<any>(null);
   const bal = vault?.user.gold_grams ?? 0;
   const kyc = vault?.user.kyc_status;
-  const need = target ? (target.kind === "coin" ? target.coin : target.product.grams) : 0;
+  const need = target ? (target.kind === "coin" ? target.coin : ((target.product as any).fine_grams ?? target.product.grams)) : 0;
   const making = target ? (target.kind === "coin" ? 250 * String(target.coin).length : target.product.making_charges) : 0;
   const name = target ? (target.kind === "coin" ? `${target.coin}g 24K Gold Coin` : target.product.name) : "";
 
@@ -119,7 +119,7 @@ export function RedeemSheet({ target, onClose }: { target: Target | null; onClos
               <Text style={styles.body}>In-store pickup · {TENANT_NAME[tenant] || ""}</Text>
             </View>
           </View>
-          <Row label="Gold required" value={grams(need)} />
+          <Row label="24K gold required" value={grams(need)} />
           <Row label="Your vault balance" value={grams(bal)} testID="redeem-balance" />
           <Row label="Making & minting charges" value={inr(making, 0)} />
           <Row label="Balance after" value={grams(Math.max(0, bal - need))} bold />

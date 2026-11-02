@@ -1,0 +1,53 @@
+{
+  "summary": "Phase 1 tested on backend and frontend. Backend: 17/17 new pytest cases pass, plus 24/24 regression cases from iterations 18 and 20. All 7 requested features work end to end: gift removed (POST /api/gifts returns 410, no Gifts nav in Shop or Master, /gift route unmatched, no gift text in home/profile/side menu), 120s quote lock, GST taken out of grams (1450 -> 1406.5 / 43.5; 0.1g pays rate*0.1 and gets 0.097g), ₹500 minimum (buy, silver buy, SIP, with frontend toasts), Master Security & Controls (global rates off hides prices and disables buying; per-shop booking off blocks only Patel; min_investment change is reflected), redeem-grams flow (min 1g error, 409 for a second open request, Shop pop-up with wallet ID, name, mobile, grams and balance, ✕ close, Accept gives an OTP toast and a pickup in Redemptions, Decline cancels), and the referral reward setting (panel + API + public GET). Main gaps: when rates are hidden, product prices and live_rate still leak through /api/products; SIP installments still add GST on top instead of taking it out of grams; the app's referral screen hardcodes ₹50 and ignores the shop setting; SIP preset ₹100 and the 'from ₹100' / 'from just ₹10' copy conflict with the ₹500 minimum.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/products, GET /api/products/{id}", "issue": "When Master hides rates (rates_hidden=true), these still return live_rate (e.g. 13848.5), gold_value and total_price, so customers can work out the live rate from the Jewellery tab and home catalogue (home showed ₹1,10,918 etc. while rates were hidden). price_payload is the only place that checks controls_for(). Reference: server.py:750-790. GET /api/vault (server.py:947) also values holdings at gold_rate.", "priority": "HIGH"},
+      {"endpoint": "POST /api/sips/{id}/run", "issue": "SIP installments still add GST on top: grams=amount/rate, total=amount+gst. This conflicts with requirement 3 (GST inclusive, taken out of grams). Expected: total=amount, gst=amount*0.03, grams=(amount-gst)/rate. Reference: server.py:1257-1266", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/redeem-requests", "issue": "Hardcoded minimum of 1g (Field ge=1). It ignores jeweller.min_redemption_grams, which /api/redeem uses, and does not check KYC status (it is unclear whether other redemption paths require KYC)."},
+      {"endpoint": "GET /api/price (no tenant) / Master panel", "issue": "When global rates are off, the Master console header also shows 'Gold —/g', so the platform admin can no longer see the market rate. It may be intended, but master should probably always see rates."},
+      {"endpoint": "PUT /api/master/v3/controls", "issue": "The shops map is fully replaced on every PUT, so a client that sends only global fields silently resets every per-shop override. Works with the current panel, which always sends every shop."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Referral screen", "issue": "'₹50' is hardcoded everywhere (hero, steps, list rows, share message) and the screen never calls GET /api/referral-reward, so the shop's reward setting is not reflected in the app. Reference: app/referral.tsx:48,67,94,96,139,166", "testID": "n/a", "priority": "HIGH"},
+      {"component": "SIP screen", "issue": "AMOUNTS preset includes ₹100, which is below the ₹500 minimum. Tapping it and Start gives the 'Minimum investment is ₹500' error. Presets should start at price.min_investment. Reference: app/(tabs)/sip.tsx:17", "testID": "sip-amount-100", "priority": "MEDIUM"},
+      {"component": "Home SIP promo / referral share text", "issue": "The copy 'Save in gold daily from ₹100' (app/(tabs)/index.tsx:61) and 'Buy & save 24K gold from just ₹10' (app/referral.tsx:48) contradicts the ₹500 minimum.", "testID": "home-sip-promo", "priority": "MEDIUM"},
+      {"component": "Vault passbook filters", "issue": "A 'Gifts' filter chip is still shown (FILTERS id 'gift'). This is gift UI left over in the customer app. Reference: app/(tabs)/vault.tsx:25", "testID": "passbook-filter-gift", "priority": "LOW"},
+      {"component": "BuyWidget when booking is off but rates are visible", "issue": "Shows 'LAST 24K BUY RATE' and 'Showing last live rate' even though the rate is live; only booking is off. The label should stay LIVE and the note should say booking is paused. Reference: BuyWidget.tsx:100-102", "testID": "buy-rate", "priority": "LOW"},
+      {"component": "Header rate pill when rates are hidden", "issue": "Shows '24K — ▲ INDICATIVE' with a green dot and up arrow. When hidden it should show a neutral 'Rates not available'.", "testID": "live-gold-price", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Price freeze", "issue": "The quote is locked when the widget mounts and auto-relocks every 2 minutes, not when the customer taps Proceed. If the customer proceeds with a few seconds left, the quote (and rate) changes while the Confirm sheet is open. Lock a fresh quote in proceedToBuy() so the customer gets a full 2:00 freeze on the confirm sheet.", "affected_testIDs": ["buy-proceed-button", "confirm-buy-button"]},
+      {"flow": "Shop panel redeem Accept", "issue": "After Accept, the Redemptions nav badge stays stale (showed 1 while the list had 2) because loadDash() is not called after the action. Reference: jeweller_admin.html:453", "affected_testIDs": ["redeem-request-modal"]}
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration21_phase1.py", "/app/test_reports/pytest/iteration21.xml"],
+  "action_items": [
+    "HIGH: When controls_for(jid).rates is false, hide prices in /api/products and /api/products/{id} (live_rate, gold_value, total_price set to 0 or null) and in /api/vault current value. In the app, show '—' for product prices.",
+    "HIGH: Make SIP installments GST-inclusive like buy(): total=amount, gst=r2(amount*0.03), grams=r4((amount-gst)/rate).",
+    "HIGH: Referral screen: fetch GET /api/referral-reward?tenant=<tenant> and use that amount instead of the hardcoded ₹50 (hero, steps, rows, share message).",
+    "MEDIUM: SIP presets: drop ₹100 (start at min_investment from /api/price). Update the 'from ₹100' and 'from just ₹10' copy to use min_investment.",
+    "MEDIUM: Re-lock the quote when Proceed is tapped so the 2-minute freeze starts at checkout.",
+    "LOW: Remove the 'Gifts' passbook filter in vault.tsx. Fix the BuyWidget label for booking-off with live rates. Show a neutral header pill when rates are hidden. Refresh the dashboard badge after redeem Accept/Decline.",
+    "Consider: showing the pickup OTP to shop staff in the Accept toast defeats its purpose of verifying the customer at the counter. Only the customer app should show the OTP."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 3314 lines and should be split into routers (controls, redeem-requests, referral, studio).",
+    "The dead code after `raise HTTPException(410)` in send_gift (server.py:1286+) should be removed.",
+    "CONTROLS is held in memory and saved to app_settings. This is fine with --workers 1, but it will not sync across multiple workers or pods in production.",
+    "rr_act accept reduces invested by the average cost. That is fine, but the redemption txn amount uses the current rate while total=0. Check this is consistent with the admin reports."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration21_phase1.py (new)"],
+  "success_rate": {"backend": "100% of the requested Phase 1 API checks pass (17/17 + 24/24 regression); 2 related backend gaps found (products leak, SIP GST)", "frontend": "~88% (all requested flows work; referral amount not wired, SIP preset/copy issues)"},
+  "seed_data_creation": "Meera (9834567892): bought 1.2g (mock) + ₹500 gold. 2 of her 1g redeem requests were accepted (2 pending pickups in Sharma Redemptions) and 1 was declined. Aarav's pre-existing 1g request is still pending (it was only closed with ✕ in the panel). All controls restored to on with min 500, no shop overrides. Referral reward restored to 50.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Use test_iteration21_phase1.py. Its test_redeem_flow tops up Meera if her balance is below 2g. The quote/confirm sheet is an RN Modal with a slide animation, so wait about 1.5s before clicking confirm-buy-button (or use dispatch_event('click')). Shop panel login: #le/#lp/#login-btn. Master login: #lu/#lp/#login-btn. Nav buttons are [data-tab=...]. Security controls: #g_rates/#g_booking/#g_min/#ctl-save, per shop #r_<id>/#b_<id>.",
+  "rca_of_issue": "Products leak: list_products/get_product compute prices with gold_rate() directly and never check controls_for().rates. SIP GST: run_sip was not updated when buy() moved to GST-inclusive pricing. Referral: the frontend was never wired to the new /api/referral-reward endpoint."
+}

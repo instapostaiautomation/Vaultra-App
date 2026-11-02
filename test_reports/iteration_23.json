@@ -1,0 +1,45 @@
+{
+  "summary": "Iteration 23. Backend: 12 of 12 pytest tests pass in backend/tests/test_iteration23_silver_mt5_kyc.py (run serially with -n 0). They cover silver SIP and its run (credits silver_grams at the silver rate, 3% GST taken from the grams, txn metal=silver, gold untouched), gold SIP unchanged, SIP summaries for the shop and Master (gold/silver grams and active counts, metal on each row), silver goals in the app and both panels (progress uses silver_grams), redeem requests for Bar and Coin (item text correct; form 'ring' gives 422), holdings values and average buy prices plus the holdings detail (sips, shop), catalogue purity 24K/22K/18K (100/91.67/75%) with total = grams*karat_rate*(1+making%), 422 for making 41% or purity 14K, product create with purity, KYC photo privacy (upload works; /api/files/{id} gives 404; a bogus photo_id gives 400; own shop gets 200 image; other shop gets 404; Master gets 200), Master customer detail (403 for a jeweller token, 404 for an unknown id), referral codes from another store not credited, and MT5. MT5: pending grams grow after a confirmed buy. With gold_lot_g=0.01 a booking row appeared with status FAILED and the readable error 'Market is closed.' (volume 159 lots, 1.59g). The purchase still succeeded. Retry returns 200; positions return 200 (one existing SELL 10 GOLDDEC). Config restored to 10/1000/1/1. UI: the Shop panel, Master console and Expo app flows in the review request all render and work (details in context_for_next_testing_agent). Found 1 MEDIUM display bug (catalogue commission KPI is negative) and 1 MEDIUM business-logic bug (redeeming a 22K/18K product deducts 24K vault gold at full product weight). No deprecated Expo packages found.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/redeem (product redemption)", "issue": "Redeeming a product deducts the product's full weight (p.grams) of 24K vault gold, and amount = grams * 24K rate, whatever the purity. A 7.1g 22K Mangalsutra costs 7.1g of 24K gold when it should cost 7.1*0.9167 = 6.51g. The customer is overcharged about 8.3% for 22K and 25% for 18K. The app shows the same 'or 7.1g vault gold'. Reference: server.py:1184-1196 and app/product-detail.tsx (vault gold line).", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "GET /api/jeweller/v3/catalogue", "issue": "commission_per_g = karat_rate - live_24K_rate (server.py:2799). For 22K products this is negative. The Shop Catalogue KPI 'Your commission' shows ₹-1,154.04/g (panel_ext.js:39 uses p0.commission_per_g). It should compare the product's karat rate with the live karat rate, or show the 24K commission."},
+      {"endpoint": "holdings avg_gold vs avg_silver", "issue": "avg_gold = invested / gold_grams, and invested includes GST (SIP adds the full amount). avg_silver = sum(txn.amount, GST excluded) / grams. The two averages use different bases: TEST customer shows avg gold ₹14,388/g (live 13,948 + GST) and avg silver ₹179.13 (equal to the live rate). Silver SIP/buys do not track silver invested. Reference: server.py:2414-2415, 1282-1286."},
+      {"endpoint": "MT5 mt5_book", "issue": "No upper cap on volume. A small gold_lot_g entered by mistake (0.01) turned 1.59g into a 159-lot BUY attempt; if the market had been open, 159 lots would have been booked. While the market is closed, every purchase makes another failed attempt and adds a 'failed' row. Suggest a max-volume guard and a backoff or 'market closed' skip. asyncio.create_task in mt5_cover keeps no reference to the task (it may be garbage-collected)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Goals card 'Start SIP' (silver goal)", "issue": "goal-sip-{id} does router.push('/sip') without the metal. A silver goal opens the Gold SIP by default. Pass ?metal=silver and read it in sip.tsx. Reference: src/components/Goals.tsx:154", "testID": "goal-sip-{id}", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Jewellery tab / product detail", "issues": ["Subtitle still says 'Redeem vault gold for hallmarked 24K pieces' (app/(tabs)/jewellery.tsx:45) while products are 22K", "Seeded product descriptions say 'in 24K 99.9% pure gold' and a product is named 'Heritage 24K Necklace' while purity is 22K, so the 22K badge and the copy contradict each other"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration23_silver_mt5_kyc.py", "/app/test_reports/pytest/pytest_iter23.xml"],
+  "action_items": [
+    "HIGH: Product redemption (server.py:1184) should deduct p.grams * purity_pct/100 of 24K vault gold for 22K/18K items. Fix the txn amount and the app's 'or Xg vault gold' line to match.",
+    "MEDIUM: Catalogue commission_per_g (server.py:2799): do not subtract the 24K live rate from the 22K/18K rate. The Shop Catalogue KPI 'Your commission' shows a negative value.",
+    "LOW: Make the avg buy price basis the same for gold and silver (both with GST or both without). Consider tracking silver_invested.",
+    "LOW: MT5: add a max volume per order guard; skip or back off retries when MT5 says 'Market is closed'; keep a reference to the create_task.",
+    "LOW: The silver goal's 'Start SIP' should open the SIP tab with Silver preselected.",
+    "LOW: Copy: Jewellery subtitle and seeded product descriptions/names still say 24K."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 3,535 lines; split it into routers (sip, goals, redeem, mt5, kyc, catalogue).",
+    "jp_holding_detail is reused by the Master route by passing a Jeweller object positionally; this works but is fragile.",
+    "KYC photo upload (POST /kyc/photo) has no per-customer limit; repeated uploads leave orphan files in storage.",
+    "Tenant scoping checked: the KYC photo of another shop's customer gives 404; master customer detail gives 403 for a jeweller token; a referral code from another store is not credited."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration23_silver_mt5_kyc.py"],
+  "success_rate": {"backend": "100% (12/12 API tests); 1 HIGH business-logic issue and 3 minor issues found by code review", "frontend": "~95% (all requested flows work; 1 MEDIUM display bug, 1 LOW UX bug, copy issues)"},
+  "seed_data_creation": "Created TEST_Fresh customers (silver/gold SIP run, KYC submitted then rejected for cleanup) and TEST_Ref customers in demo-jeweller-001. Aarav (9876543210) bought gold: ₹20,000 + 2x ₹500 (plus 9 cancelled bar/coin redeem requests). A TEST UI Silver goal was created and then deleted. 2 failed MT5 booking rows ('Market is closed.'). The test product TEST_Ring18 was deleted. MT5 config restored.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -n 0 (pytest.ini adds xdist). Customer self endpoint is GET /api/me; the verify response holds user + access_token; mock-confirm needs a JSON body {method, success}. Expo app on web: inject the token with localStorage.setItem('vdg_user_token', JSON.stringify(token)) and wait about 4s for it to load. Bottom sheets animate, so use JS element.click() or wait 1.2s. Shop panel: login #le/#lp/#login-btn, tabs button[data-tab=...], container #content. Master console: login #lu/#lp, there is no #content (use body), KYC button onclick^=mKycView, customer onclick^=mCustomer, shop onclick^=shopCatalogue. MT5 market was closed at test time, so bookings fail with 'Market is closed.'",
+  "rca_of_issue": "Redemption purity: rr/redeem was written before purity existed and still uses p.grams 1:1 against 24K balance. Commission KPI: _catalogue computes commission as product buy_rate minus PRICE['base'] (24K live), and buy_rate is now the karat rate."
+}

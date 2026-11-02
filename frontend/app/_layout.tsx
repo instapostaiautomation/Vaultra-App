@@ -36,7 +36,6 @@ export default function RootLayout() {
                     <Stack.Screen name="login" options={{ presentation: "modal" }} />
                     <Stack.Screen name="profile" />
                     <Stack.Screen name="faq" />
-                    <Stack.Screen name="gift" />
                     <Stack.Screen name="referral" />
                     <Stack.Screen name="notifications" />
                     <Stack.Screen name="product-detail" />
