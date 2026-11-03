@@ -1,0 +1,34 @@
+{
+  "summary": "Checked the security fixes. All 6 backend tests in test_iteration27_login_bruteforce.py passed, and the master panel UI flows worked. Jeweller login limiter: 5 wrong passwords for an email give 401, then the 6th attempt gives 429 'Too many failed attempts. Try again in 15 min'. Email case and spaces are normalised, so variants share one counter. Locking one account does not affect other accounts. A successful login clears that account's counter (3 fails, success, 3 fails still gives 401). Master login limiter works the same way per username, and admin/admin123 still logs in. With a real account (patel), the correct password is blocked with 429 after 5 fails, even when sent from a different IP. The backend was restarted afterwards to clear that lock. KYC photo privacy did not regress: /api/files/{photo_id} returns 404 without auth, the owning shop gets 200, another shop gets 404, master gets 200, and an unauthenticated master request gets 401/403. UI: the login form shows the 429 message. Customers tab > Full details > 'View KYC details' (now onclick=mKycOpen(), with no JSON in the attribute) opens data-testid=kyc-detail-modal for Aarav Sharma (shows 'No photo submitted') and for TEST_Fresh (the photo loads as a blob). The KYC tab's Full details modal with Approve/Reject still works. No JS page errors. New finding: the per-IP limit can be bypassed, because the client can set X-Forwarded-For and the ingress passes that value through as the first hop.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/jeweller/login, POST /api/master/login (_client_ip)", "issue": "The per-IP key is the first X-Forwarded-For value, which the client controls. I confirmed through the public ingress that a request with a spoofed XFF whose counter I had already filled got 429, and that changing the XFF value avoids the 20-per-IP limit. An attacker can also fill the counter for a victim's IP. The per-account limit (5) still holds, so guessing a single account's password stays blocked. Reference: server.py:1642-1643"},
+      {"endpoint": "login limiter", "issue": "Anyone who knows an account name can lock it for 15 minutes with 5 bad attempts, including 'admin' and every jeweller email. This is a lockout-based DoS and an inherent trade-off of the design. Possible mitigations: progressive delay or CAPTCHA instead of a hard lock, or exempting trusted IPs."},
+      {"endpoint": "LOGIN_FAILS", "issue": "The LOGIN_FAILS dict only grows. _login_guard writes an empty list for every identity it sees (LOGIN_FAILS[key] = fails), so random emails or usernames create entries that are never removed. Delete keys whose lists are empty. The limiter is also per-process: it works now with --workers 1, but with several workers or a restart the counts split or reset."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration27_login_bruteforce.py", "/app/backend/tests/probe_xff_spoof_iter27.py", "/app/test_reports/pytest/iteration27.xml"],
+  "action_items": [
+    "In _client_ip, take the right-most X-Forwarded-For entry added by the trusted ingress, or request.client.host behind a known proxy, instead of the client-controlled first entry (server.py:1643).",
+    "Remove LOGIN_FAILS keys whose failure lists become empty, so the dict cannot grow without limit.",
+    "Optional: replace the hard account lock with progressive delay or CAPTCHA so attackers cannot lock out admin and jeweller accounts."
+  ],
+  "critical_code_review_comments": [
+    "The guard runs before the DB lookup and the bcrypt check, so a locked account cannot be probed. The response to a correct password while locked is identical (429), which is good.",
+    "On success, only the per-account counter is cleared; the per-IP counter is left as is. That is fine.",
+    "The master username is not normalised (no strip or lower). This is harmless because the DB lookup is exact."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration27_login_bruteforce.py", "/app/backend/tests/probe_xff_spoof_iter27.py"],
+  "success_rate": {"backend": "100% (6/6)", "frontend": "100%"},
+  "seed_data_creation": "None. Only fake login identities were used. The backend was restarted once to clear the deliberate patel@vaultra.in lockout.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "The limiter is in-memory: sudo supervisorctl restart backend clears it. Run pytest with -n 0 because pytest.ini enables xdist. When testing lockouts, send a spoofed X-Forwarded-For through localhost:8001 so your own IP counter is not used up."
+}

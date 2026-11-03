@@ -1635,12 +1635,48 @@ async def mark_notifications_read(customer: Customer = Depends(get_current_custo
 
 
 # ═══════════════════ JEWELLER ADMIN ═══════════════════════════════════════════
+LOGIN_FAILS: dict = {}  # key -> [failure timestamps]; blocks password guessing on panel logins
+LOGIN_MAX_FAILS, LOGIN_WINDOW = 5, 15 * 60
+
+
+def _client_ip(request: Request):
+    # right-most X-Forwarded-For entry is added by our ingress; earlier entries are client-controlled
+    xff = [p.strip() for p in (request.headers.get("x-forwarded-for") or "").split(",") if p.strip()]
+    return xff[-1] if xff else (request.client.host if request.client else "")
+
+
+def _login_guard(kind: str, ident: str, ip: str):
+    now = time.time()
+    if len(LOGIN_FAILS) > 5000:  # drop expired keys so random usernames cannot grow memory forever
+        for k in [k for k, v in LOGIN_FAILS.items() if not v or now - v[-1] >= LOGIN_WINDOW]:
+            LOGIN_FAILS.pop(k, None)
+    for key, limit in ((f"{kind}:{ident}", LOGIN_MAX_FAILS), (f"{kind}-ip:{ip}", LOGIN_MAX_FAILS * 4)):
+        fails = [t for t in LOGIN_FAILS.get(key, []) if now - t < LOGIN_WINDOW]
+        if fails:
+            LOGIN_FAILS[key] = fails
+        else:
+            LOGIN_FAILS.pop(key, None)
+        if len(fails) >= limit:
+            mins = int((LOGIN_WINDOW - (now - fails[0])) // 60) + 1
+            raise HTTPException(429, f"Too many failed attempts. Try again in {mins} min")
+
+
+def _login_failed(kind: str, ident: str, ip: str):
+    now = time.time()
+    for key in (f"{kind}:{ident}", f"{kind}-ip:{ip}"):
+        LOGIN_FAILS.setdefault(key, []).append(now)
+
+
 @api.post("/jeweller/login")
-async def jeweller_login(body: JewellerLogin, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Jeweller).where(Jeweller.email == body.email.strip().lower()))
+async def jeweller_login(body: JewellerLogin, request: Request, db: AsyncSession = Depends(get_db)):
+    email, ip = body.email.strip().lower(), _client_ip(request)
+    _login_guard("jeweller", email, ip)
+    result = await db.execute(select(Jeweller).where(Jeweller.email == email))
     j = result.scalar_one_or_none()
     if not j or not bcrypt.checkpw(body.password.encode(), j.password_hash.encode()):
+        _login_failed("jeweller", email, ip)
         raise HTTPException(401, "Invalid email or password")
+    LOGIN_FAILS.pop(f"jeweller:{email}", None)
     if j.status != "active":
         raise HTTPException(403, "Account suspended")
     return {"access_token": make_token(j.id, "jeweller", days=1), "jeweller": jeweller_dict(j)}
@@ -1878,11 +1914,15 @@ async def jeweller_delete_product(product_id: str, jeweller: Jeweller = Depends(
 
 # ═══════════════════ MASTER ADMIN ═════════════════════════════════════════════
 @api.post("/master/login")
-async def master_login(body: MasterAdminLogin, db: AsyncSession = Depends(get_db)):
+async def master_login(body: MasterAdminLogin, request: Request, db: AsyncSession = Depends(get_db)):
+    ip = _client_ip(request)
+    _login_guard("master", body.username, ip)
     result = await db.execute(select(MasterAdmin).where(MasterAdmin.username == body.username))
     admin = result.scalar_one_or_none()
     if not admin or not bcrypt.checkpw(body.password.encode(), admin.password_hash.encode()):
+        _login_failed("master", body.username, ip)
         raise HTTPException(401, "Invalid credentials")
+    LOGIN_FAILS.pop(f"master:{body.username}", None)
     return {"access_token": make_token(admin.id, "master_admin", days=1), "admin": {"id": admin.id, "name": admin.name}}
 
 

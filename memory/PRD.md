@@ -150,6 +150,11 @@ Multi-tenant white-label digital gold platform. Vaultra onboards jewellery shop 
 - Master: shop name → catalogue drawer; Customers → full detail (/master/v3/customers/{cid}); MT5 Bookings tab.
 - MT5 cover: purchases accumulate in app_settings mt5_pending; BUY POST {base}/order {symbol,type,volume} when ≥ min lot. Config mt5_booking_cfg (gold_lot_g 10, silver_lot_g 1000, min 1, step 1, max 10). Failed auto attempt → 5 min cooldown; manual retry. Table mt5_bookings. Migration b3d9e1f0a2c4.
 - Security audit: per-object tenant scoping PASS. Referral lookup scoped to store. Known demo risks: OTP echoed, seeded demo passwords (must change before launch).
+## Security (Nov 2026)
+- Panel logins: in-memory brute-force limiter (5 fails/account, 20/IP per 15 min → 429), right-most X-Forwarded-For, expired keys pruned. Single-process only.
+- Master KYC button no longer embeds JSON in onclick (S.mcust).
+- Open demo items before launch: OTP echoed in API, seeded demo passwords, CORS "*", mocked payments/AutoPay.
+
 ## Iteration 25 (Nov 2026) — DONE
 - MT5: gold & silver 1 lot = 100g, books 0.1 lot per 10g in pool (min 0.1, step 0.1, max 10). BUY only.
 - Rates: backend reads MT5 back-to-back (~0.4-0.5s per read over tunnel); app polls /price every 1s, panels 1.5s.

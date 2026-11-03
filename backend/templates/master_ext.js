@@ -141,10 +141,10 @@ async function shopCatalogue(jid) {
 async function mCustomer(id) {
   openDrawer('<div class="drawer-b"><div class="skeleton"></div></div>');
   try { const d = await api('/master/v3/customers/' + id); customerDrawer(d, true);
-    const c = d.customer; if (c.kyc_status !== 'not_submitted') $('#drawer .drawer-b').insertAdjacentHTML('afterbegin', `<button class="btn" onclick='mKycOpen(${JSON.stringify(c).replace(/'/g, '&#39;')})'>${icon('kyc')} View KYC details</button>`);
+    const c = d.customer; S.mcust = c; if (c.kyc_status !== 'not_submitted') $('#drawer .drawer-b').insertAdjacentHTML('afterbegin', `<button class="btn" onclick="mKycOpen()">${icon('kyc')} View KYC details</button>`);
   } catch (e) { closeDrawer(); toast(e.message, true); }
 }
-function mKycOpen(c) { kycDetails(c, `/master/v3/kyc/${c.id}/photo`, 'master_token'); }
+function mKycOpen() { const c = S.mcust; kycDetails(c, `/master/v3/kyc/${c.id}/photo`, 'master_token'); }
 function mKycView(id) {
   const c = S.mkyc.find((x) => x.id === id);
   kycDetails(c, `/master/v3/kyc/${id}/photo`, 'master_token', c.kyc_status === 'pending' ? `<button class="btn danger" onclick="closeModal();mKyc('${id}',false)">Reject</button><button class="btn primary" onclick="closeModal();mKyc('${id}',true)">Approve</button>` : '');
